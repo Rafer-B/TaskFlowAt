@@ -184,10 +184,10 @@ const projectsWithProgress = computed(() =>
     </div>
 
     <div class="section-header section-actions" style="margin-top: 28px;">
-      <div>
-        <h2>Projetos ativos</h2>
-        <p>{{ activeProjects.value.length }} projeto{{ activeProjects.value.length !== 1 ? 's' : '' }} em curso</p>
-      </div>
+        <div>
+            <h2>Projetos ativos</h2>
+              <p>{{ activeProjects?.length ?? 0 }} projeto{{ activeProjects?.length !== 1 ? 's' : '' }} em curso</p>
+        </div>
     </div>
     <div class="projects-grid">
       <ProjectCard
