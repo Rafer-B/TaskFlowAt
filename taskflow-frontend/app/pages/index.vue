@@ -1,12 +1,24 @@
 <script setup lang="ts">
+
+definePageMeta({
+  layout: 'admin',
+})
+
 import { computed } from 'vue'
 import type { DashboardTask, TaskPriority, TaskStatus } from '~/composables/useDashboardData'
 import { toISODay, addDays, parseISODay, diffInDays } from '~/utils/dates'
 
+
 const todayISO = useState('dashboard-today', () => toISODay(new Date()))
 const today = computed(() => parseISODay(todayISO.value))
 
-const { projects, tasks } = useDashboardData(today.value)
+//const { projects, tasks } = useDashboardData(today.value)
+const {
+  projects,
+  tasks,
+  carregando,
+  erro,
+} = useDashboardData(today.value)
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   'Por fazer': '#94a3b8',
@@ -62,7 +74,7 @@ const statusSegments = computed(() =>
 
 const openTasks = computed(() => tasks.filter((t) => t.status !== 'Concluída'))
 
-function daysUntil(task: DashboardTask): number {
+/* function daysUntil(task: DashboardTask): number {
   return diffInDays(today.value, parseISODay(task.dueDate))
 }
 
@@ -78,6 +90,36 @@ function dueTone(task: DashboardTask): 'late' | 'soon' | 'ok' {
   const days = daysUntil(task)
   if (days < 0) return 'late'
   if (days <= 3) return 'soon'
+  return 'ok'
+} */
+function daysUntil(task: DashboardTask): number {
+  if (!task.dueDate) return Number.POSITIVE_INFINITY
+  return diffInDays(today.value, parseISODay(task.dueDate))
+}
+
+function dueLabel(task: DashboardTask): string {
+  if (!task.dueDate) return 'Sem prazo'
+
+  const days = daysUntil(task)
+
+  if (days < 0) {
+    return `Atrasada há ${Math.abs(days)} ${Math.abs(days) === 1 ? 'dia' : 'dias'}`
+  }
+
+  if (days === 0) return 'Hoje'
+  if (days === 1) return 'Amanhã'
+
+  return `Em ${days} dias`
+}
+
+function dueTone(task: DashboardTask): 'late' | 'soon' | 'ok' {
+  if (!task.dueDate) return 'ok'
+
+  const days = daysUntil(task)
+
+  if (days < 0) return 'late'
+  if (days <= 3) return 'soon'
+
   return 'ok'
 }
 
@@ -106,13 +148,25 @@ const projectsWithProgress = computed(() =>
 
 <template>
   <main class="dashboard">
+      <p v-if="carregando" role="status">
+          A carregar dados do Dashboard...
+      </p>
+
+      <p v-if="erro" class="error-message" role="alert">
+          {{ erro }}
+      </p>
     <header class="page-hero animate-in" style="animation-delay: 60ms">
       <div class="hero-kicker"><span class="dot" aria-hidden="true"></span> TaskFlow · Dashboard</div>
       <h1>{{ dateLabel }}</h1>
       <p>Visão geral dos seus projetos e tarefas. Acompanhe o progresso, os prazos e o que requer a sua atenção.</p>
       <div class="hero-actions">
-        <button class="btn btn-primary">Nova tarefa</button>
-        <button class="btn btn-ghost">Ver todos os projetos</button>
+          <!-- <NuxtLink to="/tasks" class="btn btn-primary">
+                Nova tarefa
+          </NuxtLink> -->
+
+          <NuxtLink to="/projects" class="btn btn-ghost">
+                Ver todos os projetos
+          </NuxtLink>
       </div>
     </header>
 

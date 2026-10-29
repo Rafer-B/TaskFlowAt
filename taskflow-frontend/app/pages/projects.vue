@@ -1,5 +1,8 @@
 
-<script setup lang="ts">
+<!--<script setup lang="ts">
+definePageMeta({
+  layout: 'admin',
+})
 import { computed, ref } from 'vue'
 
 interface Projeto {
@@ -83,6 +86,142 @@ function adicionarProjeto() {
 
   mostrarFormulario.value = false
 }
+</script>-->
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+
+definePageMeta({
+  layout: 'admin',
+})
+
+interface ProjetoAPI {
+  id: number
+  name: string
+  description: string | null
+  status: 'active' | 'completed' | 'archived'
+  created_by: number
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
+type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
+
+interface Projeto {
+  id: number
+  name: string
+  description: string
+  status: EstadoProjeto
+  createdAt: string
+}
+
+const config = useRuntimeConfig()
+const apiBase = config.public.apiBase
+
+const projetos = ref<Projeto[]>([])
+const pesquisa = ref('')
+const mostrarFormulario = ref(false)
+const erro = ref('')
+const carregando = ref(false)
+const aGuardar = ref(false)
+
+// Temporário: substitui pelo ID real de um utilizador existente.
+const utilizadorId = 1
+
+const novoProjeto = ref({
+  name: '',
+  description: '',
+})
+
+function converterEstado(estado: ProjetoAPI['status']): EstadoProjeto {
+  const estados: Record<ProjetoAPI['status'], EstadoProjeto> = {
+    active: 'Ativo',
+    completed: 'Concluído',
+    archived: 'Arquivado',
+  }
+
+  return estados[estado]
+}
+
+function converterProjeto(projeto: ProjetoAPI): Projeto {
+  return {
+    id: projeto.id,
+    name: projeto.name,
+    description: projeto.description ?? '',
+    status: converterEstado(projeto.status),
+    createdAt: projeto.created_at.slice(0, 10),
+  }
+}
+
+const projetosFiltrados = computed(() => {
+  const termo = pesquisa.value.trim().toLowerCase()
+
+  if (!termo) return projetos.value
+
+  return projetos.value.filter((projeto) =>
+    `${projeto.name} ${projeto.description}`
+      .toLowerCase()
+      .includes(termo),
+  )
+})
+
+async function carregarProjetos() {
+  erro.value = ''
+  carregando.value = true
+
+  try {
+    const resposta = await $fetch<ProjetoAPI[]>(`${apiBase}/projects/`)
+    projetos.value = resposta.map(converterProjeto)
+  } catch (error) {
+    console.error('Erro ao carregar projetos:', error)
+    erro.value = 'Não foi possível carregar os projetos. Confirma se a API está ativa.'
+  } finally {
+    carregando.value = false
+  }
+}
+
+async function adicionarProjeto() {
+  erro.value = ''
+
+  const name = novoProjeto.value.name.trim()
+  const description = novoProjeto.value.description.trim()
+
+  if (!name) {
+    erro.value = 'O nome do projeto é obrigatório.'
+    return
+  }
+
+  aGuardar.value = true
+
+  try {
+    const criado = await $fetch<ProjetoAPI>(`${apiBase}/projects/`, {
+      method: 'POST',
+      body: {
+        name,
+        description: description || null,
+        created_by: utilizadorId,
+      },
+    })
+
+    projetos.value.unshift(converterProjeto(criado))
+
+    novoProjeto.value = {
+      name: '',
+      description: '',
+    }
+
+    mostrarFormulario.value = false
+  } catch (error) {
+    console.error('Erro ao criar projeto:', error)
+    erro.value =
+      'Não foi possível guardar o projeto. Confirma se o utilizador existe e se a API está disponível.'
+  } finally {
+    aGuardar.value = false
+  }
+}
+
+onMounted(carregarProjetos)
 </script>
 
 <template>
@@ -120,23 +259,35 @@ function adicionarProjeto() {
         />
 
         <label for="descricao">Descrição</label>
+        
         <textarea
           id="descricao"
           v-model="novoProjeto.description"
           placeholder="Descreve brevemente o projeto..."
           rows="3"
           maxlength="2000"
-        />
+        ></textarea>
+
 
         <p v-if="erro" class="error-message">
           {{ erro }}
         </p>
 
-        <button type="submit" class="primary-button">
-          Guardar projeto
-        </button>
+        
+    <button type="submit" class="primary-button" :disabled="aGuardar">
+      {{ aGuardar ? 'A guardar...' : 'Guardar projeto' }}
+    </button>
+
       </form>
     </section>
+    
+    <p v-if="carregando" class="empty-state">
+      A carregar projetos...
+    </p>
+
+    <p v-if="erro" class="error-message" role="alert">
+      {{ erro }}
+    </p>
 
     <section class="projects-section">
       <div class="list-toolbar">

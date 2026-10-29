@@ -1,9 +1,9 @@
-// Dados temporários para o dashboard.
+/* // Dados temporários para o dashboard.
 // A estrutura imita a resposta esperada do FastAPI. Quando a API estiver pronta,
 // basta substituir o corpo desta função por um pedido a `runtimeConfig.public.apiBase`.
 // As datas são geradas em relação a "hoje", para o dashboard parecer sempre atual.
 
-export type TaskStatus = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
+//export type TaskStatus = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
 export type TaskPriority = 'Baixa' | 'Média' | 'Alta'
 export type ProjectStatus = 'Ativo' | 'Concluído' | 'Arquivado'
 
@@ -90,4 +90,160 @@ export function useDashboardData(today: Date): DashboardData {
   }))
 
   return { projects, tasks }
+} */
+
+
+import { onMounted, reactive, ref } from 'vue'
+
+export type TaskStatus = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
+export type TaskPriority = 'Baixa' | 'Média' | 'Alta'
+export type ProjectStatus = 'Ativo' | 'Concluído' | 'Arquivado'
+
+export interface DashboardProject {
+  id: number
+  name: string
+  status: ProjectStatus
+  dueDate: string | null
+}
+
+export interface DashboardTask {
+  id: number
+  title: string
+  project: string
+  responsible: string
+  dueDate: string | null
+  priority: TaskPriority
+  status: TaskStatus
+  completedAt: string | null
+}
+
+export interface DashboardData {
+  projects: DashboardProject[]
+  tasks: DashboardTask[]
+}
+
+interface ProjetoAPI {
+  id: number
+  name: string
+  description: string | null
+  status: 'active' | 'completed' | 'archived'
+  created_by: number
+  created_at: string
+  updated_at: string | null
+  archived_at: string | null
+}
+
+interface UtilizadorAPI {
+  id: number
+  name: string
+  email: string
+  is_active: boolean
+}
+
+interface TarefaAPI {
+  id: number
+  project_id: number
+  title: string
+  description: string | null
+  category: string
+  priority: 'low' | 'medium' | 'high'
+  status: 'to_do' | 'in_progress' | 'completed' | 'blocked'
+  assigned_to: number | null
+  created_by: number
+  due_date: string | null
+  created_at: string
+  updated_at: string | null
+  completed_at: string | null
+}
+
+const estadoProjeto: Record<ProjetoAPI['status'], ProjectStatus> = {
+  active: 'Ativo',
+  completed: 'Concluído',
+  archived: 'Arquivado',
+}
+
+const estadoTarefa: Record<TarefaAPI['status'], TaskStatus> = {
+  to_do: 'Por fazer',
+  in_progress: 'Em curso',
+  completed: 'Concluída',
+  blocked: 'Bloqueada',
+}
+
+const prioridadeTarefa: Record<TarefaAPI['priority'], TaskPriority> = {
+  low: 'Baixa',
+  medium: 'Média',
+  high: 'Alta',
+}
+
+function apenasData(data: string | null): string | null {
+  return data ? data.slice(0, 10) : null
+}
+
+export function useDashboardData(_today: Date): DashboardData & {
+  carregando: ReturnType<typeof ref<boolean>>
+  erro: ReturnType<typeof ref<string>>
+} {
+  const config = useRuntimeConfig()
+  const apiBase = config.public.apiBase
+
+  // Mantemos os mesmos arrays reativos usados pelo Dashboard.
+  const projects = reactive<DashboardProject[]>([])
+  const tasks = reactive<DashboardTask[]>([])
+
+  const carregando = ref(true)
+  const erro = ref('')
+
+  async function carregarDados() {
+    carregando.value = true
+    erro.value = ''
+
+    try {
+      const [projetosAPI, tarefasAPI, utilizadoresAPI] = await Promise.all([
+        $fetch<ProjetoAPI[]>(`${apiBase}/projects/`),
+        $fetch<TarefaAPI[]>(`${apiBase}/tasks/`),
+        $fetch<UtilizadorAPI[]>(`${apiBase}/users/`),
+      ])
+
+      const nomesProjetos = new Map(
+        projetosAPI.map((p) => [p.id, p.name]),
+      )
+
+      const nomesUtilizadores = new Map(
+        utilizadoresAPI.map((u) => [u.id, u.name]),
+      )
+
+      const projetosConvertidos: DashboardProject[] = projetosAPI.map((p) => ({
+        id: p.id,
+        name: p.name,
+        status: estadoProjeto[p.status],
+        // A tabela projects não tem um campo de prazo.
+        dueDate: null,
+      }))
+
+      const tarefasConvertidas: DashboardTask[] = tarefasAPI.map((t) => ({
+        id: t.id,
+        title: t.title,
+        project: nomesProjetos.get(t.project_id) ?? 'Projeto desconhecido',
+        responsible: t.assigned_to == null
+          ? 'Por atribuir'
+          : nomesUtilizadores.get(t.assigned_to) ?? 'Utilizador desconhecido',
+        dueDate: apenasData(t.due_date),
+        priority: prioridadeTarefa[t.priority],
+        status: estadoTarefa[t.status],
+        completedAt: apenasData(t.completed_at),
+      }))
+
+      projects.splice(0, projects.length, ...projetosConvertidos)
+      tasks.splice(0, tasks.length, ...tarefasConvertidas)
+    } catch (error) {
+      console.error('Erro ao carregar dados do Dashboard:', error)
+      erro.value = 'Não foi possível carregar os dados do Dashboard. Confirma se a API está em execução.'
+    } finally {
+      carregando.value = false
+    }
+  }
+
+  onMounted(carregarDados)
+
+  return { projects, tasks, carregando, erro }
 }

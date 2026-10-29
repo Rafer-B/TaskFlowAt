@@ -1,6 +1,7 @@
+
 <template>
-  <div>
-    <!--Componente principal de toda a aplicação-->
+  <NuxtLayout>
     <NuxtPage />
-  </div>
+  </NuxtLayout>
 </template>
+

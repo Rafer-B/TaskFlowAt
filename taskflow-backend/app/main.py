@@ -1,5 +1,8 @@
 
 from app.routers.users import router as users_router
+from app.routers.projects import router as projects_router
+from app.routers.tasks import router as tasks_router
+from app.routers.users import router as users_router
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -13,6 +16,8 @@ app = FastAPI(
     version="1.0.0",
 )
 app.include_router(users_router)
+app.include_router(projects_router)
+app.include_router(tasks_router)
 
 
 app.add_middleware(

@@ -1,5 +1,8 @@
 
-<script setup lang="ts">
+<!--<script setup lang="ts">
+definePageMeta({
+  layout: 'admin',
+})
 import { computed, ref } from 'vue'
 
 type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
@@ -229,6 +232,401 @@ function classePrioridade(prioridade: Prioridade) {
   }
 }
 </script>
+-->
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+
+definePageMeta({
+  layout: 'admin',
+})
+
+type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
+type Prioridade = 'Baixa' | 'Média' | 'Alta'
+type Categoria =
+  | 'Planeamento'
+  | 'Investigação'
+  | 'Design'
+  | 'Desenvolvimento'
+  | 'Validação'
+  | 'Documentação'
+
+type EstadoAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
+type PrioridadeAPI = 'low' | 'medium' | 'high'
+type CategoriaAPI =
+  | 'planning'
+  | 'research'
+  | 'design'
+  | 'development'
+  | 'validation'
+  | 'documentation'
+
+interface ProjetoAPI {
+  id: number
+  name: string
+  description: string | null
+  status: 'active' | 'completed' | 'archived'
+  created_by: number
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
+interface UtilizadorAPI {
+  id: number
+  name: string
+  email: string
+  is_active: boolean
+  created_at: string
+}
+
+interface TarefaAPI {
+  id: number
+  project_id: number
+  title: string
+  description: string | null
+  category: CategoriaAPI
+  priority: PrioridadeAPI
+  status: EstadoAPI
+  assigned_to: number | null
+  created_by: number
+  due_date: string | null
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+}
+
+interface Tarefa {
+  id: number
+  projectId: number
+  title: string
+  description: string
+  project: string
+  responsible: string
+  dueDate: string
+  priority: Prioridade
+  status: EstadoTarefa
+  category: Categoria
+}
+
+interface ProjetoOpcao {
+  id: number
+  name: string
+}
+
+const config = useRuntimeConfig()
+const apiBase = config.public.apiBase
+const route = useRoute()
+
+const tarefas = ref<Tarefa[]>([])
+const projetosDisponiveis = ref<ProjetoOpcao[]>([])
+const utilizadores = ref<UtilizadorAPI[]>([])
+
+const estados: EstadoTarefa[] = [
+  'Por fazer',
+  'Em curso',
+  'Concluída',
+  'Bloqueada',
+]
+
+const prioridades: Prioridade[] = ['Baixa', 'Média', 'Alta']
+
+const categorias: Categoria[] = [
+  'Planeamento',
+  'Investigação',
+  'Design',
+  'Desenvolvimento',
+  'Validação',
+  'Documentação',
+]
+
+const estadoParaAPI: Record<EstadoTarefa, EstadoAPI> = {
+  'Por fazer': 'to_do',
+  'Em curso': 'in_progress',
+  'Concluída': 'completed',
+  'Bloqueada': 'blocked',
+}
+
+const estadoDaAPI: Record<EstadoAPI, EstadoTarefa> = {
+  to_do: 'Por fazer',
+  in_progress: 'Em curso',
+  completed: 'Concluída',
+  blocked: 'Bloqueada',
+}
+
+const prioridadeParaAPI: Record<Prioridade, PrioridadeAPI> = {
+  Baixa: 'low',
+  Média: 'medium',
+  Alta: 'high',
+}
+
+const prioridadeDaAPI: Record<PrioridadeAPI, Prioridade> = {
+  low: 'Baixa',
+  medium: 'Média',
+  high: 'Alta',
+}
+
+const categoriaParaAPI: Record<Categoria, CategoriaAPI> = {
+  Planeamento: 'planning',
+  Investigação: 'research',
+  Design: 'design',
+  Desenvolvimento: 'development',
+  Validação: 'validation',
+  Documentação: 'documentation',
+}
+
+const categoriaDaAPI: Record<CategoriaAPI, Categoria> = {
+  planning: 'Planeamento',
+  research: 'Investigação',
+  design: 'Design',
+  development: 'Desenvolvimento',
+  validation: 'Validação',
+  documentation: 'Documentação',
+}
+
+const pesquisa = ref('')
+const filtroEstado = ref('')
+const filtroPrioridade = ref('')
+const mostrarFormulario = ref(false)
+const erro = ref('')
+const carregando = ref(false)
+const aGuardar = ref(false)
+
+const novaTarefa = ref({
+  title: '',
+  description: '',
+  projectId: '',
+  assignedTo: '',
+  dueDate: '',
+  priority: 'Média' as Prioridade,
+  status: 'Por fazer' as EstadoTarefa,
+  category: 'Desenvolvimento' as Categoria,
+})
+
+// Temporário: utiliza um ID que exista na tabela users.
+// Mais tarde, substituiremos isto pelo utilizador autenticado.
+const utilizadorId = 1
+
+const tarefasFiltradas = computed(() => {
+  const termo = pesquisa.value.trim().toLowerCase()
+
+  return tarefas.value.filter((tarefa) => {
+    const correspondePesquisa =
+      !termo ||
+      [
+        tarefa.title,
+        tarefa.description,
+        tarefa.project,
+        tarefa.responsible,
+      ].some((valor) => valor.toLowerCase().includes(termo))
+
+    const correspondeEstado =
+      !filtroEstado.value || tarefa.status === filtroEstado.value
+
+    const correspondePrioridade =
+      !filtroPrioridade.value || tarefa.priority === filtroPrioridade.value
+
+    return correspondePesquisa && correspondeEstado && correspondePrioridade
+  })
+})
+
+const resumo = computed(() => ({
+  total: tarefas.value.length,
+  porFazer: tarefas.value.filter((t) => t.status === 'Por fazer').length,
+  emCurso: tarefas.value.filter((t) => t.status === 'Em curso').length,
+  concluidas: tarefas.value.filter((t) => t.status === 'Concluída').length,
+  bloqueadas: tarefas.value.filter((t) => t.status === 'Bloqueada').length,
+}))
+
+function converterTarefa(tarefa: TarefaAPI): Tarefa {
+  const projeto = projetosDisponiveis.value.find(
+    (item) => item.id === tarefa.project_id,
+  )
+  const responsavel = utilizadores.value.find(
+    (item) => item.id === tarefa.assigned_to,
+  )
+
+  return {
+    id: tarefa.id,
+    projectId: tarefa.project_id,
+    title: tarefa.title,
+    description: tarefa.description ?? '',
+    project: projeto?.name ?? `Projeto #${tarefa.project_id}`,
+    responsible: responsavel?.name ?? 'Por atribuir',
+    dueDate: tarefa.due_date ? tarefa.due_date.slice(0, 10) : '',
+    priority: prioridadeDaAPI[tarefa.priority],
+    status: estadoDaAPI[tarefa.status],
+    category: categoriaDaAPI[tarefa.category],
+  }
+}
+
+async function carregarDados() {
+  erro.value = ''
+  carregando.value = true
+
+  try {
+    const [listaProjetos, listaUtilizadores] = await Promise.all([
+      $fetch<ProjetoAPI[]>(`${apiBase}/projects/`),
+      $fetch<UtilizadorAPI[]>(`${apiBase}/users/`),
+    ])
+
+    projetosDisponiveis.value = listaProjetos.map((projeto) => ({
+      id: projeto.id,
+      name: projeto.name,
+    }))
+
+    utilizadores.value = listaUtilizadores.filter(
+      (utilizador) => utilizador.is_active,
+    )
+
+    const projectQuery = route.query.project
+    const projectId = Array.isArray(projectQuery)
+      ? projectQuery[0]
+      : projectQuery
+
+    if (projectId && /^\d+$/.test(projectId)) {
+      novaTarefa.value.projectId = projectId
+    } else if (projetosDisponiveis.value.length > 0) {
+      novaTarefa.value.projectId = String(projetosDisponiveis.value[0].id)
+    }
+
+    const listaTarefas = await $fetch<TarefaAPI[]>(`${apiBase}/tasks/`)
+    tarefas.value = listaTarefas.map(converterTarefa)
+  } catch (error) {
+    console.error('Erro ao carregar dados das tarefas:', error)
+    erro.value =
+      'Não foi possível carregar as tarefas, os projetos ou os utilizadores. Confirma se a API está ativa.'
+  } finally {
+    carregando.value = false
+  }
+}
+
+async function adicionarTarefa() {
+  erro.value = ''
+
+  const titulo = novaTarefa.value.title.trim()
+  const projetoId = Number(novaTarefa.value.projectId)
+  const responsavelId = novaTarefa.value.assignedTo
+    ? Number(novaTarefa.value.assignedTo)
+    : null
+
+  if (!titulo) {
+    erro.value = 'O título da tarefa é obrigatório.'
+    return
+  }
+
+  if (!projetoId || !projetosDisponiveis.value.some((p) => p.id === projetoId)) {
+    erro.value = 'Seleciona um projeto válido.'
+    return
+  }
+
+  aGuardar.value = true
+
+  try {
+    const criada = await $fetch<TarefaAPI>(`${apiBase}/tasks/`, {
+      method: 'POST',
+      body: {
+        project_id: projetoId,
+        title: titulo,
+        description: novaTarefa.value.description.trim() || null,
+        category: categoriaParaAPI[novaTarefa.value.category],
+        priority: prioridadeParaAPI[novaTarefa.value.priority],
+        status: estadoParaAPI[novaTarefa.value.status],
+        assigned_to: responsavelId,
+        created_by: utilizadorId,
+        due_date: novaTarefa.value.dueDate
+          ? `${novaTarefa.value.dueDate}T00:00:00`
+          : null,
+      },
+    })
+
+    tarefas.value.unshift(converterTarefa(criada))
+
+    novaTarefa.value = {
+      title: '',
+      description: '',
+      projectId: projetosDisponiveis.value[0]
+        ? String(projetosDisponiveis.value[0].id)
+        : '',
+      assignedTo: '',
+      dueDate: '',
+      priority: 'Média',
+      status: 'Por fazer',
+      category: 'Desenvolvimento',
+    }
+
+    mostrarFormulario.value = false
+  } catch (error) {
+    console.error('Erro ao criar tarefa:', error)
+    erro.value =
+      'Não foi possível guardar a tarefa. Confirma se o projeto e os IDs dos utilizadores existem.'
+  } finally {
+    aGuardar.value = false
+  }
+}
+
+async function alterarEstado(tarefa: Tarefa, evento: Event) {
+  const elemento = evento.target as HTMLSelectElement
+  const estadoAnterior = tarefa.status
+  const novoEstado = elemento.value as EstadoTarefa
+
+  if (!estados.includes(novoEstado)) return
+  if (novoEstado === estadoAnterior) return
+
+  erro.value = ''
+  tarefa.status = novoEstado
+
+  try {
+    const atualizada = await $fetch<TarefaAPI>(
+      `${apiBase}/tasks/${tarefa.id}`,
+      {
+        method: 'PATCH',
+        body: {
+          status: estadoParaAPI[novoEstado],
+        },
+      },
+    )
+
+    const indice = tarefas.value.findIndex((item) => item.id === tarefa.id)
+
+    if (indice !== -1) {
+      tarefas.value[indice] = converterTarefa(atualizada)
+    }
+  } catch (error) {
+    console.error('Erro ao atualizar o estado da tarefa:', error)
+    tarefa.status = estadoAnterior
+    elemento.value = estadoAnterior
+    erro.value =
+      'Não foi possível atualizar o estado da tarefa. A alteração foi revertida.'
+  }
+}
+
+function formatarData(data: string) {
+  if (!data) return 'Sem prazo'
+
+  const [ano, mes, dia] = data.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+function classeEstado(estado: EstadoTarefa) {
+  return {
+    'por-fazer': estado === 'Por fazer',
+    'em-curso': estado === 'Em curso',
+    concluida: estado === 'Concluída',
+    bloqueada: estado === 'Bloqueada',
+  }
+}
+
+function classePrioridade(prioridade: Prioridade) {
+  return {
+    'prioridade-baixa': prioridade === 'Baixa',
+    'prioridade-media': prioridade === 'Média',
+    'prioridade-alta': prioridade === 'Alta',
+  }
+}
+
+onMounted(carregarDados)
+</script>
 
 <template>
   <main class="page">
@@ -249,6 +647,14 @@ function classePrioridade(prioridade: Prioridade) {
         {{ mostrarFormulario ? 'Cancelar' : '+ Nova tarefa' }}
       </button>
     </header>
+
+    <p v-if="carregando" class="empty-state">
+      A carregar tarefas...
+    </p>
+
+    <p v-if="erro" class="error-message" role="alert">
+      {{ erro }}
+    </p>
 
     <section class="summary-grid">
       <article class="summary-card">
@@ -305,32 +711,44 @@ function classePrioridade(prioridade: Prioridade) {
             />
           </div>
 
-          <div class="field">
-            <label for="projeto">Projeto *</label>
-            <select
-              id="projeto"
-              v-model="novaTarefa.project"
-              required
+          
+        <div class="field">
+          <label for="projeto">Projeto *</label>
+          <select
+            id="projeto"
+            v-model="novaTarefa.projectId"
+            required
+          >
+            <option value="" disabled>Seleciona um projeto</option>
+            <option
+              v-for="projeto in projetosDisponiveis"
+              :key="projeto.id"
+              :value="String(projeto.id)"
             >
-              <option
-                v-for="projeto in projetosDisponiveis"
-                :key="projeto"
-                :value="projeto"
-              >
-                {{ projeto }}
-              </option>
-            </select>
-          </div>
+              {{ projeto.name }}
+            </option>
+          </select>
+        </div>
 
-          <div class="field">
-            <label for="responsavel">Responsável</label>
-            <input
-              id="responsavel"
-              v-model="novaTarefa.responsible"
-              type="text"
-              placeholder="Nome do responsável"
-            />
-          </div>
+
+          
+        <div class="field">
+          <label for="responsavel">Responsável</label>
+          <select
+            id="responsavel"
+            v-model="novaTarefa.assignedTo"
+          >
+            <option value="">Por atribuir</option>
+            <option
+              v-for="utilizador in utilizadores"
+              :key="utilizador.id"
+              :value="String(utilizador.id)"
+            >
+              {{ utilizador.name }}
+            </option>
+          </select>
+        </div>
+
 
           <div class="field">
             <label for="prazo">Prazo</label>
@@ -383,9 +801,15 @@ function classePrioridade(prioridade: Prioridade) {
 
         <p v-if="erro" class="error-message">{{ erro }}</p>
 
-        <button type="submit" class="primary-button">
-          Guardar tarefa
-        </button>
+        
+    <button
+      type="submit"
+      class="primary-button"
+      :disabled="aGuardar"
+    >
+      {{ aGuardar ? 'A guardar...' : 'Guardar tarefa' }}
+    </button>
+
       </form>
     </section>
 
@@ -782,5 +1206,9 @@ td {
   .tasks-section {
     padding: 12px;
   }
+}
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 </style>
