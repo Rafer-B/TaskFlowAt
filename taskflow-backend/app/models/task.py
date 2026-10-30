@@ -1,9 +1,9 @@
-
 from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    ForeignKey,
     Identity,
     String,
     Text,
@@ -25,11 +25,12 @@ class Task(Base):
 
     project_id: Mapped[int] = mapped_column(
         BigInteger,
+        ForeignKey("projects.id"),
         nullable=False,
     )
 
     title: Mapped[str] = mapped_column(
-        String,
+        String(255),
         nullable=False,
     )
 
@@ -39,30 +40,32 @@ class Task(Base):
     )
 
     category: Mapped[str] = mapped_column(
-        String,
+        String(50),
         nullable=False,
         server_default="planning",
     )
 
     priority: Mapped[str] = mapped_column(
-        String,
+        String(20),
         nullable=False,
         server_default="medium",
     )
 
     status: Mapped[str] = mapped_column(
-        String,
+        String(20),
         nullable=False,
         server_default="to_do",
     )
 
     assigned_to: Mapped[int | None] = mapped_column(
         BigInteger,
+        ForeignKey("users.id"),
         nullable=True,
     )
 
     created_by: Mapped[int] = mapped_column(
         BigInteger,
+        ForeignKey("users.id"),
         nullable=False,
     )
 

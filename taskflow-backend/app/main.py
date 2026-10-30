@@ -1,37 +1,53 @@
-
-from fastapi import FastAPI
 from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-from app.routers import project_members
-from app.routers.users import router as users_router
-from app.routers.projects import router as projects_router
-from app.routers.tasks import router as tasks_router
-from app.routers.users import router as users_router
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine
+from app.routers import project_members
+from app.routers.projects import router as projects_router
+from app.routers.tasks import router as tasks_router
+from app.routers.users import router as users_router
+
 
 app = FastAPI(
     title="TaskFlow API",
-    description="API para gestão de projectos e tarefas académicas",
+    description="API para gestão de projetos e tarefas académicas",
     version="1.0.0",
 )
 
-Path("uploads/avatars").mkdir(parents=True, exist_ok=True)
+
+# --------------------------------------------------
+# DIRETÓRIO DE FOTOGRAFIAS
+# --------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOADS_DIR = BASE_DIR / "uploads"
+AVATARS_DIR = UPLOADS_DIR / "avatars"
+
+AVATARS_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+
+# --------------------------------------------------
+# FICHEIROS ESTÁTICOS
+# --------------------------------------------------
 
 app.mount(
     "/uploads",
-    StaticFiles(directory="uploads"),
+    StaticFiles(directory=str(UPLOADS_DIR)),
     name="uploads",
 )
-app.include_router(users_router)
-app.include_router(projects_router)
-app.include_router(tasks_router)
-app.include_router(project_members.router)
 
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +61,20 @@ app.add_middleware(
 )
 
 
+# --------------------------------------------------
+# REGISTO DOS ROUTERS
+# --------------------------------------------------
+
+app.include_router(users_router)
+app.include_router(projects_router)
+app.include_router(tasks_router)
+app.include_router(project_members.router)
+
+
+# --------------------------------------------------
+# PÁGINA INICIAL
+# --------------------------------------------------
+
 @app.get("/")
 def inicio():
     return {
@@ -52,6 +82,10 @@ def inicio():
         "status": "ok",
     }
 
+
+# --------------------------------------------------
+# VERIFICAR API
+# --------------------------------------------------
 
 @app.get("/health")
 def verificar_estado():
@@ -61,12 +95,18 @@ def verificar_estado():
     }
 
 
+# --------------------------------------------------
+# VERIFICAR BASE DE DADOS
+# --------------------------------------------------
+
 @app.get("/health/db")
 def verificar_base_dados():
+
     try:
         with engine.connect() as connection:
+
             database = connection.execute(
-                text("SELECT current_database()")
+                text("SELECT current_database()"),
             ).scalar_one()
 
         return {
@@ -76,6 +116,7 @@ def verificar_base_dados():
         }
 
     except SQLAlchemyError:
+
         raise HTTPException(
             status_code=503,
             detail="Não foi possível ligar à base de dados.",
