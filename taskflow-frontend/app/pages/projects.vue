@@ -24,11 +24,13 @@ interface UtilizadorAPI {
 }
 
 interface MembroAPI {
+  project_id: number
   user_id: number
   name: string
   email: string
   is_active: boolean
   role: 'owner' | 'member'
+  avatar_url: string | null
 }
 
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
@@ -144,6 +146,20 @@ function converterProjeto(projeto: ProjetoAPI): Projeto {
   }
 }
 
+function construirUrlAvatar(avatarUrl: string | null): string {
+  if (!avatarUrl) return ''
+
+  // Se já for um endereço completo, utiliza-o diretamente.
+  if (
+    avatarUrl.startsWith('http://') ||
+    avatarUrl.startsWith('https://')
+  ) {
+    return avatarUrl
+  }
+
+  // Se for um caminho relativo, associa-o ao endereço da API.
+  return `${apiBase}/${avatarUrl.replace(/^\/+/, '')}`
+}
 function formatarData(data: string): string {
   if (!data) return 'Data indisponível'
 
@@ -1151,7 +1167,16 @@ onMounted(carregarProjetos)
                   class="member-row"
                 >
                   <div class="member-avatar">
-                    {{ membro.name.charAt(0).toUpperCase() }}
+                    <img
+                      v-if="membro.avatar_url"
+                      :src="construirUrlAvatar(membro.avatar_url)"
+                      :alt="`Fotografia de ${membro.name}`"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'"
+                    />
+
+                    <span v-else>
+                      {{ membro.name.charAt(0).toUpperCase() }}
+                    </span>
                   </div>
 
                   <div class="member-information">
@@ -2148,6 +2173,7 @@ onMounted(carregarProjetos)
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   width: 39px;
   height: 39px;
   flex: 0 0 39px;
@@ -2156,6 +2182,22 @@ onMounted(carregarProjetos)
   color: #4d5cba;
   font-size: 15px;
   font-weight: 750;
+}
+
+.member-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.member-avatar span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .member-information {
