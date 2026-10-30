@@ -1,4 +1,8 @@
 
+from fastapi import FastAPI
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from app.routers import project_members
 from app.routers.users import router as users_router
 from app.routers.projects import router as projects_router
 from app.routers.tasks import router as tasks_router
@@ -15,9 +19,18 @@ app = FastAPI(
     description="API para gestão de projectos e tarefas académicas",
     version="1.0.0",
 )
+
+Path("uploads/avatars").mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory="uploads"),
+    name="uploads",
+)
 app.include_router(users_router)
 app.include_router(projects_router)
 app.include_router(tasks_router)
+app.include_router(project_members.router)
 
 
 app.add_middleware(

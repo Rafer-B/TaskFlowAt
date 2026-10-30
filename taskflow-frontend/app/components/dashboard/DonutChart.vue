@@ -77,7 +77,7 @@ const ariaLabel = computed(() =>
 
     <ul class="donut-legend">
       <li v-for="arc in arcs" :key="arc.label">
-        <span class="dot" :style="{ background: arc.color }" />
+        <span class="dot" :style="{ background: arc.color }"></span>
         <span class="legend-label">{{ arc.label }}</span>
         <span class="legend-value">{{ arc.value }}</span>
         <span class="legend-percent">{{ arc.percent }}%</span>
@@ -87,17 +87,21 @@ const ariaLabel = computed(() =>
 </template>
 
 <style scoped>
+
 .donut {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) 1fr;
   align-items: center;
-  gap: 24px;
+  gap: 30px;
+  width: 100%;
 }
 
 .donut-figure {
   position: relative;
-  width: min(210px, 100%);
+  width: 100%;
+  max-width: 210px;
   aspect-ratio: 1;
+  margin: auto;
 }
 
 .donut-figure svg {
@@ -107,7 +111,7 @@ const ariaLabel = computed(() =>
 }
 
 .donut-track {
-  stroke: #eef1f7;
+  stroke: #edf1f7;
 }
 
 .donut-arc {
@@ -130,62 +134,69 @@ const ariaLabel = computed(() =>
 }
 
 .donut-center strong {
-  color: #0f172a;
-  font-size: 34px;
-  font-weight: 700;
+  color: #172b4d;
+  font-size: 36px;
+  font-weight: 800;
   line-height: 1;
-  letter-spacing: -1px;
 }
 
 .donut-center span {
-  margin-top: 4px;
-  color: #64748b;
+  margin-top: 7px;
+  color: #8290a5;
   font-size: 12px;
 }
 
 .donut-legend {
   display: grid;
+  gap: 15px;
   width: 100%;
   margin: 0;
   padding: 0;
-  gap: 10px;
   list-style: none;
 }
 
 .donut-legend li {
   display: grid;
-  grid-template-columns: auto 1fr auto 44px;
+  grid-template-columns: 10px 1fr auto 42px;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
 }
 
 .legend-label {
-  color: #475569;
+  color: #526580;
 }
 
 .legend-value {
-  color: #0f172a;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  color: #172b4d;
+  font-weight: 700;
 }
 
 .legend-percent {
   color: #94a3b8;
-  font-size: 12px;
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 @keyframes donut-in {
   from {
     opacity: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .donut {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .donut-figure {
+    width: 180px;
   }
 }
 
@@ -195,4 +206,5 @@ const ariaLabel = computed(() =>
     transition: none;
   }
 }
+
 </style>

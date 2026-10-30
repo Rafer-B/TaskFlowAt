@@ -1,7 +1,8 @@
+
 <script setup lang="ts">
-import type { DashboardTask } from '~/composables/useDashboardData'
-import { diffInDays, parseISODay } from '~/utils/dates'
 import { computed } from 'vue'
+import type { DashboardTask } from '~/composables/useDashboardData'
+import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
 const props = defineProps<{
   task: DashboardTask
@@ -9,73 +10,148 @@ const props = defineProps<{
 
 const today = computed(() => parseISODay(toISODay(new Date())))
 
-import { toISODay } from '~/utils/dates'
+const validDueDate = computed(() => {
+  const value = props.task.dueDate
 
-const daysLeft = computed(() => diffInDays(today.value, parseISODay(props.task.dueDate)))
+  if (!value) return null
+
+  const parsed = parseISODay(value.slice(0, 10))
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+})
+
+const daysLeft = computed(() => {
+  if (!validDueDate.value) return null
+
+  return diffInDays(today.value, validDueDate.value)
+})
 
 const dueTone = computed(() => {
-  const d = daysLeft.value
-  if (d < 0) return 'late'
-  if (d <= 3) return 'soon'
+  const days = daysLeft.value
+
+  if (days === null) return 'none'
+  if (days < 0) return 'late'
+  if (days <= 3) return 'soon'
+
   return 'ok'
 })
 
 const dueLabel = computed(() => {
-  const d = daysLeft.value
-  if (d < 0) return `Atrasada há ${Math.abs(d)} dia${Math.abs(d) === 1 ? '' : 's'}`
-  if (d === 0) return 'Hoje'
-  if (d === 1) return 'Amanhã'
-  return `Em ${d} dias`
+  const days = daysLeft.value
+
+  if (days === null) return 'Sem prazo'
+
+  if (days < 0) {
+    const overdueDays = Math.abs(days)
+    return `Atrasada há ${overdueDays} dia${overdueDays === 1 ? '' : 's'}`
+  }
+
+  if (days === 0) return 'Hoje'
+  if (days === 1) return 'Amanhã'
+
+  return `Em ${days} dias`
 })
 
 const statusClass = computed(() => {
   switch (props.task.status) {
-    case 'Por fazer': return 'por-fazer'
-    case 'Em curso': return 'em-curso'
-    case 'Concluída': return 'concluida'
-    case 'Bloqueada': return 'bloqueada'
-    default: return 'por-fazer'
+    case 'Por fazer':
+      return 'por-fazer'
+    case 'Em curso':
+      return 'em-curso'
+    case 'Concluída':
+      return 'concluida'
+    case 'Bloqueada':
+      return 'bloqueada'
+    default:
+      return 'por-fazer'
   }
 })
 
 const initials = computed(() => {
-  const parts = props.task.responsible.split(' ').filter(Boolean)
+  const parts = props.task.responsible.trim().split(/\s+/).filter(Boolean)
+
   if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+
+  if (parts.length === 1) {
+    return (parts[0] ?? '').slice(0, 2).toUpperCase()
+  }
+
+  const first = parts[0] ?? ''
+  const last = parts[parts.length - 1] ?? ''
+
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase()
 })
 
 const avatarColor = computed(() => {
   const colors = [
-    '#4f46e5', '#3b82f6', '#2563eb', '#15803d', '#d97706', '#b91c1c',
-    '#0891b2', '#7c3aed', '#db2777', '#ca8a04'
+    '#4f46e5',
+    '#3b82f6',
+    '#2563eb',
+    '#15803d',
+    '#d97706',
+    '#b91c1c',
+    '#0891b2',
+    '#7c3aed',
+    '#db2777',
+    '#ca8a04'
   ]
+
   let hash = 0
+
   for (const ch of props.task.responsible) {
     hash = ((hash << 5) - hash) + ch.charCodeAt(0)
     hash |= 0
   }
-  return colors[Math.abs(hash) % colors.length]
+
+  const index = Math.abs(hash) % colors.length
+
+  return colors[index] ?? colors[0]!
 })
 </script>
 
 <template>
   <li class="task-row">
     <div class="task-main">
-      <div class="avatar" :style="{ background: avatarColor }">{{ initials }}</div>
-      <div>
-        <strong class="task-title">{{ task.title }}</strong>
-        <em>{{ task.project }}</em>
+      <div
+        class="avatar"
+        :style="{ background: avatarColor }"
+        aria-hidden="true"
+      >
+        {{ initials }}
+      </div>
+
+      <div class="task-information">
+        <strong class="task-title">
+          {{ task.title }}
+        </strong>
+
+        <em class="task-project">
+          {{ task.project }}
+        </em>
       </div>
     </div>
 
     <div class="task-meta">
-      <span class="priority" :class="`priority-${task.priority.toLowerCase()}`">
-        <span class="priority-dot" />
-        <span class="priority-text">{{ task.priority }}</span>
+      <span
+        class="priority"
+        :class="`priority-${task.priority.toLowerCase()}`"
+      >
+        <span class="priority-dot" aria-hidden="true" />
+        <span class="priority-text">
+          {{ task.priority }}
+        </span>
       </span>
-      <span class="due" :class="`due-${dueTone}`">{{ dueLabel }}</span>
-      <span class="badge badge-status" :class="`badge-${statusClass}`">{{ task.status }}</span>
+
+      <span class="due" :class="`due-${dueTone}`">
+        {{ dueLabel }}
+      </span>
+
+      <span
+        class="badge badge-status"
+        :class="`badge-${statusClass}`"
+      >
+        {{ task.status }}
+      </span>
     </div>
   </li>
 </template>
@@ -95,7 +171,7 @@ const avatarColor = computed(() => {
 
 .task-row:hover {
   border-color: var(--tf-primary);
-  box-shadow: 0 2px 8px -4px rgb(79 70 229 / 0.12);
+  box-shadow: 0 2px 8px -4px rgb(79 70 229 / 12%);
 }
 
 .task-main {
@@ -118,14 +194,21 @@ const avatarColor = computed(() => {
   flex-shrink: 0;
 }
 
-.task-title {
-  font-weight: 600;
-  color: var(--tf-text);
-  font-size: 14px;
+.task-information {
   min-width: 0;
 }
 
-.task-title em {
+.task-title {
+  display: block;
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--tf-text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-project {
   font-style: normal;
   color: var(--tf-text-muted);
   font-weight: 500;
@@ -161,9 +244,17 @@ const avatarColor = computed(() => {
   flex-shrink: 0;
 }
 
-.priority-alta .priority-dot { background: var(--tf-danger); }
-.priority-media .priority-dot { background: var(--tf-warning); }
-.priority-baixa .priority-dot { background: var(--tf-success); }
+.priority-alta .priority-dot {
+  background: var(--tf-danger);
+}
+
+.priority-media .priority-dot {
+  background: var(--tf-warning);
+}
+
+.priority-baixa .priority-dot {
+  background: var(--tf-success);
+}
 
 .priority-text {
   font-size: 11px;
@@ -173,9 +264,17 @@ const avatarColor = computed(() => {
   white-space: nowrap;
 }
 
-.priority-alta .priority-text { color: var(--tf-danger); }
-.priority-media .priority-text { color: var(--tf-warning); }
-.priority-baixa .priority-text { color: var(--tf-success); }
+.priority-alta .priority-text {
+  color: var(--tf-danger);
+}
+
+.priority-media .priority-text {
+  color: var(--tf-warning);
+}
+
+.priority-baixa .priority-text {
+  color: var(--tf-success);
+}
 
 .badge {
   display: inline-flex;
@@ -194,12 +293,51 @@ const avatarColor = computed(() => {
   padding: 5px 10px;
 }
 
-.badge-por-fazer { background: #f1f5f9; color: #475569; }
-.badge-em-curso { background: var(--tf-info-soft); color: var(--tf-info); }
-.badge-concluida { background: var(--tf-success-soft); color: var(--tf-success); }
-.badge-bloqueada { background: var(--tf-danger-soft); color: var(--tf-danger); }
+.badge-por-fazer {
+  background: #f1f5f9;
+  color: #475569;
+}
 
-.due.late { color: var(--tf-danger); }
-.due.soon { color: var(--tf-warning); }
-.due.ok { color: var(--tf-success); }
+.badge-em-curso {
+  background: var(--tf-info-soft);
+  color: var(--tf-info);
+}
+
+.badge-concluida {
+  background: var(--tf-success-soft);
+  color: var(--tf-success);
+}
+
+.badge-bloqueada {
+  background: var(--tf-danger-soft);
+  color: var(--tf-danger);
+}
+
+.due.late {
+  color: var(--tf-danger);
+}
+
+.due.soon {
+  color: var(--tf-warning);
+}
+
+.due.ok {
+  color: var(--tf-success);
+}
+
+.due.none {
+  color: var(--tf-text-muted);
+}
+
+@media (max-width: 640px) {
+  .task-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-meta {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
 </style>

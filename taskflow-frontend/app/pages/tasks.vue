@@ -1,239 +1,4 @@
 
-<!--<script setup lang="ts">
-definePageMeta({
-  layout: 'admin',
-})
-import { computed, ref } from 'vue'
-
-type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
-type Prioridade = 'Baixa' | 'Média' | 'Alta'
-type Categoria =
-  | 'Planeamento'
-  | 'Investigação'
-  | 'Design'
-  | 'Desenvolvimento'
-  | 'Validação'
-  | 'Documentação'
-
-interface Tarefa {
-  id: number
-  title: string
-  description: string
-  project: string
-  responsible: string
-  dueDate: string
-  priority: Prioridade
-  status: EstadoTarefa
-  category: Categoria
-}
-
-const tarefas = ref<Tarefa[]>([
-  {
-    id: 1,
-    title: 'Criar o modelo da base de dados',
-    description: 'Definir tabelas, relações e restrições do PostgreSQL.',
-    project: 'Desenvolvimento do TaskFlow',
-    responsible: 'Ana Silva',
-    dueDate: '2026-11-02',
-    priority: 'Alta',
-    status: 'Em curso',
-    category: 'Planeamento'
-  },
-  {
-    id: 2,
-    title: 'Implementar a página de projetos',
-    description: 'Criar a interface de consulta e criação de projetos.',
-    project: 'Desenvolvimento do TaskFlow',
-    responsible: 'João Costa',
-    dueDate: '2026-11-05',
-    priority: 'Alta',
-    status: 'Em curso',
-    category: 'Desenvolvimento'
-  },
-  {
-    id: 3,
-    title: 'Pesquisar ferramentas de segurança',
-    description: 'Comparar soluções HIDS, NIDS e IPS.',
-    project: 'Trabalho de Segurança',
-    responsible: 'Maria Lopes',
-    dueDate: '2026-10-29',
-    priority: 'Média',
-    status: 'Por fazer',
-    category: 'Investigação'
-  },
-  {
-    id: 4,
-    title: 'Rever o relatório final',
-    description: 'Verificar a estrutura e a documentação do trabalho.',
-    project: 'Projeto de Bases de Dados',
-    responsible: 'João Costa',
-    dueDate: '2026-10-24',
-    priority: 'Baixa',
-    status: 'Concluída',
-    category: 'Documentação'
-  },
-  {
-    id: 5,
-    title: 'Validar os requisitos da aplicação',
-    description: 'Confirmar os requisitos funcionais antes da integração.',
-    project: 'Desenvolvimento do TaskFlow',
-    responsible: 'Por atribuir',
-    dueDate: '2026-11-07',
-    priority: 'Média',
-    status: 'Bloqueada',
-    category: 'Validação'
-  }
-])
-
-const estados: EstadoTarefa[] = [
-  'Por fazer',
-  'Em curso',
-  'Concluída',
-  'Bloqueada'
-]
-
-const prioridades: Prioridade[] = ['Baixa', 'Média', 'Alta']
-
-const categorias: Categoria[] = [
-  'Planeamento',
-  'Investigação',
-  'Design',
-  'Desenvolvimento',
-  'Validação',
-  'Documentação'
-]
-
-const projetosDisponiveis = [
-  'Desenvolvimento do TaskFlow',
-  'Projeto de Bases de Dados',
-  'Trabalho de Segurança'
-]
-
-const pesquisa = ref('')
-const filtroEstado = ref('')
-const filtroPrioridade = ref('')
-const mostrarFormulario = ref(false)
-const erro = ref('')
-
-const novaTarefa = ref({
-  title: '',
-  description: '',
-  project: projetosDisponiveis[0],
-  responsible: '',
-  dueDate: '',
-  priority: 'Média' as Prioridade,
-  status: 'Por fazer' as EstadoTarefa,
-  category: 'Desenvolvimento' as Categoria
-})
-
-const tarefasFiltradas = computed(() => {
-  const termo = pesquisa.value.trim().toLowerCase()
-
-  return tarefas.value.filter((tarefa) => {
-    const correspondePesquisa =
-      !termo ||
-      [
-        tarefa.title,
-        tarefa.description,
-        tarefa.project,
-        tarefa.responsible
-      ].some((valor) => valor.toLowerCase().includes(termo))
-
-    const correspondeEstado =
-      !filtroEstado.value || tarefa.status === filtroEstado.value
-
-    const correspondePrioridade =
-      !filtroPrioridade.value ||
-      tarefa.priority === filtroPrioridade.value
-
-    return (
-      correspondePesquisa &&
-      correspondeEstado &&
-      correspondePrioridade
-    )
-  })
-})
-
-const resumo = computed(() => ({
-  total: tarefas.value.length,
-  porFazer: tarefas.value.filter((t) => t.status === 'Por fazer').length,
-  emCurso: tarefas.value.filter((t) => t.status === 'Em curso').length,
-  concluidas: tarefas.value.filter((t) => t.status === 'Concluída').length,
-  bloqueadas: tarefas.value.filter((t) => t.status === 'Bloqueada').length
-}))
-
-function adicionarTarefa() {
-  erro.value = ''
-
-  if (!novaTarefa.value.title.trim()) {
-    erro.value = 'O título da tarefa é obrigatório.'
-    return
-  }
-
-  if (!novaTarefa.value.project) {
-    erro.value = 'Seleciona um projeto.'
-    return
-  }
-
-  const tarefa: Tarefa = {
-    id: Date.now(),
-    title: novaTarefa.value.title.trim(),
-    description: novaTarefa.value.description.trim(),
-    project: novaTarefa.value.project,
-    responsible: novaTarefa.value.responsible.trim() || 'Por atribuir',
-    dueDate: novaTarefa.value.dueDate,
-    priority: novaTarefa.value.priority,
-    status: novaTarefa.value.status,
-    category: novaTarefa.value.category
-  }
-
-  tarefas.value.unshift(tarefa)
-
-  novaTarefa.value = {
-    title: '',
-    description: '',
-    project: projetosDisponiveis[0],
-    responsible: '',
-    dueDate: '',
-    priority: 'Média',
-    status: 'Por fazer',
-    category: 'Desenvolvimento'
-  }
-
-  mostrarFormulario.value = false
-}
-
-function alterarEstado(tarefa: Tarefa, evento: Event) {
-  const elemento = evento.target as HTMLSelectElement
-  tarefa.status = elemento.value as EstadoTarefa
-}
-
-function formatarData(data: string) {
-  if (!data) return 'Sem prazo'
-
-  const [ano, mes, dia] = data.split('-')
-  return `${dia}/${mes}/${ano}`
-}
-
-function classeEstado(estado: EstadoTarefa) {
-  return {
-    'por-fazer': estado === 'Por fazer',
-    'em-curso': estado === 'Em curso',
-    'concluida': estado === 'Concluída',
-    'bloqueada': estado === 'Bloqueada'
-  }
-}
-
-function classePrioridade(prioridade: Prioridade) {
-  return {
-    'prioridade-baixa': prioridade === 'Baixa',
-    'prioridade-media': prioridade === 'Média',
-    'prioridade-alta': prioridade === 'Alta'
-  }
-}
-</script>
--->
-
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
@@ -243,6 +8,7 @@ definePageMeta({
 
 type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
 type Prioridade = 'Baixa' | 'Média' | 'Alta'
+
 type Categoria =
   | 'Planeamento'
   | 'Investigação'
@@ -253,6 +19,7 @@ type Categoria =
 
 type EstadoAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
 type PrioridadeAPI = 'low' | 'medium' | 'high'
+
 type CategoriaAPI =
   | 'planning'
   | 'research'
@@ -318,9 +85,26 @@ const config = useRuntimeConfig()
 const apiBase = config.public.apiBase
 const route = useRoute()
 
+// --------------------------------------------------
+// DADOS
+// --------------------------------------------------
+
 const tarefas = ref<Tarefa[]>([])
 const projetosDisponiveis = ref<ProjetoOpcao[]>([])
 const utilizadores = ref<UtilizadorAPI[]>([])
+
+const pesquisa = ref('')
+const filtroEstado = ref('')
+const filtroPrioridade = ref('')
+
+const mostrarFormulario = ref(false)
+const erro = ref('')
+const carregando = ref(false)
+const aGuardar = ref(false)
+
+// --------------------------------------------------
+// OPÇÕES DOS CAMPOS
+// --------------------------------------------------
 
 const estados: EstadoTarefa[] = [
   'Por fazer',
@@ -329,7 +113,11 @@ const estados: EstadoTarefa[] = [
   'Bloqueada',
 ]
 
-const prioridades: Prioridade[] = ['Baixa', 'Média', 'Alta']
+const prioridades: Prioridade[] = [
+  'Baixa',
+  'Média',
+  'Alta',
+]
 
 const categorias: Categoria[] = [
   'Planeamento',
@@ -339,6 +127,10 @@ const categorias: Categoria[] = [
   'Validação',
   'Documentação',
 ]
+
+// --------------------------------------------------
+// CONVERSÃO DOS VALORES ENTRE FRONTEND E API
+// --------------------------------------------------
 
 const estadoParaAPI: Record<EstadoTarefa, EstadoAPI> = {
   'Por fazer': 'to_do',
@@ -384,13 +176,9 @@ const categoriaDaAPI: Record<CategoriaAPI, Categoria> = {
   documentation: 'Documentação',
 }
 
-const pesquisa = ref('')
-const filtroEstado = ref('')
-const filtroPrioridade = ref('')
-const mostrarFormulario = ref(false)
-const erro = ref('')
-const carregando = ref(false)
-const aGuardar = ref(false)
+// --------------------------------------------------
+// FORMULÁRIO DE NOVA TAREFA
+// --------------------------------------------------
 
 const novaTarefa = ref({
   title: '',
@@ -403,9 +191,28 @@ const novaTarefa = ref({
   category: 'Desenvolvimento' as Categoria,
 })
 
-// Temporário: utiliza um ID que exista na tabela users.
-// Mais tarde, substituiremos isto pelo utilizador autenticado.
+// Temporário: substituir pelo ID do utilizador autenticado
+// quando implementarmos a autenticação.
 const utilizadorId = 1
+
+function limparFormulario() {
+  const primeiroProjeto = projetosDisponiveis.value[0]
+
+  novaTarefa.value = {
+    title: '',
+    description: '',
+    projectId: primeiroProjeto ? String(primeiroProjeto.id) : '',
+    assignedTo: '',
+    dueDate: '',
+    priority: 'Média',
+    status: 'Por fazer',
+    category: 'Desenvolvimento',
+  }
+}
+
+// --------------------------------------------------
+// PESQUISA E FILTROS
+// --------------------------------------------------
 
 const tarefasFiltradas = computed(() => {
   const termo = pesquisa.value.trim().toLowerCase()
@@ -421,27 +228,54 @@ const tarefasFiltradas = computed(() => {
       ].some((valor) => valor.toLowerCase().includes(termo))
 
     const correspondeEstado =
-      !filtroEstado.value || tarefa.status === filtroEstado.value
+      !filtroEstado.value ||
+      tarefa.status === filtroEstado.value
 
     const correspondePrioridade =
-      !filtroPrioridade.value || tarefa.priority === filtroPrioridade.value
+      !filtroPrioridade.value ||
+      tarefa.priority === filtroPrioridade.value
 
-    return correspondePesquisa && correspondeEstado && correspondePrioridade
+    return (
+      correspondePesquisa &&
+      correspondeEstado &&
+      correspondePrioridade
+    )
   })
 })
 
+// --------------------------------------------------
+// RESUMO DAS TAREFAS
+// --------------------------------------------------
+
 const resumo = computed(() => ({
   total: tarefas.value.length,
-  porFazer: tarefas.value.filter((t) => t.status === 'Por fazer').length,
-  emCurso: tarefas.value.filter((t) => t.status === 'Em curso').length,
-  concluidas: tarefas.value.filter((t) => t.status === 'Concluída').length,
-  bloqueadas: tarefas.value.filter((t) => t.status === 'Bloqueada').length,
+
+  porFazer: tarefas.value.filter(
+    (tarefa) => tarefa.status === 'Por fazer',
+  ).length,
+
+  emCurso: tarefas.value.filter(
+    (tarefa) => tarefa.status === 'Em curso',
+  ).length,
+
+  concluidas: tarefas.value.filter(
+    (tarefa) => tarefa.status === 'Concluída',
+  ).length,
+
+  bloqueadas: tarefas.value.filter(
+    (tarefa) => tarefa.status === 'Bloqueada',
+  ).length,
 }))
+
+// --------------------------------------------------
+// CONVERTER TAREFA RECEBIDA DA API
+// --------------------------------------------------
 
 function converterTarefa(tarefa: TarefaAPI): Tarefa {
   const projeto = projetosDisponiveis.value.find(
     (item) => item.id === tarefa.project_id,
   )
+
   const responsavel = utilizadores.value.find(
     (item) => item.id === tarefa.assigned_to,
   )
@@ -453,12 +287,18 @@ function converterTarefa(tarefa: TarefaAPI): Tarefa {
     description: tarefa.description ?? '',
     project: projeto?.name ?? `Projeto #${tarefa.project_id}`,
     responsible: responsavel?.name ?? 'Por atribuir',
-    dueDate: tarefa.due_date ? tarefa.due_date.slice(0, 10) : '',
+    dueDate: tarefa.due_date
+      ? tarefa.due_date.slice(0, 10)
+      : '',
     priority: prioridadeDaAPI[tarefa.priority],
     status: estadoDaAPI[tarefa.status],
     category: categoriaDaAPI[tarefa.category],
   }
 }
+
+// --------------------------------------------------
+// CARREGAR PROJETOS, UTILIZADORES E TAREFAS
+// --------------------------------------------------
 
 async function carregarDados() {
   erro.value = ''
@@ -479,21 +319,36 @@ async function carregarDados() {
       (utilizador) => utilizador.is_active,
     )
 
+    // Verificar se existe um projeto indicado na URL.
     const projectQuery = route.query.project
+
     const projectId = Array.isArray(projectQuery)
       ? projectQuery[0]
       : projectQuery
 
-    if (projectId && /^\d+$/.test(projectId)) {
+    const primeiroProjeto = projetosDisponiveis.value[0]
+
+    if (
+      projectId &&
+      /^\d+$/.test(projectId) &&
+      projetosDisponiveis.value.some(
+        (projeto) => projeto.id === Number(projectId),
+      )
+    ) {
       novaTarefa.value.projectId = projectId
-    } else if (projetosDisponiveis.value.length > 0) {
-      novaTarefa.value.projectId = String(projetosDisponiveis.value[0].id)
+    } else if (primeiroProjeto) {
+      novaTarefa.value.projectId = String(primeiroProjeto.id)
     }
 
-    const listaTarefas = await $fetch<TarefaAPI[]>(`${apiBase}/tasks/`)
+    // Carregar tarefas depois de carregar projetos e utilizadores.
+    const listaTarefas = await $fetch<TarefaAPI[]>(
+      `${apiBase}/tasks/`,
+    )
+
     tarefas.value = listaTarefas.map(converterTarefa)
   } catch (error) {
     console.error('Erro ao carregar dados das tarefas:', error)
+
     erro.value =
       'Não foi possível carregar as tarefas, os projetos ou os utilizadores. Confirma se a API está ativa.'
   } finally {
@@ -501,11 +356,16 @@ async function carregarDados() {
   }
 }
 
+// --------------------------------------------------
+// CRIAR TAREFA
+// --------------------------------------------------
+
 async function adicionarTarefa() {
   erro.value = ''
 
   const titulo = novaTarefa.value.title.trim()
   const projetoId = Number(novaTarefa.value.projectId)
+
   const responsavelId = novaTarefa.value.assignedTo
     ? Number(novaTarefa.value.assignedTo)
     : null
@@ -515,49 +375,58 @@ async function adicionarTarefa() {
     return
   }
 
-  if (!projetoId || !projetosDisponiveis.value.some((p) => p.id === projetoId)) {
+  if (
+    !projetoId ||
+    !projetosDisponiveis.value.some(
+      (projeto) => projeto.id === projetoId,
+    )
+  ) {
     erro.value = 'Seleciona um projeto válido.'
+    return
+  }
+
+  if (
+    responsavelId !== null &&
+    !utilizadores.value.some(
+      (utilizador) => utilizador.id === responsavelId,
+    )
+  ) {
+    erro.value = 'Seleciona um responsável válido.'
     return
   }
 
   aGuardar.value = true
 
   try {
-    const criada = await $fetch<TarefaAPI>(`${apiBase}/tasks/`, {
-      method: 'POST',
-      body: {
-        project_id: projetoId,
-        title: titulo,
-        description: novaTarefa.value.description.trim() || null,
-        category: categoriaParaAPI[novaTarefa.value.category],
-        priority: prioridadeParaAPI[novaTarefa.value.priority],
-        status: estadoParaAPI[novaTarefa.value.status],
-        assigned_to: responsavelId,
-        created_by: utilizadorId,
-        due_date: novaTarefa.value.dueDate
-          ? `${novaTarefa.value.dueDate}T00:00:00`
-          : null,
+    const criada = await $fetch<TarefaAPI>(
+      `${apiBase}/tasks/`,
+      {
+        method: 'POST',
+
+        body: {
+          project_id: projetoId,
+          title: titulo,
+          description:
+            novaTarefa.value.description.trim() || null,
+          category: categoriaParaAPI[novaTarefa.value.category],
+          priority: prioridadeParaAPI[novaTarefa.value.priority],
+          status: estadoParaAPI[novaTarefa.value.status],
+          assigned_to: responsavelId,
+          created_by: utilizadorId,
+          due_date: novaTarefa.value.dueDate
+            ? `${novaTarefa.value.dueDate}T00:00:00`
+            : null,
+        },
       },
-    })
+    )
 
     tarefas.value.unshift(converterTarefa(criada))
 
-    novaTarefa.value = {
-      title: '',
-      description: '',
-      projectId: projetosDisponiveis.value[0]
-        ? String(projetosDisponiveis.value[0].id)
-        : '',
-      assignedTo: '',
-      dueDate: '',
-      priority: 'Média',
-      status: 'Por fazer',
-      category: 'Desenvolvimento',
-    }
-
+    limparFormulario()
     mostrarFormulario.value = false
   } catch (error) {
     console.error('Erro ao criar tarefa:', error)
+
     erro.value =
       'Não foi possível guardar a tarefa. Confirma se o projeto e os IDs dos utilizadores existem.'
   } finally {
@@ -565,8 +434,16 @@ async function adicionarTarefa() {
   }
 }
 
-async function alterarEstado(tarefa: Tarefa, evento: Event) {
+// --------------------------------------------------
+// ALTERAR ESTADO DA TAREFA
+// --------------------------------------------------
+
+async function alterarEstado(
+  tarefa: Tarefa,
+  evento: Event,
+) {
   const elemento = evento.target as HTMLSelectElement
+
   const estadoAnterior = tarefa.status
   const novoEstado = elemento.value as EstadoTarefa
 
@@ -574,6 +451,8 @@ async function alterarEstado(tarefa: Tarefa, evento: Event) {
   if (novoEstado === estadoAnterior) return
 
   erro.value = ''
+
+  // Atualização visual imediata.
   tarefa.status = novoEstado
 
   try {
@@ -581,39 +460,63 @@ async function alterarEstado(tarefa: Tarefa, evento: Event) {
       `${apiBase}/tasks/${tarefa.id}`,
       {
         method: 'PATCH',
+
         body: {
           status: estadoParaAPI[novoEstado],
         },
       },
     )
 
-    const indice = tarefas.value.findIndex((item) => item.id === tarefa.id)
+    const indice = tarefas.value.findIndex(
+      (item) => item.id === tarefa.id,
+    )
 
     if (indice !== -1) {
       tarefas.value[indice] = converterTarefa(atualizada)
     }
   } catch (error) {
-    console.error('Erro ao atualizar o estado da tarefa:', error)
+    console.error(
+      'Erro ao atualizar o estado da tarefa:',
+      error,
+    )
+
+    // Reverter alteração se a API devolver um erro.
     tarefa.status = estadoAnterior
     elemento.value = estadoAnterior
+
     erro.value =
       'Não foi possível atualizar o estado da tarefa. A alteração foi revertida.'
   }
 }
 
+// --------------------------------------------------
+// FORMATAÇÃO DE DATAS
+// --------------------------------------------------
+
 function formatarData(data: string) {
   if (!data) return 'Sem prazo'
 
-  const [ano, mes, dia] = data.split('-')
+  const partes = data.split('-')
+
+  const ano = partes[0] ?? ''
+  const mes = partes[1] ?? ''
+  const dia = partes[2] ?? ''
+
+  if (!ano || !mes || !dia) return 'Data inválida'
+
   return `${dia}/${mes}/${ano}`
 }
+
+// --------------------------------------------------
+// CLASSES CSS
+// --------------------------------------------------
 
 function classeEstado(estado: EstadoTarefa) {
   return {
     'por-fazer': estado === 'Por fazer',
     'em-curso': estado === 'Em curso',
-    concluida: estado === 'Concluída',
-    bloqueada: estado === 'Bloqueada',
+    'concluida': estado === 'Concluída',
+    'bloqueada': estado === 'Bloqueada',
   }
 }
 
@@ -625,11 +528,19 @@ function classePrioridade(prioridade: Prioridade) {
   }
 }
 
-onMounted(carregarDados)
+// --------------------------------------------------
+// INICIALIZAÇÃO
+// --------------------------------------------------
+
+onMounted(() => {
+  carregarDados()
+})
 </script>
 
 <template>
   <main class="page">
+
+    <!-- CABEÇALHO -->
     <header class="page-header">
       <div>
         <NuxtLink to="/" class="back-link">
@@ -637,25 +548,32 @@ onMounted(carregarDados)
         </NuxtLink>
 
         <h1>Tarefas</h1>
-        <p>Organiza o trabalho, acompanha os prazos e atualiza o progresso.</p>
+
+        <p>
+          Organiza o trabalho, acompanha os prazos e atualiza o progresso.
+        </p>
       </div>
 
       <button
         class="primary-button"
+        type="button"
         @click="mostrarFormulario = !mostrarFormulario"
       >
         {{ mostrarFormulario ? 'Cancelar' : '+ Nova tarefa' }}
       </button>
     </header>
 
+    <!-- CARREGAMENTO -->
     <p v-if="carregando" class="empty-state">
       A carregar tarefas...
     </p>
 
+    <!-- ERROS -->
     <p v-if="erro" class="error-message" role="alert">
       {{ erro }}
     </p>
 
+    <!-- RESUMO -->
     <section class="summary-grid">
       <article class="summary-card">
         <span>Total de tarefas</span>
@@ -683,13 +601,20 @@ onMounted(carregarDados)
       </article>
     </section>
 
-    <section v-if="mostrarFormulario" class="form-card">
+    <!-- FORMULÁRIO DE CRIAÇÃO -->
+    <section
+      v-if="mostrarFormulario"
+      class="form-card"
+    >
       <h2>Criar tarefa</h2>
 
       <form @submit.prevent="adicionarTarefa">
+
         <div class="form-grid">
+
           <div class="field full-width">
             <label for="titulo">Título *</label>
+
             <input
               id="titulo"
               v-model="novaTarefa.title"
@@ -702,6 +627,7 @@ onMounted(carregarDados)
 
           <div class="field full-width">
             <label for="descricao">Descrição</label>
+
             <textarea
               id="descricao"
               v-model="novaTarefa.description"
@@ -711,47 +637,57 @@ onMounted(carregarDados)
             />
           </div>
 
-          
-        <div class="field">
-          <label for="projeto">Projeto *</label>
-          <select
-            id="projeto"
-            v-model="novaTarefa.projectId"
-            required
-          >
-            <option value="" disabled>Seleciona um projeto</option>
-            <option
-              v-for="projeto in projetosDisponiveis"
-              :key="projeto.id"
-              :value="String(projeto.id)"
+          <div class="field">
+            <label for="projeto">Projeto *</label>
+
+            <select
+              id="projeto"
+              v-model="novaTarefa.projectId"
+              required
+              :disabled="projetosDisponiveis.length === 0"
             >
-              {{ projeto.name }}
-            </option>
-          </select>
-        </div>
+              <option value="" disabled>
+                Seleciona um projeto
+              </option>
 
+              <option
+                v-for="projeto in projetosDisponiveis"
+                :key="projeto.id"
+                :value="String(projeto.id)"
+              >
+                {{ projeto.name }}
+              </option>
+            </select>
 
-          
-        <div class="field">
-          <label for="responsavel">Responsável</label>
-          <select
-            id="responsavel"
-            v-model="novaTarefa.assignedTo"
-          >
-            <option value="">Por atribuir</option>
-            <option
-              v-for="utilizador in utilizadores"
-              :key="utilizador.id"
-              :value="String(utilizador.id)"
+            <small v-if="projetosDisponiveis.length === 0">
+              Não existem projetos disponíveis.
+            </small>
+          </div>
+
+          <div class="field">
+            <label for="responsavel">Responsável</label>
+
+            <select
+              id="responsavel"
+              v-model="novaTarefa.assignedTo"
             >
-              {{ utilizador.name }}
-            </option>
-          </select>
-        </div>
+              <option value="">
+                Por atribuir
+              </option>
 
+              <option
+                v-for="utilizador in utilizadores"
+                :key="utilizador.id"
+                :value="String(utilizador.id)"
+              >
+                {{ utilizador.name }}
+              </option>
+            </select>
+          </div>
 
           <div class="field">
             <label for="prazo">Prazo</label>
+
             <input
               id="prazo"
               v-model="novaTarefa.dueDate"
@@ -761,7 +697,11 @@ onMounted(carregarDados)
 
           <div class="field">
             <label for="categoria">Categoria</label>
-            <select id="categoria" v-model="novaTarefa.category">
+
+            <select
+              id="categoria"
+              v-model="novaTarefa.category"
+            >
               <option
                 v-for="categoria in categorias"
                 :key="categoria"
@@ -774,7 +714,11 @@ onMounted(carregarDados)
 
           <div class="field">
             <label for="prioridade">Prioridade</label>
-            <select id="prioridade" v-model="novaTarefa.priority">
+
+            <select
+              id="prioridade"
+              v-model="novaTarefa.priority"
+            >
               <option
                 v-for="prioridade in prioridades"
                 :key="prioridade"
@@ -787,7 +731,11 @@ onMounted(carregarDados)
 
           <div class="field">
             <label for="estado">Estado inicial</label>
-            <select id="estado" v-model="novaTarefa.status">
+
+            <select
+              id="estado"
+              v-model="novaTarefa.status"
+            >
               <option
                 v-for="estado in estados"
                 :key="estado"
@@ -797,24 +745,34 @@ onMounted(carregarDados)
               </option>
             </select>
           </div>
+
         </div>
 
-        <p v-if="erro" class="error-message">{{ erro }}</p>
+        <p
+          v-if="erro"
+          class="error-message"
+          role="alert"
+        >
+          {{ erro }}
+        </p>
 
-        
-    <button
-      type="submit"
-      class="primary-button"
-      :disabled="aGuardar"
-    >
-      {{ aGuardar ? 'A guardar...' : 'Guardar tarefa' }}
-    </button>
+        <button
+          type="submit"
+          class="primary-button"
+          :disabled="aGuardar || projetosDisponiveis.length === 0"
+        >
+          {{ aGuardar ? 'A guardar...' : 'Guardar tarefa' }}
+        </button>
 
       </form>
     </section>
 
+    <!-- LISTAGEM DE TAREFAS -->
     <section class="tasks-section">
+
+      <!-- FILTROS -->
       <div class="filters">
+
         <input
           v-model="pesquisa"
           type="search"
@@ -822,9 +780,19 @@ onMounted(carregarDados)
           aria-label="Pesquisar tarefas"
         />
 
-        <select v-model="filtroEstado" aria-label="Filtrar por estado">
-          <option value="">Todos os estados</option>
-          <option v-for="estado in estados" :key="estado" :value="estado">
+        <select
+          v-model="filtroEstado"
+          aria-label="Filtrar por estado"
+        >
+          <option value="">
+            Todos os estados
+          </option>
+
+          <option
+            v-for="estado in estados"
+            :key="estado"
+            :value="estado"
+          >
             {{ estado }}
           </option>
         </select>
@@ -833,7 +801,10 @@ onMounted(carregarDados)
           v-model="filtroPrioridade"
           aria-label="Filtrar por prioridade"
         >
-          <option value="">Todas as prioridades</option>
+          <option value="">
+            Todas as prioridades
+          </option>
+
           <option
             v-for="prioridade in prioridades"
             :key="prioridade"
@@ -842,10 +813,13 @@ onMounted(carregarDados)
             {{ prioridade }}
           </option>
         </select>
+
       </div>
 
+      <!-- TABELA -->
       <div class="table-container">
         <table>
+
           <thead>
             <tr>
               <th>Tarefa</th>
@@ -858,16 +832,37 @@ onMounted(carregarDados)
           </thead>
 
           <tbody>
-            <tr v-for="tarefa in tarefasFiltradas" :key="tarefa.id">
+
+            <tr
+              v-for="tarefa in tarefasFiltradas"
+              :key="tarefa.id"
+            >
+
               <td>
-                <div class="task-title">{{ tarefa.title }}</div>
-                <div class="task-description">{{ tarefa.description }}</div>
-                <span class="category">{{ tarefa.category }}</span>
+                <div class="task-title">
+                  {{ tarefa.title }}
+                </div>
+
+                <div class="task-description">
+                  {{ tarefa.description }}
+                </div>
+
+                <span class="category">
+                  {{ tarefa.category }}
+                </span>
               </td>
 
-              <td>{{ tarefa.project }}</td>
-              <td>{{ tarefa.responsible }}</td>
-              <td>{{ formatarData(tarefa.dueDate) }}</td>
+              <td>
+                {{ tarefa.project }}
+              </td>
+
+              <td>
+                {{ tarefa.responsible }}
+              </td>
+
+              <td>
+                {{ formatarData(tarefa.dueDate) }}
+              </td>
 
               <td>
                 <span
@@ -895,21 +890,29 @@ onMounted(carregarDados)
                   </option>
                 </select>
               </td>
+
             </tr>
 
             <tr v-if="tarefasFiltradas.length === 0">
-              <td colspan="6" class="empty-state">
+              <td
+                colspan="6"
+                class="empty-state"
+              >
                 Não foram encontradas tarefas com estes filtros.
               </td>
             </tr>
+
           </tbody>
         </table>
       </div>
 
       <p class="results-count">
-        A mostrar {{ tarefasFiltradas.length }} de {{ tarefas.length }} tarefas
+        A mostrar {{ tarefasFiltradas.length }}
+        de {{ tarefas.length }} tarefas
       </p>
+
     </section>
+
   </main>
 </template>
 
@@ -935,6 +938,10 @@ onMounted(carregarDados)
   text-decoration: none;
 }
 
+.back-link:hover {
+  text-decoration: underline;
+}
+
 .page-header h1 {
   margin: 14px 0 6px;
   font-size: 32px;
@@ -953,10 +960,16 @@ onMounted(carregarDados)
   color: white;
   font-weight: 600;
   cursor: pointer;
+  transition: background .2s ease, opacity .2s ease;
 }
 
 .primary-button:hover {
   background: #4338ca;
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .summary-grid {
@@ -1010,6 +1023,7 @@ onMounted(carregarDados)
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .full-width {
@@ -1036,11 +1050,26 @@ onMounted(carregarDados)
   font: inherit;
 }
 
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.filters input:focus,
+.filters select:focus {
+  outline: 2px solid #c7d2fe;
+  border-color: #4f46e5;
+}
+
 .field textarea {
   resize: vertical;
 }
 
+.field small {
+  color: #b45309;
+  font-size: 12px;
+}
+
 .error-message {
+  margin: 12px 0;
   color: #b91c1c;
   font-size: 14px;
 }
@@ -1054,7 +1083,10 @@ onMounted(carregarDados)
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  grid-template-columns:
+    minmax(220px, 2fr)
+    minmax(160px, 1fr)
+    minmax(160px, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -1206,9 +1238,5 @@ td {
   .tasks-section {
     padding: 12px;
   }
-}
-.primary-button:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
 }
 </style>

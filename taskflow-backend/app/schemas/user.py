@@ -16,5 +16,6 @@ class UserPublic(BaseModel):
     id: int
     name: str
     email: EmailStr
+    avatar_url: str | None = None
     is_active: bool
     created_at: datetime
