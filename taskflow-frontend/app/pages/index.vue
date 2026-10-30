@@ -1,5 +1,5 @@
-<script setup lang="ts">
 
+<script setup lang="ts">
 import { computed } from 'vue'
 
 import type {
@@ -26,20 +26,34 @@ const today = computed(() => parseISODay(todayISO.value))
 const {
   projects,
   tasks,
+  users,
   carregando,
   erro,
+  atualizar,
 } = useDashboardData(today.value)
 
+// Cores e ordem dos estados das tarefas.
 const STATUS_COLORS: Record<TaskStatus, string> = {
   'Por fazer': '#94a3b8',
   'Em curso': '#3b82f6',
   'Concluída': '#22c55e',
-  'Bloqueada': '#ef4444'
+  'Bloqueada': '#ef4444',
 }
 
-const STATUS_ORDER: TaskStatus[] = ['Em curso', 'Por fazer', 'Bloqueada', 'Concluída']
-const PRIORITY_WEIGHT: Record<TaskPriority, number> = { Alta: 0, 'Média': 1, Baixa: 2 }
+const STATUS_ORDER: TaskStatus[] = [
+  'Em curso',
+  'Por fazer',
+  'Bloqueada',
+  'Concluída',
+]
 
+const PRIORITY_WEIGHT: Record<TaskPriority, number> = {
+  Alta: 0,
+  Média: 1,
+  Baixa: 2,
+}
+
+// Data apresentada no cabeçalho.
 const dateLabel = computed(() => {
   const text = today.value.toLocaleDateString('pt-PT', {
     weekday: 'long',
@@ -53,62 +67,143 @@ const dateLabel = computed(() => {
 
 const dateTimeLabel = formatarDataHora(new Date())
 
-const countByStatus = (status: TaskStatus) => tasks.filter((t) => t.status === status).length
+// Contagem de tarefas por estado.
+const countByStatus = (status: TaskStatus) =>
+  tasks.filter((t) => t.status === status).length
 
-const activeProjects = computed(() => projects.filter((p) => p.status === 'Ativo'))
-const finishedProjects = computed(() => projects.filter((p) => p.status === 'Concluído').length)
-// Estes valores têm de ser computed porque a API carrega os dados depois do onMounted.
+// Indicadores de projetos.
+const activeProjects = computed(() =>
+  projects.filter((p) => p.status === 'Ativo'),
+)
+
+const finishedProjects = computed(() =>
+  projects.filter((p) => p.status === 'Concluído').length,
+)
+
+const archivedProjects = computed(() =>
+  projects.filter((p) => p.status === 'Arquivado').length,
+)
+
+const totalProjects = computed(() => projects.length)
+
+// Indicadores de utilizadores.
+const totalUsers = computed(() => users.length)
+
+const activeUsers = computed(() =>
+  users.filter((user) => user.isActive).length,
+)
+
+const inactiveUsers = computed(() =>
+  users.filter((user) => !user.isActive).length,
+)
+
+// Indicadores de tarefas.
+const totalTasks = computed(() => tasks.length)
+
 const inProgress = computed(() => countByStatus('Em curso'))
 const todo = computed(() => countByStatus('Por fazer'))
 const done = computed(() => countByStatus('Concluída'))
 const blocked = computed(() => countByStatus('Bloqueada'))
 
+// Percentagem global de tarefas concluídas.
 const completionRate = computed(() =>
-  tasks.length ? Math.round((done.value / tasks.length) * 100) : 0
+  tasks.length
+    ? Math.round((done.value / tasks.length) * 100)
+    : 0,
 )
 
+// Cartões de indicadores globais.
 const kpiCards = computed(() => [
-  { label: 'Projetos ativos', value: activeProjects.value.length, hint: '', tone: 'indigo', icon: 'folder', trend: 'up' },
-  { label: 'Em curso', value: inProgress.value, hint: '', tone: 'blue', icon: 'bolt', trend: 'up' },
-  { label: 'Concluídas', value: done.value, hint: completionRate.value + '% de conclusão', tone: 'green', icon: 'check', progress: completionRate.value, trend: 'up' },
-  { label: 'Bloqueadas', value: blocked.value, hint: blocked.value > 0 ? 'Requer ação' : '', tone: 'red', icon: 'alert', trend: blocked.value > 0 ? 'down' : 'none' }
+  {
+    label: 'Total de projetos',
+    value: totalProjects.value,
+    hint: `${activeProjects.value.length} ativos · ${finishedProjects.value} concluídos · ${archivedProjects.value} arquivados`,
+    tone: 'indigo',
+    icon: 'folder',
+  },
+  {
+    label: 'Utilizadores',
+    value: totalUsers.value,
+    hint: `${activeUsers.value} ativos · ${inactiveUsers.value} inativos`,
+    tone: 'blue',
+    icon: 'users',
+  },
+  {
+    label: 'Total de tarefas',
+    value: totalTasks.value,
+    hint: `${todo.value} por fazer · ${inProgress.value} em curso`,
+    tone: 'green',
+    icon: 'check',
+  },
+  {
+    label: 'Tarefas bloqueadas',
+    value: blocked.value,
+    hint: blocked.value > 0
+      ? 'Requer atenção'
+      : 'Sem tarefas bloqueadas',
+    tone: 'red',
+    icon: 'alert',
+  },
 ])
 
+// Tarefas concluídas nos últimos sete dias.
 const weekly = computed(() =>
   Array.from({ length: 7 }, (_, i) => {
     const date = addDays(today.value, i - 6)
     const iso = toISODay(date)
+
     return {
-      label: date.toLocaleDateString('pt-PT', { weekday: 'short' }).replace('.', ''),
+      label: date
+        .toLocaleDateString('pt-PT', { weekday: 'short' })
+        .replace('.', ''),
+
       value: tasks.filter((t) => {
-  if (!t.completedAt) return false
+        if (!t.completedAt) return false
 
-  return t.completedAt.slice(0, 10) === iso
-}).length
+        return t.completedAt.slice(0, 10) === iso
+      }).length,
     }
-  })
+  }),
 )
 
-const weeklyTotal = computed(() => weekly.value.reduce((s, v) => s + v.value, 0))
+const weeklyTotal = computed(() =>
+  weekly.value.reduce((sum, item) => sum + item.value, 0),
+)
 
+// Distribuição das tarefas por estado.
 const statusSegments = computed(() =>
-  STATUS_ORDER.map((status) => ({ label: status, value: countByStatus(status), color: STATUS_COLORS[status] }))
+  STATUS_ORDER.map((status) => ({
+    label: status,
+    value: countByStatus(status),
+    color: STATUS_COLORS[status],
+  })),
 )
 
-const openTasks = computed(() => tasks.filter((t) => t.status !== 'Concluída'))
+// Tarefas que ainda não estão concluídas.
+const openTasks = computed(() =>
+  tasks.filter((t) => t.status !== 'Concluída'),
+)
 
+// Calcula os dias até ao prazo de uma tarefa.
 function daysUntil(task: DashboardTask): number {
   if (!task.dueDate) return Number.POSITIVE_INFINITY
-  return diffInDays(today.value, parseISODay(task.dueDate))
+
+  return diffInDays(
+    today.value,
+    parseISODay(task.dueDate),
+  )
 }
 
+// Texto apresentado relativamente ao prazo.
 function dueLabel(task: DashboardTask): string {
   if (!task.dueDate) return 'Sem prazo'
 
   const days = daysUntil(task)
 
   if (days < 0) {
-    return `Atrasada há ${Math.abs(days)} ${Math.abs(days) === 1 ? 'dia' : 'dias'}`
+    return `Atrasada há ${Math.abs(days)} ${
+      Math.abs(days) === 1 ? 'dia' : 'dias'
+    }`
   }
 
   if (days === 0) return 'Hoje'
@@ -117,6 +212,7 @@ function dueLabel(task: DashboardTask): string {
   return `Em ${days} dias`
 }
 
+// Cor do prazo.
 function dueTone(task: DashboardTask): 'late' | 'soon' | 'ok' {
   if (!task.dueDate) return 'ok'
 
@@ -128,167 +224,271 @@ function dueTone(task: DashboardTask): 'late' | 'soon' | 'ok' {
   return 'ok'
 }
 
+// Lista de tarefas que precisam de atenção.
 const attention = computed(() =>
   openTasks.value
-    .map((t) => ({ task: t, tone: dueTone(t), days: daysUntil(t) }))
+    .map((task) => ({
+      task,
+      tone: dueTone(task),
+      days: daysUntil(task),
+    }))
     .sort((a, b) => {
       const wa = PRIORITY_WEIGHT[a.task.priority]
       const wb = PRIORITY_WEIGHT[b.task.priority]
+
       if (wa !== wb) return wa - wb
+
       return a.days - b.days
     })
-    .slice(0, 6)
+    .slice(0, 6),
 )
 
+// Projetos ativos com progresso calculado.
 const projectsWithProgress = computed(() =>
-  activeProjects.value.map((p) => {
-    const ptasks = tasks.filter((t) => t.project === p.name)
-    const pdone = ptasks.filter((t) => t.status === 'Concluída').length
-    const progress = ptasks.length ? Math.round((pdone / ptasks.length) * 100) : 0
-    const members = Array.from(new Set(ptasks.map((t) => t.responsible)))
-    return { ...p, progress, members }
-  })
+  activeProjects.value.map((project) => {
+    const projectTasks = tasks.filter(
+      (task) => task.project === project.name,
+    )
+
+    const completedTasks = projectTasks.filter(
+      (task) => task.status === 'Concluída',
+    ).length
+
+    const progress = projectTasks.length
+      ? Math.round((completedTasks / projectTasks.length) * 100)
+      : 0
+
+    const members = Array.from(
+      new Set(projectTasks.map((task) => task.responsible)),
+    )
+
+    return {
+      ...project,
+      progress,
+      members,
+    }
+  }),
 )
 </script>
 
 <template>
   <main class="dashboard">
-      <p v-if="carregando" role="status">
-          A carregar dados do Dashboard...
-      </p>
+    <!-- Estado de carregamento -->
+    <p v-if="carregando" class="loading-message" role="status">
+      A carregar dados do Dashboard...
+    </p>
 
-      <p v-if="erro" class="error-message" role="alert">
-          {{ erro }}
-      </p>
+    <!-- Mensagem de erro -->
+    <div v-if="erro" class="error-message" role="alert">
+      <p>{{ erro }}</p>
+
+      <button
+        type="button"
+        class="btn btn-ghost"
+        @click="atualizar"
+      >
+        Tentar novamente
+      </button>
+    </div>
+
+    <!-- Cabeçalho -->
     <header class="page-hero animate-in" style="animation-delay: 60ms">
-  <div class="hero-kicker">
-    <span class="dot" aria-hidden="true"></span>
-    TaskFlow <span class="hero-separator">/</span> Dashboard
-  </div>
-
-  <h1>Visão geral</h1>
-
-  <p class="hero-description">
-    Acompanhe os seus projetos, monitorize as tarefas e consulte os prazos
-    mais importantes num único lugar.
-  </p>
-
-  <div class="hero-meta">
-    <div class="hero-date-group">
-    <span class="hero-date">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="5" width="18" height="16" rx="2"></rect>
-        <path d="M16 3v4M8 3v4M3 10h18"></path>
-      </svg>
-      {{ dateLabel }}
-    </span>
-
-    <span class="hero-time">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="9"></circle>
-        <path d="M12 7v5l3 2"></path>
-      </svg>
-      {{ dateTimeLabel }}
-    </span>
-  </div>
-
-  <NuxtLink to="/projects" class="btn btn-ghost">
-    Ver todos os projetos
-  </NuxtLink>
-  </div>
-</header>
-
-    
-<div class="kpi-grid">
-  <article
-    v-for="(card, i) in kpiCards"
-    :key="card.label"
-    class="kpi-card"
-    :class="`kpi-${card.tone}`"
-    :style="{ animationDelay: `${120 + i * 70}ms` }"
-  >
-    <div class="kpi-top">
-      <div class="kpi-icon">
-        <svg v-if="card.tone === 'indigo'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          <path d="M3 9h18"/>
-        </svg>
-        <svg v-else-if="card.tone === 'blue'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="m13 2-9 12h7l-1 8 10-13h-7z"/>
-        </svg>
-        <svg v-else-if="card.tone === 'green'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="m5 12 4 4L19 6"/>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="9"/>
-          <path d="M12 7v6m0 4h.01"/>
-        </svg>
+      <div class="hero-kicker">
+        <span class="dot" aria-hidden="true"></span>
+        TaskFlow <span class="hero-separator">/</span> Dashboard
       </div>
-      <span class="kpi-label">{{ card.label }}</span>
-    </div>
 
-    <div class="kpi-value">{{ card.value }}</div>
+      <h1>Visão geral</h1>
 
-    <div class="kpi-bottom">
-      <span>{{ card.hint || 'Dados atuais do projeto' }}</span>
-    </div>
+      <p class="hero-description">
+        Acompanhe os seus projetos, monitorize as tarefas e consulte os prazos
+        mais importantes num único lugar.
+      </p>
 
-    <div
-      v-if="card.progress !== undefined"
-      class="kpi-progress"
-      role="progressbar"
-      :aria-valuenow="card.progress"
-      aria-valuemin="0"
-      aria-valuemax="100"
-    >
-      <span :style="{ width: `${card.progress}%` }"></span>
-    </div>
-  </article>
-</div>
+      <div class="hero-meta">
+        <div class="hero-date-group">
+          <span class="hero-date">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+              <path d="M16 3v4M8 3v4M3 10h18"></path>
+            </svg>
+            {{ dateLabel }}
+          </span>
 
+          <span class="hero-time">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 7v5l3 2"></path>
+            </svg>
+            {{ dateTimeLabel }}
+          </span>
+        </div>
 
-    <div class="grid-2">
+        <NuxtLink to="/projects" class="btn btn-ghost">
+          Ver todos os projetos
+        </NuxtLink>
+      </div>
+    </header>
+
+    <!-- Indicadores globais -->
+    <section class="kpi-grid" aria-label="Indicadores globais">
+      <article
+        v-for="(card, i) in kpiCards"
+        :key="card.label"
+        class="kpi-card"
+        :class="`kpi-${card.tone}`"
+        :style="{ animationDelay: `${120 + i * 70}ms` }"
+      >
+        <div class="kpi-top">
+          <div class="kpi-icon">
+            <!-- Projetos -->
+            <svg
+              v-if="card.icon === 'folder'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <path d="M3 9h18" />
+            </svg>
+
+            <!-- Utilizadores -->
+            <svg
+              v-else-if="card.icon === 'users'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <circle cx="9" cy="8" r="3" />
+              <path d="M3 20v-1a6 6 0 0 1 12 0v1" />
+              <path d="M16 5.5a3 3 0 0 1 0 5.8" />
+              <path d="M18 14a5 5 0 0 1 3 5v1" />
+            </svg>
+
+            <!-- Tarefas -->
+            <svg
+              v-else-if="card.icon === 'check'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+
+            <!-- Bloqueadas -->
+            <svg
+              v-else
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v6m0 4h.01" />
+            </svg>
+          </div>
+
+          <span class="kpi-label">
+            {{ card.label }}
+          </span>
+        </div>
+
+        <div class="kpi-value">
+          {{ card.value }}
+        </div>
+
+        <div class="kpi-bottom">
+          <span>{{ card.hint }}</span>
+        </div>
+
+        <div
+          v-if="'progress' in card && card.progress !== undefined"
+          class="kpi-progress"
+          role="progressbar"
+          :aria-valuenow="card.progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span :style="{ width: `${card.progress}%` }"></span>
+        </div>
+      </article>
+    </section>
+
+    <!-- Gráficos -->
+    <section class="grid-2">
       <div class="content-card animate-in" style="animation-delay: 240ms">
         <div class="section-header">
           <div>
             <h2>Conclusões da semana</h2>
-            <p>{{ weeklyTotal }} tarefa{{ weeklyTotal !== 1 ? 's' : '' }} nos últimos 7 dias</p>
+            <p>
+              {{ weeklyTotal }}
+              tarefa{{ weeklyTotal !== 1 ? 's' : '' }}
+              nos últimos 7 dias
+            </p>
           </div>
         </div>
-        <DashboardBarChart :data="weekly" ::highlight="6" unit="tarefas" />
+
+        <DashboardBarChart
+          :data="weekly"
+          :highlight="6"
+          unit="tarefas"
+        />
       </div>
 
       <div class="content-card animate-in" style="animation-delay: 300ms">
         <div class="section-header">
           <div>
             <h2>Estado das tarefas</h2>
-            <p>{{ tasks.length }} tarefa{{ tasks.length !== 1 ? 's' : '' }} no total</p>
+            <p>
+              {{ tasks.length }}
+              tarefa{{ tasks.length !== 1 ? 's' : '' }}
+              no total
+            </p>
           </div>
         </div>
+
         <DashboardDonutChart
           :segments="statusSegments"
           :center-value="done"
           center-label="Concluídas"
         />
       </div>
-    </div>
-    <div class="content-card animate-in" style="animation-delay: 360ms">
+    </section>
+
+    <!-- Tarefas que precisam de atenção -->
+    <section
+      class="content-card animate-in"
+      style="animation-delay: 360ms"
+    >
       <div class="section-header section-actions">
         <div>
           <h2>Precisam de atenção</h2>
           <p>Prazos críticos e tarefas bloqueadas</p>
         </div>
+
+        <NuxtLink to="/tasks" class="btn btn-ghost">
+          Ver tarefas
+        </NuxtLink>
       </div>
+
       <ul class="task-list">
         <li
           v-for="(item, i) in attention"
           :key="item.task.id"
           class="animate-in"
-          :style="{ animationDelay: 420 + i * 60 + 'ms' }"
+          :style="{ animationDelay: `${420 + i * 60}ms` }"
         >
           <TaskCard :task="item.task" />
         </li>
-        <li v-if="attention.length === 0" class="task-row empty animate-in" style="animation-delay: 420ms">
+
+        <li
+          v-if="attention.length === 0"
+          class="task-row empty animate-in"
+          style="animation-delay: 420ms"
+        >
           <div class="empty-state" style="padding: 24px 14px;">
             <div class="icon">✓</div>
             <h3>Sem tarefas críticas</h3>
@@ -296,28 +496,53 @@ const projectsWithProgress = computed(() =>
           </div>
         </li>
       </ul>
-    </div>
+    </section>
 
-    <div class="section-header section-actions" style="margin-top: 28px;">
+    <!-- Projetos ativos -->
+    <section class="projects-section">
+      <div class="section-header section-actions">
         <div>
-            <h2>Projetos ativos</h2>
-              <p>{{ activeProjects?.length ?? 0 }} projeto{{ activeProjects?.length !== 1 ? 's' : '' }} em curso</p>
+          <h2>Projetos ativos</h2>
+          <p>
+            {{ activeProjects.length }}
+            projeto{{ activeProjects.length !== 1 ? 's' : '' }}
+            em curso
+          </p>
         </div>
-    </div>
-    <div class="projects-grid">
-      <ProjectCard
-        v-for="(p, i) in projectsWithProgress"
-        :key="p.id"
-        :project="p"
-        :progress="p.progress"
-        :members="p.members"
-        class="animate-in"
-        :style="{ animationDelay: 500 + i * 60 + 'ms' }"
-      />
-    </div>
+
+        <NuxtLink to="/projects" class="btn btn-ghost">
+          Ver projetos
+        </NuxtLink>
+      </div>
+
+      <div class="projects-grid">
+        <ProjectCard
+          v-for="(project, i) in projectsWithProgress"
+          :key="project.id"
+          :project="project"
+          :progress="project.progress"
+          :members="project.members"
+          class="animate-in"
+          :style="{ animationDelay: `${500 + i * 60}ms` }"
+        />
+
+        <div
+          v-if="projectsWithProgress.length === 0"
+          class="content-card empty-projects"
+        >
+          <div class="empty-state">
+            <div class="icon">📁</div>
+            <h3>Sem projetos ativos</h3>
+            <p>Quando criares projetos, estes serão apresentados aqui.</p>
+            <NuxtLink to="/projects" class="btn btn-ghost">
+              Consultar projetos
+            </NuxtLink>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 </template>
-
 
 <style scoped>
 .dashboard {
@@ -334,30 +559,52 @@ const projectsWithProgress = computed(() =>
   box-sizing: border-box;
 }
 
-/* .page-hero {
-  padding: 10px 4px 28px;
+.loading-message {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  color: #3454a4;
+  background: #edf3ff;
+  border: 1px solid #dce5f5;
+  border-radius: 12px;
+}
+
+.error-message {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  color: #b42332;
+  background: #fff0f0;
+  border: 1px solid #f6d1d5;
+  border-radius: 12px;
+}
+
+.error-message p {
+  margin: 0 0 12px;
+}
+
+.page-hero {
+  padding: 24px 26px;
+  margin-bottom: 24px;
+  color: #172b4d;
+  background: #fff;
+  border: 1px solid #e2e9f5;
+  border-radius: 18px;
+  box-shadow: 0 5px 18px rgb(36 59 99 / 4%);
 }
 
 .page-hero h1 {
   margin: 0 0 10px;
   color: #172b4d;
-  font-size: clamp(26px, 3vw, 36px);
+  font-size: clamp(28px, 3vw, 36px);
   font-weight: 800;
+  line-height: 1.2;
   letter-spacing: -0.04em;
-} */
-
-.page-hero > p {
-  max-width: 650px;
-  color: var(--tf-muted);
-  font-size: 14px;
-  line-height: 1.8;
 }
 
 .hero-kicker {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   color: #4568c7;
   font-size: 13px;
   font-weight: 700;
@@ -371,11 +618,54 @@ const projectsWithProgress = computed(() =>
   box-shadow: 0 0 0 4px #dce6ff;
 }
 
-.hero-actions {
+.hero-separator {
+  color: #a2aec2;
+}
+
+.hero-description {
+  max-width: 650px;
+  margin: 0;
+  color: #71819b;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.hero-meta {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 20px;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.hero-date-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.hero-date,
+.hero-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #526580;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hero-date svg,
+.hero-time svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #5278f5;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
 }
 
 .btn {
@@ -389,6 +679,7 @@ const projectsWithProgress = computed(() =>
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .btn-primary {
@@ -461,7 +752,7 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-bottom {
-  min-height: 18px;
+  min-height: 32px;
   color: #7d8ba2;
   font-size: 11px;
   line-height: 1.5;
@@ -487,6 +778,7 @@ const projectsWithProgress = computed(() =>
   background: linear-gradient(145deg, #fff 55%, #f0f2ff);
   border-color: #dce3ff;
 }
+
 .kpi-indigo .kpi-icon {
   color: #6254df;
   background: #e9e7ff;
@@ -496,6 +788,7 @@ const projectsWithProgress = computed(() =>
   background: linear-gradient(145deg, #fff 55%, #edf7ff);
   border-color: #d8eaff;
 }
+
 .kpi-blue .kpi-icon {
   color: #2378e8;
   background: #dceeff;
@@ -505,6 +798,7 @@ const projectsWithProgress = computed(() =>
   background: linear-gradient(145deg, #fff 55%, #edfbf4);
   border-color: #d6f1e3;
 }
+
 .kpi-green .kpi-icon {
   color: #11996b;
   background: #d8f6e7;
@@ -514,6 +808,7 @@ const projectsWithProgress = computed(() =>
   background: linear-gradient(145deg, #fff 55%, #fff0f0);
   border-color: #f5dddd;
 }
+
 .kpi-red .kpi-icon {
   color: #e34452;
   background: #ffe0e2;
@@ -574,127 +869,94 @@ const projectsWithProgress = computed(() =>
   min-width: 0;
 }
 
+.projects-section {
+  margin-top: 28px;
+}
+
 .projects-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
-.error-message {
-  margin-bottom: 18px;
-  padding: 14px 16px;
-  color: #b42332;
-  background: #fff0f0;
-  border: 1px solid #f6d1d5;
-  border-radius: 12px;
+.empty-projects {
+  grid-column: 1 / -1;
+}
+
+.empty-state {
+  padding: 24px 14px;
+  text-align: center;
+}
+
+.empty-state .icon {
+  margin-bottom: 10px;
+  font-size: 28px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px;
+  color: #203557;
+  font-size: 15px;
+}
+
+.empty-state p {
+  margin: 0 0 16px;
+  color: var(--tf-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 @keyframes tf-appear {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 1100px) {
-  .dashboard { padding: 22px; }
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .projects-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard {
+    padding: 22px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .projects-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
-  .dashboard { padding: 15px; }
-  .grid-2, .projects-grid { grid-template-columns: minmax(0, 1fr); }
-  .kpi-card { padding: 16px; }
-  .content-card { padding: 18px; }
-  .page-hero { padding-top: 8px; }
-}
+  .dashboard {
+    padding: 15px;
+  }
 
-@media (max-width: 390px) {
-  .kpi-grid { grid-template-columns: minmax(0, 1fr); }
-  .kpi-top { align-items: center; }
-}
+  .grid-2,
+  .projects-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-@media (prefers-reduced-motion: reduce) {
-  .kpi-card, .btn { animation: none; transition: none; }
-}
-.page-hero {
-  padding: 12px 4px 30px;
-}
+  .kpi-card {
+    padding: 16px;
+  }
 
-.page-hero h1 {
-  margin: 0 0 12px;
-  color: #172b4d;
-  font-size: clamp(28px, 3vw, 36px);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.04em;
-}
-
-.hero-kicker {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 14px;
-  color: #4568c7;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.hero-separator {
-  color: #a2aec2;
-}
-
-.hero-description {
-  max-width: 620px;
-  margin: 0;
-  color: #71819b;
-  font-size: 14px;
-  line-height: 1.8;
-}
-
-.hero-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.hero-date-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 18px;
-}
-
-.hero-date,
-.hero-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: #526580;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.hero-date svg,
-.hero-time svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: #5278f5;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
+  .content-card {
+    padding: 18px;
+  }
 }
 
 @media (max-width: 600px) {
-  .hero-meta {
-    align-items: flex-start;
-    flex-direction: column;
+  .page-hero {
+    padding: 20px 16px;
   }
 
+  .hero-meta,
   .hero-date-group {
     align-items: flex-start;
     flex-direction: column;
@@ -706,136 +968,21 @@ const projectsWithProgress = computed(() =>
   }
 }
 
-.hero-separator {
-  color: #a2aec2;
-}
-
-.hero-description {
-  max-width: 620px;
-  margin: 0;
-  color: #71819b;
-  font-size: 14px;
-  line-height: 1.8;
-}
-
-.hero-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.hero-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: #526580;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.hero-date svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: #5278f5;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
-}
-
-@media (max-width: 600px) {
-  .hero-meta {
-    align-items: flex-start;
-    flex-direction: column;
+@media (max-width: 390px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .hero-description {
-    font-size: 13px;
+  .kpi-top {
+    align-items: center;
   }
 }
 
-
-/* Cabeçalho: fundo claro e contraste consistente com o restante do dashboard. */
-.page-hero {
-  padding: 24px 26px;
-  margin-bottom: 24px;
-  color: #172b4d;
-  background: #ffffff;
-  border: 1px solid #e2e9f5;
-  border-radius: 18px;
-  box-shadow: 0 5px 18px rgb(36 59 99 / 4%);
-}
-
-.page-hero h1 {
-  margin: 0 0 10px;
-  color: #172b4d;
-  font-size: clamp(28px, 3vw, 36px);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.04em;
-}
-
-.page-hero .hero-description {
-  max-width: 650px;
-  margin: 0;
-  color: #71819b;
-  font-size: 14px;
-  line-height: 1.8;
-}
-
-.page-hero .hero-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.page-hero .hero-date-group {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
-}
-
-.page-hero .hero-date,
-.page-hero .hero-time {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: #526580;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.page-hero .hero-date svg,
-.page-hero .hero-time svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: #5278f5;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
-}
-
-@media (max-width: 600px) {
-  .page-hero {
-    padding: 20px 16px;
-  }
-
-  .page-hero .hero-meta,
-  .page-hero .hero-date-group {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
+@media (prefers-reduced-motion: reduce) {
+  .kpi-card,
+  .btn {
+    animation: none;
+    transition: none;
   }
 }
-
 </style>

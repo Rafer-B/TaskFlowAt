@@ -18,6 +18,13 @@ export interface DashboardProject {
   dueDate: string | null
 }
 
+export interface DashboardUser {
+  id: number
+  name: string
+  email: string
+  isActive: boolean
+}
+
 export interface DashboardTask {
   id: number
   title: string
@@ -32,6 +39,7 @@ export interface DashboardTask {
 export interface DashboardData {
   projects: DashboardProject[]
   tasks: DashboardTask[]
+  users: DashboardUser[]
 }
 
 interface ProjetoAPI {
@@ -101,11 +109,12 @@ export function useDashboardData(_today: Date): DashboardData & {
 
   const projects = reactive<DashboardProject[]>([])
   const tasks = reactive<DashboardTask[]>([])
+  const users = reactive<DashboardUser[]>([])
 
   const carregando = ref(true)
   const erro = ref('')
 
-  async function carregarDados() {
+  async function carregarDados(): Promise<void> {
     carregando.value = true
     erro.value = ''
 
@@ -127,16 +136,25 @@ export function useDashboardData(_today: Date): DashboardData & {
         ]),
       )
 
-      const projetosConvertidos: DashboardProject[] =
-        projetosAPI.map((projeto) => ({
+      const projetosConvertidos: DashboardProject[] = projetosAPI.map(
+        (projeto) => ({
           id: projeto.id,
           name: projeto.name,
           status: estadoProjeto[projeto.status],
           dueDate: null,
+        }),
+      )
+
+      const utilizadoresConvertidos: DashboardUser[] =
+        utilizadoresAPI.map((utilizador) => ({
+          id: utilizador.id,
+          name: utilizador.name,
+          email: utilizador.email,
+          isActive: utilizador.is_active,
         }))
 
-      const tarefasConvertidas: DashboardTask[] =
-        tarefasAPI.map((tarefa) => ({
+      const tarefasConvertidas: DashboardTask[] = tarefasAPI.map(
+        (tarefa) => ({
           id: tarefa.id,
           title: tarefa.title,
           project:
@@ -151,10 +169,12 @@ export function useDashboardData(_today: Date): DashboardData & {
           priority: prioridadeTarefa[tarefa.priority],
           status: estadoTarefa[tarefa.status],
           completedAt: apenasData(tarefa.completed_at),
-        }))
+        }),
+      )
 
       projects.splice(0, projects.length, ...projetosConvertidos)
       tasks.splice(0, tasks.length, ...tarefasConvertidas)
+      users.splice(0, users.length, ...utilizadoresConvertidos)
     } catch (error) {
       console.error('Erro ao carregar o Dashboard:', error)
 
@@ -170,6 +190,7 @@ export function useDashboardData(_today: Date): DashboardData & {
   return {
     projects,
     tasks,
+    users,
     carregando,
     erro,
     atualizar: carregarDados,
