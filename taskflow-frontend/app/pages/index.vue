@@ -293,40 +293,68 @@ const projectsWithProgress = computed(() =>
 
     <!-- Cabeçalho -->
     <header class="page-hero animate-in" style="animation-delay: 60ms">
-      <div class="hero-kicker">
-        <span class="dot" aria-hidden="true"></span>
-        TaskFlow <span class="hero-separator">/</span> Dashboard
-      </div>
+      <div class="hero-layout">
+        <div class="hero-copy">
+          <div class="hero-kicker">
+            <span class="dot" aria-hidden="true"></span>
+            TaskFlow <span class="hero-separator">/</span> Dashboard
+          </div>
 
-      <h1>Visão geral</h1>
+          <h1>Visão geral</h1>
 
-      <p class="hero-description">
-        Acompanhe os seus projetos, monitorize as tarefas e consulte os prazos
-        mais importantes num único lugar.
-      </p>
+          <p class="hero-description">
+            Acompanhe os seus projetos, monitorize as tarefas e consulte os prazos
+            mais importantes num único lugar.
+          </p>
 
-      <div class="hero-meta">
-        <div class="hero-date-group">
-          <span class="hero-date">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="5" width="18" height="16" rx="2"></rect>
-              <path d="M16 3v4M8 3v4M3 10h18"></path>
-            </svg>
-            {{ dateLabel }}
-          </span>
+          <div class="hero-meta">
+            <div class="hero-date-group">
+              <span class="hero-date">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                  <path d="M16 3v4M8 3v4M3 10h18"></path>
+                </svg>
+                {{ dateLabel }}
+              </span>
 
-          <span class="hero-time">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9"></circle>
-              <path d="M12 7v5l3 2"></path>
-            </svg>
-            {{ dateTimeLabel }}
-          </span>
+              <span class="hero-time">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path d="M12 7v5l3 2"></path>
+                </svg>
+                {{ dateTimeLabel }}
+              </span>
+            </div>
+
+            <NuxtLink to="/projects" class="btn btn-ghost">
+              Ver todos os projetos
+              <span aria-hidden="true">→</span>
+            </NuxtLink>
+          </div>
         </div>
 
-        <NuxtLink to="/projects" class="btn btn-ghost">
-          Ver todos os projetos
-        </NuxtLink>
+        <aside class="hero-completion" aria-label="Progresso geral das tarefas">
+          <div class="completion-ring">
+            <svg viewBox="0 0 72 72" aria-hidden="true">
+              <circle class="ring-track" cx="36" cy="36" r="30" />
+              <circle
+                class="ring-progress"
+                cx="36"
+                cy="36"
+                r="30"
+                :stroke-dasharray="`${completionRate * 1.885} 188.5`"
+              />
+            </svg>
+            <strong>{{ completionRate }}%</strong>
+          </div>
+          <div>
+            <span class="completion-label">Progresso geral</span>
+            <strong class="completion-value">
+              {{ done }} de {{ totalTasks }} tarefas
+            </strong>
+            <span class="completion-caption">concluídas até agora</span>
+          </div>
+        </aside>
       </div>
     </header>
 
@@ -546,15 +574,15 @@ const projectsWithProgress = computed(() =>
 
 <style scoped>
 .dashboard {
-  --tf-bg: #f1f5fc;
-  --tf-border: #e2e9f5;
-  --tf-text: #172b4d;
-  --tf-muted: #71819b;
-
+  --tf-border: #e8edf5;
+  --tf-text: #172554;
+  --tf-muted: #7a879d;
   min-height: 100vh;
   padding: 28px;
   color: var(--tf-text);
-  background: var(--tf-bg);
+  background:
+    radial-gradient(ellipse at 12% 0%, rgb(224 231 255 / 54%), transparent 34%),
+    #f6f8fc;
   border-radius: 18px;
   box-sizing: border-box;
 }
@@ -582,18 +610,47 @@ const projectsWithProgress = computed(() =>
 }
 
 .page-hero {
-  padding: 24px 26px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 30px 34px;
   margin-bottom: 24px;
-  color: #172b4d;
-  background: #fff;
-  border: 1px solid #e2e9f5;
-  border-radius: 18px;
-  box-shadow: 0 5px 18px rgb(36 59 99 / 4%);
+  color: #fff;
+  background:
+    radial-gradient(circle at 78% 12%, rgb(129 140 248 / 43%), transparent 29%),
+    linear-gradient(118deg, #172554 0%, #312e81 58%, #4338ca 100%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 22px;
+  box-shadow: 0 18px 40px -24px rgb(49 46 129 / 62%);
+}
+
+.page-hero::after {
+  position: absolute;
+  z-index: -1;
+  right: -72px;
+  bottom: -180px;
+  width: 410px;
+  height: 410px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 34px rgb(255 255 255 / 3%), 0 0 0 72px rgb(255 255 255 / 2%);
+  content: '';
+}
+
+.hero-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 38px;
+}
+
+.hero-copy {
+  min-width: 0;
 }
 
 .page-hero h1 {
-  margin: 0 0 10px;
-  color: #172b4d;
+  margin: 0 0 9px;
+  color: #fff;
   font-size: clamp(28px, 3vw, 36px);
   font-weight: 800;
   line-height: 1.2;
@@ -604,30 +661,32 @@ const projectsWithProgress = computed(() =>
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 14px;
-  color: #4568c7;
-  font-size: 13px;
+  margin-bottom: 15px;
+  color: #c7d2fe;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }
 
 .hero-kicker .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #5278f5;
-  box-shadow: 0 0 0 4px #dce6ff;
+  background: #67e8f9;
+  box-shadow: 0 0 0 4px rgb(103 232 249 / 15%), 0 0 15px rgb(103 232 249 / 70%);
 }
 
 .hero-separator {
-  color: #a2aec2;
+  color: #818cf8;
 }
 
 .hero-description {
   max-width: 650px;
   margin: 0;
-  color: #71819b;
+  color: #c7d2fe;
   font-size: 14px;
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .hero-meta {
@@ -636,14 +695,14 @@ const projectsWithProgress = computed(() =>
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
-  margin-top: 22px;
+  margin-top: 24px;
 }
 
 .hero-date-group {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 18px;
+  gap: 16px;
 }
 
 .hero-date,
@@ -651,17 +710,17 @@ const projectsWithProgress = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  color: #526580;
-  font-size: 13px;
+  color: #e0e7ff;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .hero-date svg,
 .hero-time svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: none;
-  stroke: #5278f5;
+  stroke: #a5b4fc;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -680,6 +739,11 @@ const projectsWithProgress = computed(() =>
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
+  transition: transform .2s ease, background .2s ease, border-color .2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
 }
 
 .btn-primary {
@@ -693,27 +757,118 @@ const projectsWithProgress = computed(() =>
   background: #fff;
 }
 
+.page-hero .btn-ghost {
+  gap: 10px;
+  min-height: 40px;
+  color: #fff;
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 22%);
+  backdrop-filter: blur(8px);
+}
+
+.page-hero .btn-ghost:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
+.hero-completion {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 240px;
+  padding: 18px 20px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 9%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  backdrop-filter: blur(12px);
+}
+
+.completion-ring {
+  position: relative;
+  display: grid;
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+}
+
+.completion-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.completion-ring circle {
+  fill: none;
+  stroke-width: 5;
+}
+
+.ring-track {
+  stroke: rgb(255 255 255 / 17%);
+}
+
+.ring-progress {
+  stroke: #67e8f9;
+  stroke-linecap: round;
+  transition: stroke-dasharray .5s ease;
+}
+
+.completion-ring strong {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-completion > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.completion-label {
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.completion-value {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.completion-caption {
+  color: #a5b4fc;
+  font-size: 10px;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 24px;
 }
 
 .kpi-card {
+  position: relative;
+  overflow: hidden;
   min-width: 0;
-  padding: 22px;
+  padding: 20px 21px;
   background: #fff;
-  border: 1px solid #e2e9f5;
-  border-radius: 17px;
-  box-shadow: 0 5px 18px rgb(36 59 99 / 5%);
+  border: 1px solid var(--tf-border);
+  border-radius: 18px;
+  box-shadow: 0 5px 16px rgb(23 37 84 / 3%);
   animation: tf-appear .4s ease both;
-  transition: transform .2s, box-shadow .2s;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
 
 .kpi-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 12px 26px rgb(36 59 99 / 9%);
+  box-shadow: 0 14px 28px -16px rgb(23 37 84 / 28%);
+  border-color: #d7def0;
 }
 
 .kpi-top {
@@ -728,7 +883,7 @@ const projectsWithProgress = computed(() =>
   width: 44px;
   height: 44px;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 13px;
 }
 
 .kpi-icon svg {
@@ -737,23 +892,25 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-label {
-  color: #5b6c86;
+  color: #697790;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.5;
 }
 
 .kpi-value {
-  margin: 20px 0 10px;
-  color: #1c3155;
-  font-size: 36px;
+  margin: 17px 0 8px;
+  color: #1e2b50;
+  font-size: 34px;
   font-weight: 800;
   letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-bottom {
   min-height: 32px;
-  color: #7d8ba2;
+  color: #8490a4;
   font-size: 11px;
   line-height: 1.5;
 }
@@ -775,8 +932,7 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-indigo {
-  background: linear-gradient(145deg, #fff 55%, #f0f2ff);
-  border-color: #dce3ff;
+  background: linear-gradient(145deg, #fff 64%, #f3f2ff);
 }
 
 .kpi-indigo .kpi-icon {
@@ -785,8 +941,7 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-blue {
-  background: linear-gradient(145deg, #fff 55%, #edf7ff);
-  border-color: #d8eaff;
+  background: linear-gradient(145deg, #fff 64%, #eff7ff);
 }
 
 .kpi-blue .kpi-icon {
@@ -795,8 +950,7 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-green {
-  background: linear-gradient(145deg, #fff 55%, #edfbf4);
-  border-color: #d6f1e3;
+  background: linear-gradient(145deg, #fff 64%, #effbf5);
 }
 
 .kpi-green .kpi-icon {
@@ -805,8 +959,7 @@ const projectsWithProgress = computed(() =>
 }
 
 .kpi-red {
-  background: linear-gradient(145deg, #fff 55%, #fff0f0);
-  border-color: #f5dddd;
+  background: linear-gradient(145deg, #fff 64%, #fff4f3);
 }
 
 .kpi-red .kpi-icon {
@@ -817,18 +970,18 @@ const projectsWithProgress = computed(() =>
 .grid-2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
 .content-card {
   min-width: 0;
-  padding: 24px;
+  padding: 22px;
   overflow: hidden;
   background: #fff;
   border: 1px solid var(--tf-border);
-  border-radius: 17px;
-  box-shadow: 0 5px 18px rgb(36 59 99 / 4%);
+  border-radius: 19px;
+  box-shadow: 0 5px 18px rgb(23 37 84 / 3%);
 }
 
 .section-header {
@@ -841,8 +994,8 @@ const projectsWithProgress = computed(() =>
 
 .section-header h2 {
   margin: 0;
-  color: #203557;
-  font-size: 16px;
+  color: #253354;
+  font-size: 15px;
   font-weight: 750;
 }
 
@@ -923,6 +1076,10 @@ const projectsWithProgress = computed(() =>
     padding: 22px;
   }
 
+  .hero-layout {
+    gap: 20px;
+  }
+
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -935,6 +1092,15 @@ const projectsWithProgress = computed(() =>
 @media (max-width: 700px) {
   .dashboard {
     padding: 15px;
+  }
+
+  .hero-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-completion {
+    width: fit-content;
+    min-width: 0;
   }
 
   .grid-2,
@@ -953,7 +1119,7 @@ const projectsWithProgress = computed(() =>
 
 @media (max-width: 600px) {
   .page-hero {
-    padding: 20px 16px;
+    padding: 23px 18px;
   }
 
   .hero-meta,
@@ -965,6 +1131,10 @@ const projectsWithProgress = computed(() =>
 
   .hero-description {
     font-size: 13px;
+  }
+
+  .hero-meta {
+    align-items: flex-start;
   }
 }
 

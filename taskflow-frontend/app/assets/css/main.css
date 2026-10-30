@@ -816,7 +816,6 @@ tr:last-child td {
 .admin-main {
   min-width: 0;
   min-height: 100vh;
-  margin-left: 258px;
 }
 
 .app-header {
@@ -1002,10 +1001,6 @@ tr:last-child td {
     width: 235px;
   }
 
-  .admin-main {
-    margin-left: 235px;
-  }
-
   .app-header {
     padding-right: 22px;
     padding-left: 22px;
@@ -1044,10 +1039,6 @@ tr:last-child td {
     z-index: 90;
     display: block;
     background: rgb(15 23 42 / 0.4);
-  }
-
-  .admin-main {
-    margin-left: 0;
   }
 
   .app-header {

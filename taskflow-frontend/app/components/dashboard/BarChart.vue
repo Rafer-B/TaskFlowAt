@@ -131,15 +131,15 @@ const ariaLabel = computed(() =>
 
 .chart-body {
   position: relative;
-  height: 220px;
-  padding: 12px 0 0 30px;
+  height: 224px;
+  padding: 10px 0 0 34px;
   box-sizing: border-box;
 }
 
 .y-axis {
   position: absolute;
   left: 0;
-  top: 12px;
+  top: 10px;
   bottom: 0;
   display: flex;
   flex-direction: column;
@@ -153,7 +153,7 @@ const ariaLabel = computed(() =>
 
 .grid-lines {
   position: absolute;
-  inset: 12px 0 0 30px;
+  inset: 10px 0 0 34px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -165,8 +165,8 @@ const ariaLabel = computed(() =>
   height: 1px;
   background: repeating-linear-gradient(
     90deg,
-    #e5eaf3 0 4px,
-    transparent 4px 8px
+    #e9edf5 0 3px,
+    transparent 3px 7px
   );
 }
 
@@ -175,25 +175,39 @@ const ariaLabel = computed(() =>
   z-index: 1;
   display: grid;
   height: 100%;
-  gap: 14px;
+  gap: 12px;
 }
 
 .column {
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   height: 100%;
 }
 
+.column::before {
+  position: absolute;
+  right: 50%;
+  bottom: 0;
+  width: min(100%, 46px);
+  height: 100%;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f8faff, #f3f6fb);
+  content: '';
+  transform: translateX(50%);
+}
+
 .bar {
   position: relative;
-  width: min(100%, 46px);
+  z-index: 1;
+  width: min(78%, 42px);
   min-height: 4px;
-  border-radius: 9px 9px 4px 4px;
-  background: linear-gradient(180deg, #bfdbfe, #93c5fd);
+  border-radius: 9px 9px 5px 5px;
+  background: linear-gradient(180deg, #a5b4fc, #818cf8);
   transform-origin: bottom;
-  animation: grow-y 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: filter 0.2s ease, background 0.2s ease;
+  animation: grow-y 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: filter 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .bar:hover {
@@ -201,22 +215,22 @@ const ariaLabel = computed(() =>
 }
 
 .bar.active {
-  background: linear-gradient(180deg, #60a5fa, #2563eb);
-  box-shadow: 0 8px 18px -8px rgb(37 99 235 / 45%);
+  background: linear-gradient(180deg, #67e8f9, #4f46e5 88%);
+  box-shadow: 0 9px 20px -9px rgb(79 70 229 / 60%);
 }
 
 .bar.empty {
   border-radius: 4px;
-  background: #e8edf5;
+  background: #dfe5ef;
   box-shadow: none;
 }
 
 .bar-value {
   position: absolute;
-  bottom: calc(100% + 7px);
+  bottom: calc(100% + 8px);
   left: 50%;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   transform: translateX(-50%);
   font-variant-numeric: tabular-nums;
@@ -224,27 +238,27 @@ const ariaLabel = computed(() =>
 }
 
 .bar.active .bar-value {
-  color: #2563eb;
+  color: #4338ca;
 }
 
 .axis {
   display: grid;
-  gap: 14px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 13px;
   text-align: center;
 }
 
 .axis span {
   overflow: hidden;
-  color: #8290a5;
+  color: #8b96aa;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .axis span.active {
-  color: #2563eb;
+  color: #4f46e5;
   font-weight: 700;
 }
 
@@ -283,15 +297,15 @@ const ariaLabel = computed(() =>
 @media (max-width: 520px) {
   .columns,
   .axis {
-    gap: 6px;
+    gap: 5px;
   }
 
   .chart-body {
-    padding-left: 24px;
+    padding-left: 27px;
   }
 
   .grid-lines {
-    left: 24px;
+    left: 27px;
   }
 }
 

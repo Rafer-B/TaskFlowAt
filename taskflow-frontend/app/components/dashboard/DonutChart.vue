@@ -90,18 +90,19 @@ const ariaLabel = computed(() =>
 
 .donut {
   display: grid;
-  grid-template-columns: minmax(150px, 210px) 1fr;
+  grid-template-columns: minmax(155px, 190px) 1fr;
   align-items: center;
-  gap: 30px;
+  gap: 24px;
   width: 100%;
 }
 
 .donut-figure {
   position: relative;
   width: 100%;
-  max-width: 210px;
+  max-width: 190px;
   aspect-ratio: 1;
   margin: auto;
+  filter: drop-shadow(0 8px 12px rgb(23 37 84 / 7%));
 }
 
 .donut-figure svg {
@@ -111,16 +112,17 @@ const ariaLabel = computed(() =>
 }
 
 .donut-track {
-  stroke: #edf1f7;
+  stroke: #edf0f7;
 }
 
 .donut-arc {
-  animation: donut-in 0.8s ease both;
-  transition: stroke-width 0.2s ease;
+  animation: donut-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: stroke-width 0.2s ease, filter 0.2s ease;
 }
 
 .donut-arc:hover {
   stroke-width: 13;
+  filter: brightness(1.08);
 }
 
 .donut-center {
@@ -134,21 +136,21 @@ const ariaLabel = computed(() =>
 }
 
 .donut-center strong {
-  color: #172b4d;
-  font-size: 36px;
+  color: #1e2b50;
+  font-size: 34px;
   font-weight: 800;
   line-height: 1;
 }
 
 .donut-center span {
   margin-top: 7px;
-  color: #8290a5;
+  color: #8994a8;
   font-size: 12px;
 }
 
 .donut-legend {
   display: grid;
-  gap: 15px;
+  gap: 13px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -157,25 +159,29 @@ const ariaLabel = computed(() =>
 
 .donut-legend li {
   display: grid;
-  grid-template-columns: 10px 1fr auto 42px;
+  grid-template-columns: 9px minmax(0, 1fr) auto 40px;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 9px;
+  font-size: 12px;
 }
 
 .dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
 .legend-label {
-  color: #526580;
+  overflow: hidden;
+  color: #64718a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .legend-value {
-  color: #172b4d;
+  color: #263656;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .legend-percent {
@@ -196,7 +202,7 @@ const ariaLabel = computed(() =>
   }
 
   .donut-figure {
-    width: 180px;
+    width: 170px;
   }
 }
 
