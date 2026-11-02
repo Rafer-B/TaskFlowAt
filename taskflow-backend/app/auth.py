@@ -9,6 +9,7 @@ from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.models.project_member import ProjectMember
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -83,3 +84,35 @@ def exigir_administrador(
             detail="Esta área está disponível apenas para administradores.",
         )
     return user
+
+
+def obter_papel_projeto(
+    db: Session,
+    project_id: int,
+    user: User,
+) -> str | None:
+    if user.role == "admin":
+        return "admin"
+
+    membership = db.get(ProjectMember, (project_id, user.id))
+    return membership.role if membership is not None else None
+
+
+def exigir_papel_projeto(
+    db: Session,
+    project_id: int,
+    user: User,
+    papeis_permitidos: set[str] | None = None,
+) -> str:
+    role = obter_papel_projeto(db, project_id, user)
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Projeto não encontrado.",
+        )
+    if papeis_permitidos is not None and role not in papeis_permitidos:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Não tem permissões suficientes para este projeto.",
+        )
+    return role

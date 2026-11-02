@@ -30,3 +30,10 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
+    team_id: int | None = None
+    current_user_role: Literal[
+        "admin",
+        "owner",
+        "contributor",
+        "viewer",
+    ] | None = None

@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    ForeignKey,
     Identity,
     String,
     Text,
@@ -60,4 +61,11 @@ class Project(Base):
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    team_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("teams.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )

@@ -1,10 +1,16 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import exigir_administrador, get_db, obter_utilizador_atual
+from app.auth import (
+    exigir_administrador,
+    exigir_papel_projeto,
+    get_db,
+    obter_utilizador_atual,
+)
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -14,6 +20,7 @@ from app.schemas.project import (
     ProjectResponse,
 )
 from app.schemas.project_member import (
+    ProjectMemberCandidate,
     ProjectMemberCreate,
     ProjectMemberUpdate,
     ProjectMemberResponse,
@@ -33,7 +40,7 @@ router = APIRouter(prefix="/projects", tags=["Projetos"])
 )
 def criar_projeto(
     dados: ProjectCreate,
-    current_user: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     utilizador = db.get(User, current_user.id)
@@ -72,7 +79,18 @@ def criar_projeto(
             detail="Não foi possível criar o projeto.",
         )
 
-    return projeto
+    return {
+        "id": projeto.id,
+        "name": projeto.name,
+        "description": projeto.description,
+        "status": projeto.status,
+        "created_by": projeto.created_by,
+        "created_at": projeto.created_at,
+        "updated_at": projeto.updated_at,
+        "archived_at": projeto.archived_at,
+        "team_id": projeto.team_id,
+        "current_user_role": "owner",
+    }
 
 
 @router.get("/", response_model=list[ProjectResponse])
@@ -81,12 +99,44 @@ def listar_projetos(
     db: Session = Depends(get_db),
 ):
     consulta = db.query(Project)
+    memberships: dict[int, str] = {}
     if current_user.role != "admin":
         consulta = consulta.join(
             ProjectMember,
             ProjectMember.project_id == Project.id,
         ).filter(ProjectMember.user_id == current_user.id)
-    return consulta.order_by(Project.id.desc()).all()
+    projects = consulta.order_by(Project.id.desc()).all()
+    if projects and current_user.role != "admin":
+        memberships = {
+            membership.project_id: membership.role
+            for membership in db.query(ProjectMember)
+            .filter(
+                ProjectMember.user_id == current_user.id,
+                ProjectMember.project_id.in_(
+                    [project.id for project in projects],
+                ),
+            )
+            .all()
+        }
+    return [
+        {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "status": project.status,
+            "created_by": project.created_by,
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+            "archived_at": project.archived_at,
+            "team_id": project.team_id,
+            "current_user_role": (
+                "admin"
+                if current_user.role == "admin"
+                else memberships.get(project.id)
+            ),
+        }
+        for project in projects
+    ]
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -103,22 +153,26 @@ def obter_projeto(
             detail="Projeto não encontrado.",
         )
 
-    if current_user.role != "admin":
-        membro = db.get(ProjectMember, (project_id, current_user.id))
-        if membro is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Projeto não encontrado.",
-            )
-
-    return projeto
+    papel = exigir_papel_projeto(db, project_id, current_user)
+    return {
+        "id": projeto.id,
+        "name": projeto.name,
+        "description": projeto.description,
+        "status": projeto.status,
+        "created_by": projeto.created_by,
+        "created_at": projeto.created_at,
+        "updated_at": projeto.updated_at,
+        "archived_at": projeto.archived_at,
+        "team_id": projeto.team_id,
+        "current_user_role": papel,
+    }
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 def atualizar_projeto(
     project_id: int,
     dados: ProjectUpdate,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -128,6 +182,13 @@ def atualizar_projeto(
             status_code=404,
             detail="Projeto não encontrado.",
         )
+
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
     alteracoes = dados.model_dump(exclude_unset=True)
 
@@ -164,7 +225,19 @@ def atualizar_projeto(
             detail="Não foi possível atualizar o projeto.",
         )
 
-    return projeto
+    papel = exigir_papel_projeto(db, project_id, current_user)
+    return {
+        "id": projeto.id,
+        "name": projeto.name,
+        "description": projeto.description,
+        "status": projeto.status,
+        "created_by": projeto.created_by,
+        "created_at": projeto.created_at,
+        "updated_at": projeto.updated_at,
+        "archived_at": projeto.archived_at,
+        "team_id": projeto.team_id,
+        "current_user_role": papel,
+    }
 
 
 @router.delete(
@@ -209,7 +282,7 @@ def eliminar_projeto(
 )
 def listar_membros(
     project_id: int,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -219,6 +292,7 @@ def listar_membros(
             status_code=404,
             detail="Projeto não encontrado.",
         )
+    exigir_papel_projeto(db, project_id, current_user)
 
     resultados = (
         db.query(ProjectMember, User)
@@ -242,6 +316,44 @@ def listar_membros(
     ]
 
 
+@router.get(
+    "/{project_id}/available-members",
+    response_model=list[ProjectMemberCandidate],
+)
+def listar_utilizadores_disponiveis(
+    project_id: int,
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
+    membros_atuais = select(ProjectMember.user_id).where(
+        ProjectMember.project_id == project_id,
+    )
+    utilizadores = (
+        db.query(User)
+        .filter(
+            User.is_active.is_(True),
+            ~User.id.in_(membros_atuais),
+        )
+        .order_by(User.name, User.id)
+        .all()
+    )
+    return [
+        {
+            "id": utilizador.id,
+            "name": utilizador.name,
+            "email": utilizador.email,
+            "avatar_url": utilizador.avatar_url,
+        }
+        for utilizador in utilizadores
+    ]
+
+
 @router.post(
     "/{project_id}/members",
     response_model=ProjectMemberResponse,
@@ -250,7 +362,7 @@ def listar_membros(
 def adicionar_membro(
     project_id: int,
     dados: ProjectMemberCreate,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -261,12 +373,28 @@ def adicionar_membro(
             detail="Projeto não encontrado.",
         )
 
-    utilizador = db.get(User, dados.user_id)
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
+
+    utilizador = (
+        db.get(User, dados.user_id)
+        if dados.user_id is not None
+        else db.query(User)
+        .filter(func.lower(User.email) == str(dados.email).lower())
+        .first()
+    )
 
     if utilizador is None:
         raise HTTPException(
             status_code=404,
-            detail="Utilizador não encontrado.",
+            detail=(
+                "Esta conta não existe no TaskFlow. "
+                "Peça a um administrador para criar a conta antes de a adicionar."
+            ),
         )
 
     if not utilizador.is_active:
@@ -277,7 +405,7 @@ def adicionar_membro(
 
     membro_existente = db.get(
         ProjectMember,
-        (project_id, dados.user_id),
+        (project_id, utilizador.id),
     )
 
     if membro_existente is not None:
@@ -288,7 +416,7 @@ def adicionar_membro(
 
     membro = ProjectMember(
         project_id=project_id,
-        user_id=dados.user_id,
+        user_id=utilizador.id,
         role=dados.role,
     )
 
@@ -323,7 +451,7 @@ def atualizar_responsabilidade(
     project_id: int,
     user_id: int,
     dados: ProjectMemberUpdate,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     membro = db.get(
@@ -336,8 +464,14 @@ def atualizar_responsabilidade(
             status_code=404,
             detail="Membro não encontrado neste projeto.",
         )
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
-    if membro.role == "owner" and dados.role == "member":
+    if membro.role == "owner" and dados.role != "owner":
         total_owners = (
             db.query(ProjectMember)
             .filter(
@@ -395,7 +529,7 @@ def atualizar_responsabilidade(
 def remover_membro(
     project_id: int,
     user_id: int,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     membro = db.get(
@@ -408,6 +542,12 @@ def remover_membro(
             status_code=404,
             detail="Membro não encontrado neste projeto.",
         )
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
     if membro.role == "owner":
         total_owners = (

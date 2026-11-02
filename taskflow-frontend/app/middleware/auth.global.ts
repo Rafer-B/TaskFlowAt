@@ -22,18 +22,18 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const user = await auth.carregarUtilizador()
 
     if (isLoginPage) {
-      return navigateTo(user.role === 'admin' ? '/' : '/my-work')
+      return navigateTo(user.role === 'admin' ? '/' : '/front-office')
     }
 
-    const backOfficePaths = ['/', '/projects', '/tasks', '/users', '/settings']
-    const isBackOffice = backOfficePaths.some(
+    const adminOnlyPaths = ['/', '/users', '/settings']
+    const isAdminOnly = adminOnlyPaths.some(
       (path) =>
         to.path === path ||
         (path !== '/' && to.path.startsWith(`${path}/`)),
     )
 
-    if (isBackOffice && user.role !== 'admin') {
-      return navigateTo('/my-work')
+    if (isAdminOnly && user.role !== 'admin') {
+      return navigateTo(to.path === '/' ? '/front-office' : '/projects')
     }
   } catch (error) {
     console.error('Não foi possível validar a sessão:', error)

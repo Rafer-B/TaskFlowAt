@@ -3,7 +3,7 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import exigir_administrador, get_db
+from app.auth import exigir_papel_projeto, get_db, obter_utilizador_atual
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -23,7 +23,7 @@ router = APIRouter(
 @router.get("/", response_model=list[ProjectMemberResponse])
 def list_project_members(
     project_id: int,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
     project = db.get(Project, project_id)
@@ -33,6 +33,7 @@ def list_project_members(
             status_code=404,
             detail="Projeto não encontrado."
         )
+    exigir_papel_projeto(db, project_id, current_user)
 
     statement = (
         select(ProjectMember, User)
@@ -64,7 +65,7 @@ def list_project_members(
 def add_project_member(
     project_id: int,
     data: ProjectMemberCreate,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
     project = db.get(Project, project_id)
@@ -74,13 +75,28 @@ def add_project_member(
             status_code=404,
             detail="Projeto não encontrado."
         )
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
-    user = db.get(User, data.user_id)
+    user = (
+        db.get(User, data.user_id)
+        if data.user_id is not None
+        else db.query(User)
+        .filter(func.lower(User.email) == str(data.email).lower())
+        .first()
+    )
 
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="Utilizador não encontrado."
+            detail=(
+                "Esta conta não existe no TaskFlow. "
+                "Peça a um administrador para criar a conta antes de a adicionar."
+            )
         )
 
     if not user.is_active:
@@ -91,7 +107,7 @@ def add_project_member(
 
     existing_member = db.get(
         ProjectMember,
-        (project_id, data.user_id)
+        (project_id, user.id)
     )
 
     if existing_member:
@@ -102,7 +118,7 @@ def add_project_member(
 
     member = ProjectMember(
         project_id=project_id,
-        user_id=data.user_id,
+        user_id=user.id,
         role=data.role
     )
 
@@ -133,7 +149,7 @@ def update_project_member_role(
     project_id: int,
     user_id: int,
     data: ProjectMemberRoleUpdate,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
     member = db.get(ProjectMember, (project_id, user_id))
@@ -143,6 +159,12 @@ def update_project_member_role(
             status_code=404,
             detail="Membro não encontrado neste projeto."
         )
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
     if member.role == "owner" and data.role != "owner":
         owners_count = db.scalar(
@@ -181,7 +203,7 @@ def update_project_member_role(
 def remove_project_member(
     project_id: int,
     user_id: int,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
     member = db.get(ProjectMember, (project_id, user_id))
@@ -191,6 +213,12 @@ def remove_project_member(
             status_code=404,
             detail="Membro não encontrado neste projeto."
         )
+    exigir_papel_projeto(
+        db,
+        project_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
     if member.role == "owner":
         owners_count = db.scalar(

@@ -13,14 +13,7 @@ interface ProjetoAPI {
   created_at: string
   updated_at: string
   archived_at: string | null
-}
-
-interface UtilizadorAPI {
-  id: number
-  name: string
-  email: string
-  is_active: boolean
-  created_at: string
+  current_user_role: 'admin' | 'owner' | 'contributor' | 'viewer'
 }
 
 interface MembroAPI {
@@ -29,7 +22,14 @@ interface MembroAPI {
   name: string
   email: string
   is_active: boolean
-  role: 'owner' | 'member'
+  role: 'owner' | 'contributor' | 'viewer'
+  avatar_url: string | null
+}
+
+interface UtilizadorDisponivelAPI {
+  id: number
+  name: string
+  email: string
   avatar_url: string | null
 }
 
@@ -43,6 +43,7 @@ interface Projeto {
   description: string
   status: EstadoProjeto
   createdAt: string
+  currentUserRole: ProjetoAPI['current_user_role']
 }
 
 const config = useRuntimeConfig()
@@ -87,10 +88,10 @@ const sucesso = ref('')
 const mostrarModalMembros = ref(false)
 const projetoMembros = ref<Projeto | null>(null)
 const membros = ref<MembroAPI[]>([])
-const utilizadores = ref<UtilizadorAPI[]>([])
+const utilizadoresDisponiveis = ref<UtilizadorDisponivelAPI[]>([])
 
 const carregandoMembros = ref(false)
-const carregandoUtilizadores = ref(false)
+const carregandoUtilizadoresDisponiveis = ref(false)
 const aAdicionarMembro = ref(false)
 const membroEmAtualizacao = ref<number | null>(null)
 const membroEmRemocao = ref<number | null>(null)
@@ -100,24 +101,21 @@ const sucessoMembros = ref('')
 
 const novoMembro = ref({
   user_id: '',
-  role: 'member' as 'owner' | 'member',
-})
-
-const utilizadoresDisponiveis = computed(() => {
-  const idsAssociados = new Set(
-    membros.value.map(membro => membro.user_id),
-  )
-
-  return utilizadores.value.filter(
-    utilizador =>
-      utilizador.is_active &&
-      !idsAssociados.has(utilizador.id),
-  )
+  role: 'contributor' as 'owner' | 'contributor' | 'viewer',
 })
 
 const totalOwners = computed(
   () => membros.value.filter(membro => membro.role === 'owner').length,
 )
+
+const podeGerirProjeto = (projeto: Projeto): boolean =>
+  auth.user.value?.role === 'admin' ||
+  projeto.currentUserRole === 'owner'
+
+const podeCriarTarefas = (projeto: Projeto): boolean =>
+  auth.user.value?.role === 'admin' ||
+  projeto.currentUserRole === 'owner' ||
+  projeto.currentUserRole === 'contributor'
 
 // --------------------------------------------------
 // ESTADOS DOS PROJETOS
@@ -142,6 +140,7 @@ function converterProjeto(projeto: ProjetoAPI): Projeto {
     description: projeto.description ?? '',
     status: estadosAPI[projeto.status],
     createdAt: projeto.created_at,
+    currentUserRole: projeto.current_user_role,
   }
 }
 
@@ -183,6 +182,16 @@ function classeEstado(estado: EstadoProjeto): string {
   }
 
   return classes[estado]
+}
+
+function nomePapelProjeto(papel: ProjetoAPI['current_user_role']): string {
+  const nomes: Record<ProjetoAPI['current_user_role'], string> = {
+    admin: 'Administrador',
+    owner: 'Responsável',
+    contributor: 'Colaborador',
+    viewer: 'Observador',
+  }
+  return nomes[papel]
 }
 
 // --------------------------------------------------
@@ -485,24 +494,6 @@ async function eliminarProjeto(projeto: Projeto) {
 }
 
 // --------------------------------------------------
-// CARREGAR UTILIZADORES
-// --------------------------------------------------
-
-async function carregarUtilizadores() {
-  carregandoUtilizadores.value = true
-
-  try {
-    utilizadores.value = await api<UtilizadorAPI[]>('/users/')
-  } catch (error) {
-    console.error('Erro ao carregar utilizadores:', error)
-    erroMembros.value = 'Não foi possível carregar os utilizadores registados.'
-    erro.value = 'Não foi possível carregar os utilizadores para selecionar o criador.'
-  } finally {
-    carregandoUtilizadores.value = false
-  }
-}
-
-// --------------------------------------------------
 // ABRIR E FECHAR GESTÃO DE MEMBROS
 // --------------------------------------------------
 
@@ -513,21 +504,20 @@ async function abrirMembros(projeto: Projeto) {
   membros.value = []
   novoMembro.value = {
     user_id: '',
-    role: 'member',
+    role: 'contributor',
   }
+  utilizadoresDisponiveis.value = []
 
   erroMembros.value = ''
   sucessoMembros.value = ''
 
-  await Promise.all([
-    carregarMembros(),
-    carregarUtilizadores(),
-  ])
+  await carregarMembros()
 }
 
 function fecharMembros() {
   if (
     carregandoMembros.value ||
+    carregandoUtilizadoresDisponiveis.value ||
     aAdicionarMembro.value ||
     membroEmAtualizacao.value !== null ||
     membroEmRemocao.value !== null
@@ -538,6 +528,7 @@ function fecharMembros() {
   mostrarModalMembros.value = false
   projetoMembros.value = null
   membros.value = []
+  utilizadoresDisponiveis.value = []
   erroMembros.value = ''
   sucessoMembros.value = ''
 }
@@ -550,18 +541,51 @@ async function carregarMembros() {
   if (!projetoMembros.value) return
 
   carregandoMembros.value = true
+  carregandoUtilizadoresDisponiveis.value = true
   erroMembros.value = ''
 
   try {
-    membros.value = await api<MembroAPI[]>(
-      `/projects/${projetoMembros.value.id}/members`,
-    )
+    const projectId = projetoMembros.value.id
+    const [membrosProjeto, utilizadoresProjeto] = await Promise.all([
+      api<MembroAPI[]>(`/projects/${projectId}/members`),
+      api<UtilizadorDisponivelAPI[]>(
+        `/projects/${projectId}/available-members`,
+      ),
+    ])
+    membros.value = membrosProjeto
+    utilizadoresDisponiveis.value = utilizadoresProjeto
+    erroMembros.value = ''
   } catch (error) {
     console.error('Erro ao carregar membros:', error)
-    erroMembros.value = 'Não foi possível carregar os membros deste projeto.'
+    erroMembros.value = mensagemErroMembro(error)
   } finally {
     carregandoMembros.value = false
+    carregandoUtilizadoresDisponiveis.value = false
   }
+}
+
+function mensagemErroMembro(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'detail' in data
+    ) {
+      if (typeof data.detail === 'string') return data.detail
+      if (Array.isArray(data.detail)) {
+        const primeiraMensagem = data.detail.find(
+          (item): item is { msg: string } =>
+            typeof item === 'object' &&
+            item !== null &&
+            'msg' in item &&
+            typeof item.msg === 'string',
+        )
+        if (primeiraMensagem) return primeiraMensagem.msg
+      }
+    }
+  }
+  return 'Não foi possível concluir a operação. Confirma a ligação e as permissões.'
 }
 
 // --------------------------------------------------
@@ -574,8 +598,12 @@ async function adicionarMembro() {
   erroMembros.value = ''
   sucessoMembros.value = ''
 
-  if (!novoMembro.value.user_id) {
-    erroMembros.value = 'Seleciona um utilizador para adicionar.'
+  const userId = Number(novoMembro.value.user_id)
+  const utilizadorSelecionado = utilizadoresDisponiveis.value.find(
+    utilizador => utilizador.id === userId,
+  )
+  if (!utilizadorSelecionado) {
+    erroMembros.value = 'Seleciona uma conta existente e ativa.'
     return
   }
 
@@ -587,7 +615,7 @@ async function adicionarMembro() {
       {
         method: 'POST',
         body: {
-          user_id: Number(novoMembro.value.user_id),
+          user_id: userId,
           role: novoMembro.value.role,
         },
       },
@@ -597,21 +625,14 @@ async function adicionarMembro() {
 
     novoMembro.value = {
       user_id: '',
-      role: 'member',
+      role: 'contributor',
     }
 
     sucessoMembros.value = 'Utilizador adicionado ao projeto com sucesso.'
+    await carregarMembros()
   } catch (error: unknown) {
     console.error('Erro ao adicionar membro:', error)
-
-    const resposta = error as {
-      statusCode?: number
-      data?: { detail?: string }
-    }
-
-    erroMembros.value =
-      resposta.data?.detail ||
-      'Não foi possível adicionar o utilizador ao projeto.'
+    erroMembros.value = mensagemErroMembro(error)
   } finally {
     aAdicionarMembro.value = false
   }
@@ -623,7 +644,7 @@ async function adicionarMembro() {
 
 async function alterarResponsabilidade(
   membro: MembroAPI,
-  novoRole: 'owner' | 'member',
+  novoRole: 'owner' | 'contributor' | 'viewer',
 ) {
   if (!projetoMembros.value) return
   if (membro.role === novoRole) return
@@ -701,6 +722,7 @@ async function removerMembro(membro: MembroAPI) {
     )
 
     sucessoMembros.value = 'Membro removido do projeto com sucesso.'
+    await carregarMembros()
   } catch (error: unknown) {
     console.error('Erro ao remover membro:', error)
 
@@ -731,8 +753,8 @@ onMounted(carregarProjetos)
           <span>Projetos</span>
         </div>
 
-        <h1>Gestão de projetos</h1>
-        <p>Organiza, acompanha e gere todos os teus projetos num único lugar.</p>
+        <h1>Projetos</h1>
+        <p>Cria projetos, organiza equipas e acompanha o trabalho colaborativo.</p>
       </div>
 
       <button class="primary-button" @click="abrirCriacao">
@@ -890,9 +912,9 @@ onMounted(carregarProjetos)
     <section class="projects-section">
       <div class="section-heading">
         <div>
-          <span class="eyebrow">GESTÃO</span>
+          <span class="eyebrow">ESPAÇO DE TRABALHO</span>
           <h2>Os teus projetos</h2>
-          <p>Consulta e administra os projetos registados.</p>
+          <p>Consulta os projetos de que fazes parte e acompanha as respetivas tarefas.</p>
         </div>
 
         <span class="results-count">
@@ -993,10 +1015,15 @@ onMounted(carregarProjetos)
               <small>Estado atual</small>
               <strong>{{ projeto.status }}</strong>
             </div>
+            <div>
+              <small>O teu papel</small>
+              <strong>{{ nomePapelProjeto(projeto.currentUserRole) }}</strong>
+            </div>
           </div>
 
           <div class="card-actions">
             <button
+              v-if="podeGerirProjeto(projeto)"
               class="action-button edit-action"
               type="button"
               @click="abrirEdicao(projeto)"
@@ -1006,11 +1033,20 @@ onMounted(carregarProjetos)
             </button>
 
             <NuxtLink
+              v-if="podeCriarTarefas(projeto)"
               :to="`/tasks?project=${projeto.id}`"
               class="action-button tasks-action"
             >
               <span>▤</span>
               Tarefas
+            </NuxtLink>
+            <NuxtLink
+              v-else
+              :to="`/tasks?project=${projeto.id}`"
+              class="action-button tasks-action"
+            >
+              <span>▤</span>
+              Ver tarefas
             </NuxtLink>
 
             <button
@@ -1025,7 +1061,7 @@ onMounted(carregarProjetos)
 
           <div class="state-actions">
             <button
-              v-if="projeto.status === 'Ativo'"
+              v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
               type="button"
               class="state-button complete-action"
               :disabled="aAtualizarEstado === projeto.id"
@@ -1035,7 +1071,7 @@ onMounted(carregarProjetos)
             </button>
 
             <button
-              v-if="projeto.status === 'Ativo' || projeto.status === 'Concluído'"
+              v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
               type="button"
               class="state-button archive-action"
               :disabled="aAtualizarEstado === projeto.id"
@@ -1045,7 +1081,7 @@ onMounted(carregarProjetos)
             </button>
 
             <button
-              v-if="projeto.status !== 'Ativo'"
+              v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
               type="button"
               class="state-button reactivate-action"
               :disabled="aAtualizarEstado === projeto.id"
@@ -1055,6 +1091,7 @@ onMounted(carregarProjetos)
             </button>
 
             <button
+              v-if="auth.user.value?.role === 'admin'"
               type="button"
               class="delete-action"
               :disabled="aEliminar"
@@ -1182,6 +1219,9 @@ onMounted(carregarProjetos)
                   <div class="member-information">
                     <strong>{{ membro.name }}</strong>
                     <span>{{ membro.email }}</span>
+                    <small class="project-role-label">
+                      {{ nomePapelProjeto(membro.role) }}
+                    </small>
                     <small v-if="!membro.is_active" class="inactive-label">
                       Conta inativa
                     </small>
@@ -1189,16 +1229,19 @@ onMounted(carregarProjetos)
 
                   <div class="member-controls">
                     <select
+                      v-if="projetoMembros && podeGerirProjeto(projetoMembros)"
                       :value="membro.role"
                       :disabled="membroEmAtualizacao === membro.user_id || membroEmRemocao === membro.user_id || !membro.is_active"
                       :aria-label="`Responsabilidade de ${membro.name}`"
-                      @change="alterarResponsabilidade(membro, ($event.target as HTMLSelectElement).value as 'owner' | 'member')"
+                      @change="alterarResponsabilidade(membro, ($event.target as HTMLSelectElement).value as 'owner' | 'contributor' | 'viewer')"
                     >
-                      <option value="owner">Owner</option>
-                      <option value="member">Member</option>
+                      <option value="owner">Responsável</option>
+                      <option value="contributor">Colaborador</option>
+                      <option value="viewer">Observador</option>
                     </select>
 
                     <button
+                      v-if="projetoMembros && podeGerirProjeto(projetoMembros)"
                       type="button"
                       class="remove-member-button"
                       :disabled="membroEmRemocao === membro.user_id || membroEmAtualizacao === membro.user_id"
@@ -1214,23 +1257,36 @@ onMounted(carregarProjetos)
             </div>
 
             <!-- ADICIONAR MEMBRO -->
-            <div class="add-member-section">
+            <div
+              v-if="projetoMembros && podeGerirProjeto(projetoMembros)"
+              class="add-member-section"
+            >
               <div class="members-section-title">
                 <h3>Adicionar utilizador</h3>
               </div>
 
-              <div v-if="carregandoUtilizadores" class="members-loading">
+              <div v-if="carregandoUtilizadoresDisponiveis" class="members-loading">
                 <span class="spinner" />
-                <p>A carregar utilizadores...</p>
+                <p>A carregar contas existentes...</p>
               </div>
 
-              <div v-else-if="utilizadoresDisponiveis.length === 0" class="members-empty compact-empty">
-                <p>Não existem outros utilizadores ativos disponíveis para adicionar.</p>
+              <div
+                v-else-if="utilizadoresDisponiveis.length === 0"
+                class="members-empty compact-empty"
+              >
+                <p>Não há outras contas ativas disponíveis para este projeto.</p>
+                <small>
+                  Contas novas têm de ser criadas primeiro por um administrador.
+                </small>
               </div>
 
-              <form v-else class="add-member-form" @submit.prevent="adicionarMembro">
+              <form
+                v-else
+                class="add-member-form"
+                @submit.prevent="adicionarMembro"
+              >
                 <div class="form-field">
-                  <label for="member-user">Utilizador</label>
+                  <label for="member-user">Conta existente</label>
                   <select
                     id="member-user"
                     v-model="novoMembro.user_id"
@@ -1253,8 +1309,9 @@ onMounted(carregarProjetos)
                     id="member-role"
                     v-model="novoMembro.role"
                   >
-                    <option value="member">Member</option>
-                    <option value="owner">Owner</option>
+                    <option value="contributor">Colaborador</option>
+                    <option value="viewer">Observador</option>
+                    <option value="owner">Responsável</option>
                   </select>
                 </div>
 
@@ -1430,19 +1487,19 @@ onMounted(carregarProjetos)
   gap: 9px;
   min-height: 44px;
   padding: 0 18px;
-  border: 1px solid #4f46e5;
+  border: 1px solid var(--tf-primary-hover);
   border-radius: 11px;
-  background: linear-gradient(135deg, #5b5ce2, #4338ca);
+  background: linear-gradient(135deg, var(--tf-primary), var(--tf-primary-hover));
   color: white;
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
-  box-shadow: 0 7px 16px -8px rgb(67 56 202 / 62%);
+  box-shadow: 0 7px 16px -8px rgb(69 79 201 / 62%);
   transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
 }
 
 .primary-button:hover {
-  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  background: linear-gradient(135deg, var(--tf-primary-hover), #3730a3);
   transform: translateY(-1px);
   box-shadow: 0 10px 20px -8px rgb(67 56 202 / 62%);
 }
@@ -2303,6 +2360,12 @@ onMounted(carregarProjetos)
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-role-label {
+  color: #4f46e5;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .inactive-label {

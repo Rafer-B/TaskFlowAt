@@ -690,12 +690,13 @@ onMounted(carregarUtilizadores)
 
 .primary-button {
   color: #fff;
-  background: #4164dc;
-  border: 1px solid #4164dc;
+  background: linear-gradient(135deg, var(--tf-primary), var(--tf-primary-hover));
+  border: 1px solid var(--tf-primary-hover);
+  font-size: 13px;
 }
 
 .primary-button:hover:not(:disabled) {
-  background: #3152c2;
+  background: linear-gradient(135deg, var(--tf-primary-hover), #3730a3);
 }
 
 .primary-button:disabled,
@@ -847,7 +848,7 @@ th {
 td {
   padding: 15px 20px;
   border-top: 1px solid #edf0f5;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 

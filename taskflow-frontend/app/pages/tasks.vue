@@ -43,6 +43,7 @@ interface ProjetoAPI {
   created_at: string
   updated_at: string
   archived_at: string | null
+  current_user_role: 'admin' | 'owner' | 'contributor' | 'viewer'
 }
 
 interface UtilizadorAPI {
@@ -59,7 +60,7 @@ interface MembroAPI {
   name: string
   email: string
   is_active: boolean
-  role: 'owner' | 'member'
+  role: 'owner' | 'contributor' | 'viewer'
   avatar_url?: string | null
 }
 
@@ -103,6 +104,7 @@ interface ProjetoOpcao {
   name: string
   status: ProjetoAPI['status']
   created_by: number
+  current_user_role: ProjetoAPI['current_user_role']
 }
 
 interface FormularioTarefa {
@@ -251,13 +253,33 @@ const novaTarefa = ref<FormularioTarefa>({
 
 const projetosAtivos = computed(() =>
   projetosDisponiveis.value.filter(
-    (projeto) => projeto.status === 'active',
+    (projeto) =>
+      projeto.status === 'active' &&
+      podeEditarTarefasDoProjeto(projeto.id),
   ),
 )
 
+const podeCriarTarefa = computed(() => projetosAtivos.value.length > 0)
+
+function papelNoProjeto(projectId: number): ProjetoAPI['current_user_role'] | null {
+  return projetosDisponiveis.value.find(
+    (project) => project.id === projectId,
+  )?.current_user_role ?? null
+}
+
+function podeEditarTarefasDoProjeto(projectId: number): boolean {
+  return auth.user.value?.role === 'admin' ||
+    ['owner', 'contributor'].includes(papelNoProjeto(projectId) ?? '')
+}
+
+function podeEliminarTarefa(tarefa: Tarefa): boolean {
+  return auth.user.value?.role === 'admin' ||
+    papelNoProjeto(tarefa.projectId) === 'owner'
+}
+
 const membrosAtivos = computed(() =>
   membrosProjeto.value.filter(
-    (membro) => membro.is_active,
+    (membro) => membro.is_active && membro.role !== 'viewer',
   ),
 )
 
@@ -512,13 +534,8 @@ async function carregarDados() {
   carregando.value = true
 
   try {
-    const [
-      listaProjetos,
-      listaUtilizadores,
-      listaTarefas,
-    ] = await Promise.all([
+    const [listaProjetos, listaTarefas] = await Promise.all([
       api<ProjetoAPI[]>('/projects/'),
-      api<UtilizadorAPI[]>('/users/'),
       api<TarefaAPI[]>('/tasks/'),
     ])
 
@@ -527,11 +544,29 @@ async function carregarDados() {
       name: projeto.name,
       status: projeto.status,
       created_by: projeto.created_by,
+      current_user_role: projeto.current_user_role,
     }))
 
-    utilizadores.value = listaUtilizadores.filter(
-      (utilizador) => utilizador.is_active,
+    const membrosDosProjetos = await Promise.all(
+      listaProjetos.map((projeto) =>
+        api<MembroAPI[]>(`/projects/${projeto.id}/members`),
+      ),
     )
+    const membrosUnicos = new Map<number, UtilizadorAPI>()
+    for (const membros of membrosDosProjetos) {
+      for (const membro of membros) {
+        if (membro.is_active) {
+          membrosUnicos.set(membro.user_id, {
+            id: membro.user_id,
+            name: membro.name,
+            email: membro.email,
+            is_active: membro.is_active,
+            created_at: '',
+          })
+        }
+      }
+    }
+    utilizadores.value = [...membrosUnicos.values()]
 
     tarefas.value = listaTarefas.map(converterTarefa)
 
@@ -753,6 +788,12 @@ async function alterarEstado(
   if (!estados.includes(novoEstado)) return
   if (novoEstado === estadoAnterior) return
 
+  if (!podeEditarTarefasDoProjeto(tarefa.projectId)) {
+    erro.value = 'O teu papel neste projeto permite apenas consultar as tarefas.'
+    if (elemento) elemento.value = estadoAnterior
+    return
+  }
+
   if (tarefa.projectStatus === 'archived') {
     erro.value = 'Não é possível alterar tarefas de projetos arquivados.'
     if (elemento) elemento.value = estadoAnterior
@@ -838,7 +879,10 @@ function obterMensagemErro(error: unknown): string {
 }
 
 function iniciarArrasto(evento: DragEvent, tarefa: Tarefa): void {
-  if (tarefa.projectStatus === 'archived') {
+  if (
+    tarefa.projectStatus === 'archived' ||
+    !podeEditarTarefasDoProjeto(tarefa.projectId)
+  ) {
     evento.preventDefault()
     return
   }
@@ -901,6 +945,10 @@ async function eliminarTarefa(tarefa: Tarefa) {
 
   if (tarefa.projectStatus === 'archived') {
     erro.value = 'Não é possível eliminar tarefas de projetos arquivados.'
+    return
+  }
+  if (!podeEliminarTarefa(tarefa)) {
+    erro.value = 'Apenas um responsável do projeto pode eliminar tarefas.'
     return
   }
 
@@ -1004,8 +1052,8 @@ onMounted(() => {
     <!-- CABEÇALHO -->
     <header class="page-header">
       <div>
-        <NuxtLink to="/" class="back-link">
-          ← Voltar ao painel
+        <NuxtLink to="/projects" class="back-link">
+          ← Voltar aos projetos
         </NuxtLink>
 
         <h1>Tarefas</h1>
@@ -1016,6 +1064,7 @@ onMounted(() => {
       </div>
 
       <button
+        v-if="podeCriarTarefa"
         class="primary-button"
         type="button"
         @click="abrirFormularioCriar()"
@@ -1147,7 +1196,13 @@ onMounted(() => {
                 :key="membro.user_id"
                 :value="String(membro.user_id)"
               >
-                {{ membro.name }} — {{ membro.role === 'owner' ? 'Responsável' : 'Membro' }}
+                {{ membro.name }} —
+                {{ membro.role === 'owner'
+                  ? 'Responsável'
+                  : membro.role === 'viewer'
+                    ? 'Observador'
+                    : 'Colaborador'
+                }}
               </option>
             </select>
 
@@ -1274,6 +1329,7 @@ onMounted(() => {
 
       <div class="filters">
         <button
+          v-if="podeCriarTarefa"
           class="new-task-button"
           type="button"
           @click="abrirFormularioCriar()"
@@ -1376,6 +1432,7 @@ onMounted(() => {
               <span>{{ coluna.estado }}</span>
               <span class="column-count">{{ coluna.tarefas.length }}</span>
               <button
+                v-if="podeCriarTarefa"
                 type="button"
                 :aria-label="`Criar tarefa em ${coluna.estado}`"
                 title="Criar tarefa nesta coluna"
@@ -1400,7 +1457,10 @@ onMounted(() => {
                     'card-archived': tarefa.projectStatus === 'archived',
                   },
                 ]"
-                :draggable="tarefa.projectStatus !== 'archived'"
+                :draggable="
+                  tarefa.projectStatus !== 'archived' &&
+                  podeEditarTarefasDoProjeto(tarefa.projectId)
+                "
                 @click="consultarTarefa(tarefa)"
                 @keydown.enter.prevent="consultarTarefa(tarefa)"
                 @keydown.space.prevent="consultarTarefa(tarefa)"
@@ -1513,7 +1573,10 @@ onMounted(() => {
               class="detail-status-select"
               :class="classeEstado(tarefaSelecionada.status)"
               :value="tarefaSelecionada.status"
-              :disabled="tarefaSelecionada.projectStatus === 'archived'"
+              :disabled="
+                tarefaSelecionada.projectStatus === 'archived' ||
+                !podeEditarTarefasDoProjeto(tarefaSelecionada.projectId)
+              "
               :aria-label="`Alterar estado de ${tarefaSelecionada.title}`"
               @change="alterarEstadoPorEvento(tarefaSelecionada, $event)"
             >
@@ -1562,6 +1625,7 @@ onMounted(() => {
 
         <footer class="details-actions">
           <button
+            v-if="podeEliminarTarefa(tarefaSelecionada)"
             type="button"
             class="delete-task-button"
             :disabled="
@@ -1582,7 +1646,10 @@ onMounted(() => {
           </button>
 
           <button
-            v-if="tarefaSelecionada.projectStatus !== 'archived'"
+            v-if="
+              tarefaSelecionada.projectStatus !== 'archived' &&
+              podeEditarTarefasDoProjeto(tarefaSelecionada.projectId)
+            "
             type="button"
             class="primary-button"
             @click="editarTarefa(tarefaSelecionada)"
@@ -1671,13 +1738,13 @@ onMounted(() => {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, #5b5ce2, #4338ca);
+  background: linear-gradient(135deg, var(--tf-primary), var(--tf-primary-hover));
   color: white;
-  box-shadow: 0 7px 16px -8px rgb(67 56 202 / 62%);
+  box-shadow: 0 7px 16px -8px rgb(69 79 201 / 62%);
 }
 
 .primary-button:hover {
-  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  background: linear-gradient(135deg, var(--tf-primary-hover), #3730a3);
   transform: translateY(-1px);
   box-shadow: 0 10px 20px -8px rgb(67 56 202 / 62%);
 }
@@ -1991,20 +2058,20 @@ onMounted(() => {
   gap: 6px;
   padding: 0 13px;
   color: #fff;
-  background: linear-gradient(135deg, #2788f5, #176bd1);
-  border: 1px solid #176bd1;
+  background: linear-gradient(135deg, var(--tf-primary), var(--tf-primary-hover));
+  border: 1px solid var(--tf-primary-hover);
   border-radius: 9px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 5px 12px -7px rgb(23 107 209 / 70%);
+  box-shadow: 0 5px 12px -7px rgb(69 79 201 / 70%);
   transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
 
 .new-task-button:hover {
-  background: linear-gradient(135deg, #1878e6, #125bb5);
+  background: linear-gradient(135deg, var(--tf-primary-hover), #3730a3);
   transform: translateY(-1px);
-  box-shadow: 0 8px 14px -8px rgb(23 107 209 / 70%);
+  box-shadow: 0 8px 14px -8px rgb(69 79 201 / 70%);
 }
 
 .new-task-button > span {

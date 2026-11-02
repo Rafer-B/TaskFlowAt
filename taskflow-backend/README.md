@@ -67,9 +67,45 @@ first administrator and hashes the password locally. This explicit command is
 the only unauthenticated bootstrap path; do not expose it as an API endpoint.
 
 Administrators can access both offices, create accounts and assign either
-profile. Members can only access the front-office and update the status of
-tasks assigned to them. Role authorization is enforced by FastAPI as well as by
-the frontend route middleware.
+platform profile. Any authenticated user can access the collaborative workspace
+and create a project; its creator becomes the project owner. Project owners can
+edit and archive their projects, add registered users to the team, manage
+project roles, create tasks and assign them to project members. Contributors
+can create and manage project tasks and document work. Viewers can consult
+project tasks and their history but cannot modify them or be assigned tasks.
+Only platform administrators can permanently delete projects; project owners
+can archive them instead. Project membership and role authorization are
+enforced by the API.
+
+The project member selector lists active registered accounts that are not
+already part of the project. New accounts must first be created by a platform
+administrator; an unknown email cannot be added as a project member.
+
+Apply migration `20261102_0005` with `alembic upgrade head` to add contributor
+and viewer roles. Existing project `member` roles are migrated to
+`contributor`.
+
+## Calendário e eventos
+
+The authenticated calendar endpoint is `/calendar/events/`. Users can create
+personal events or share events with a project where they are an owner or
+contributor. Users see their own personal events and events for projects they
+belong to; administrators can manage all events. Event creators and project
+owners can update or delete project events, while personal events can only be
+managed by their creator or an administrator.
+
+Apply migration `20261102_0006` with `alembic upgrade head` to create the
+calendar events table.
+
+## Equipas
+
+As equipas do workspace podem reunir membros e ter vários projetos associados;
+cada projeto pode pertencer a uma equipa. Administradores e responsáveis de
+projetos podem criar e gerir equipas. Os membros de uma equipa não são
+adicionados automaticamente aos projetos associados, nem recebem permissões
+de projeto; essas permissões continuam a ser geridas em **Projetos → Membros**.
+Os membros da equipa e os membros dos projetos associados podem consultar a
+equipa. Aplique a migração `20261102_0007` com `alembic upgrade head`.
 
 ## Registo de trabalho e anexos
 
@@ -79,8 +115,8 @@ ficheiros por registo, com um máximo de 10 MB por ficheiro e 25 MB no total.
 São aceites PDF, PNG/JPG/WEBP, TXT, MD, CSV, DOCX e XLSX.
 
 Os registos ficam associados ao utilizador autenticado. Apenas um
-administrador ou o membro atribuído à tarefa pode consultar o histórico e
-descarregar os anexos. Os ficheiros são guardados em
+administrador ou membro do projeto pode consultar o histórico e descarregar os
+anexos. Os ficheiros são guardados em
 `taskflow-backend/task_attachments`, fora da pasta pública `/uploads`, e os
 downloads passam por uma rota autenticada. A migração `20261102_0004` adiciona
 o progresso e as tabelas do histórico; aplique-a com `alembic upgrade head`.

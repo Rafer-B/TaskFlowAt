@@ -748,8 +748,8 @@ const projectsWithProgress = computed(() =>
 
 .btn-primary {
   color: #fff;
-  background: #4169ed;
-  border-color: #4169ed;
+  background: var(--tf-primary);
+  border-color: var(--tf-primary);
 }
 
 .btn-ghost {

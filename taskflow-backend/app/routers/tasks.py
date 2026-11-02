@@ -18,7 +18,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import exigir_administrador, get_db, obter_utilizador_atual
+from app.auth import (
+    exigir_papel_projeto,
+    get_db,
+    obter_utilizador_atual,
+)
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
@@ -155,6 +159,11 @@ def validar_membro_projeto(
                 "a este projeto."
             ),
         )
+    if membro.role == "viewer":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Um observador não pode ser atribuído como responsável.",
+        )
 
     return utilizador
 
@@ -163,17 +172,21 @@ def obter_tarefa_acessivel(
     db: Session,
     task_id: int,
     current_user: User,
+    papeis_permitidos: set[str] | None = None,
 ) -> Task:
     tarefa = db.get(Task, task_id)
 
-    if tarefa is None or (
-        current_user.role != "admin"
-        and tarefa.assigned_to != current_user.id
-    ):
+    if tarefa is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tarefa não encontrada.",
         )
+    exigir_papel_projeto(
+        db,
+        tarefa.project_id,
+        current_user,
+        papeis_permitidos,
+    )
 
     return tarefa
 
@@ -200,14 +213,17 @@ def limpar_ficheiros(paths: list[Path]) -> None:
 )
 def criar_tarefa(
     dados: TaskCreate,
-    current_user: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
 
-    obter_projeto(
+    exigir_papel_projeto(
         db,
         dados.project_id,
+        current_user,
+        {"admin", "owner", "contributor"},
     )
+    obter_projeto(db, dados.project_id)
 
     if dados.assigned_to is not None:
         validar_membro_projeto(
@@ -269,15 +285,11 @@ def listar_tarefas(
 ):
 
     consulta = db.query(Task)
-
-    # Membros só consultam tarefas atribuídas a si; o filtro nunca alarga o acesso.
     if current_user.role != "admin":
-        if assigned_to is not None and assigned_to != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Só pode consultar as suas próprias tarefas.",
-            )
-        consulta = consulta.filter(Task.assigned_to == current_user.id)
+        consulta = consulta.join(
+            ProjectMember,
+            ProjectMember.project_id == Task.project_id,
+        ).filter(ProjectMember.user_id == current_user.id)
 
     if project_id is not None:
         consulta = consulta.filter(
@@ -336,12 +348,7 @@ def obter_tarefa(
             detail="Tarefa não encontrada.",
         )
 
-    if current_user.role != "admin" and tarefa.assigned_to != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tarefa não encontrada.",
-        )
-
+    exigir_papel_projeto(db, tarefa.project_id, current_user)
     return tarefa
 
 
@@ -360,26 +367,14 @@ def atualizar_tarefa(
     db: Session = Depends(get_db),
 ):
 
-    tarefa = db.get(Task, task_id)
-
-    if tarefa is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tarefa não encontrada.",
-        )
+    tarefa = obter_tarefa_acessivel(
+        db,
+        task_id,
+        current_user,
+        {"admin", "owner", "contributor"},
+    )
 
     alteracoes = dados.model_dump(exclude_unset=True)
-    if current_user.role != "admin":
-        if tarefa.assigned_to != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tarefa não encontrada.",
-            )
-        if set(alteracoes) != {"status"}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Só pode alterar o estado das suas tarefas.",
-            )
 
     obter_projeto(
         db,
@@ -489,7 +484,12 @@ async def registar_trabalho(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
-    tarefa = obter_tarefa_acessivel(db, task_id, current_user)
+    tarefa = obter_tarefa_acessivel(
+        db,
+        task_id,
+        current_user,
+        {"admin", "owner", "contributor"},
+    )
     obter_projeto(db, tarefa.project_id)
 
     if tarefa.status == "completed" and progress != 100:
@@ -662,17 +662,16 @@ def descarregar_anexo_registo(
 )
 def eliminar_tarefa(
     task_id: int,
-    _: User = Depends(exigir_administrador),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
 
-    tarefa = db.get(Task, task_id)
-
-    if tarefa is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tarefa não encontrada.",
-        )
+    tarefa = obter_tarefa_acessivel(
+        db,
+        task_id,
+        current_user,
+        {"admin", "owner"},
+    )
 
     anexos = (
         db.query(TaskWorkLogAttachment)

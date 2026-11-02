@@ -20,8 +20,8 @@ const mainLinks = [
 ]
 
 const workspaceLinks = [
-  { label: 'Calendário', icon: '▦' },
-  { label: 'Equipa', icon: '♙' },
+  { label: 'Calendário', to: '/calendar', icon: '▦' },
+  { label: 'Equipas', to: '/teams', icon: '♙' },
   { label: 'Relatórios', icon: '▥' },
 ]
 
@@ -102,21 +102,30 @@ function isActive(path: string) {
         ESPAÇO DE TRABALHO
       </p>
 
-      <div
-        v-for="link in workspaceLinks"
-        :key="link.label"
-        class="sidebar-link sidebar-link-upcoming"
-        :title="`${link.label} — disponível numa próxima fase`"
-        aria-disabled="true"
-      >
-        <span class="sidebar-link-icon" aria-hidden="true">
-          {{ link.icon }}
-        </span>
-
-        <span>{{ link.label }}</span>
-
-        <span class="upcoming-dot"></span>
-      </div>
+      <template v-for="link in workspaceLinks" :key="link.label">
+        <NuxtLink
+          v-if="'to' in link"
+          :to="link.to"
+          class="sidebar-link"
+          :class="{ 'is-active': isActive(link.to) }"
+          :aria-current="isActive(link.to) ? 'page' : undefined"
+          @click="emit('close')"
+        >
+          <span class="sidebar-link-icon" aria-hidden="true">{{ link.icon }}</span>
+          <span>{{ link.label }}</span>
+          <span v-if="isActive(link.to)" class="active-indicator"></span>
+        </NuxtLink>
+        <div
+          v-else
+          class="sidebar-link sidebar-link-upcoming"
+          :title="`${link.label} — disponível numa próxima fase`"
+          aria-disabled="true"
+        >
+          <span class="sidebar-link-icon" aria-hidden="true">{{ link.icon }}</span>
+          <span>{{ link.label }}</span>
+          <span class="upcoming-dot"></span>
+        </div>
+      </template>
     </nav>
 
     <div class="sidebar-bottom">

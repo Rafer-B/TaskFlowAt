@@ -5,7 +5,7 @@
 
 /* Tokens de cor e dimensão. */
 :root {
-  --tf-font: Inter, 'Segoe UI', Arial, sans-serif;
+  --tf-font: 'DM Sans', Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --tf-bg: #f8fafc;
   --tf-surface: #ffffff;
   --tf-border: #e2e8f0;
@@ -13,8 +13,8 @@
   --tf-text: #0f172a;
   --tf-text-muted: #64748b;
   --tf-text-light: #94a3b8;
-  --tf-primary: #4f46e5;
-  --tf-primary-hover: #4338ca;
+  --tf-primary: #5965e8;
+  --tf-primary-hover: #454fc9;
   --tf-primary-soft: #eef2ff;
   --tf-success: #15803d;
   --tf-success-soft: #ecfdf5;
@@ -165,7 +165,7 @@ button {
 .btn-primary {
   background: var(--tf-primary);
   color: #fff;
-  box-shadow: 0 4px 12px -4px rgb(79 70 229 / 0.45);
+  box-shadow: 0 5px 14px -5px rgb(79 70 229 / 0.48);
 }
 
 .btn-primary:hover {

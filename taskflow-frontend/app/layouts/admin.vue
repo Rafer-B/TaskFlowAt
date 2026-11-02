@@ -1,12 +1,15 @@
 
 <script setup lang="ts">
 const route = useRoute()
+const auth = useAuth()
 const mobileOpen = ref(false)
 
 const pageTitle = computed(() => {
   if (route.path === '/') return 'Dashboard'
   if (route.path.startsWith('/my-work')) return 'A minha área'
+  if (route.path.startsWith('/calendar')) return 'Calendário'
   if (route.path.startsWith('/projects')) return 'Projetos'
+  if (route.path.startsWith('/teams')) return 'Equipas'
   if (route.path.startsWith('/tasks')) return 'Tarefas'
   if (route.path.startsWith('/users')) return 'Utilizadores'
   if (route.path.startsWith('/settings')) return 'Definições'
@@ -23,26 +26,32 @@ watch(
 
 <template>
   <div class="admin-shell">
-    <AdminAppSidebar
-      :mobile-open="mobileOpen"
-      @close="mobileOpen = false"
-    />
-
-    <div class="admin-main">
-      <AdminAppHeader
-        :title="pageTitle"
-        @toggle-sidebar="mobileOpen = !mobileOpen"
+    <template v-if="auth.user.value?.role === 'admin'">
+      <AdminAppSidebar
+        :mobile-open="mobileOpen"
+        @close="mobileOpen = false"
       />
 
-      <main class="admin-content">
-        <slot />
-      </main>
+      <div class="admin-main">
+        <AdminAppHeader
+          :title="pageTitle"
+          @toggle-sidebar="mobileOpen = !mobileOpen"
+        />
 
-      <footer class="admin-footer">
-        <span>© {{ new Date().getFullYear() }} TaskFlow</span>
-        <span>Gestão de projetos e tarefas académicas</span>
-      </footer>
-    </div>
+        <main class="admin-content">
+          <slot />
+        </main>
+
+        <footer class="admin-footer">
+          <span>© {{ new Date().getFullYear() }} TaskFlow</span>
+          <span>Gestão de projetos e tarefas académicas</span>
+        </footer>
+      </div>
+    </template>
+
+    <FrontOfficeShell v-else>
+      <slot />
+    </FrontOfficeShell>
   </div>
 </template>
 
@@ -92,5 +101,6 @@ watch(
   .admin-footer {
     padding: 16px;
   }
+
 }
 </style>
