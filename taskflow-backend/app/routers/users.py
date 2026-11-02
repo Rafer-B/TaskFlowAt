@@ -11,13 +11,13 @@ from fastapi import (
     status,
 )
 from pwdlib import PasswordHash
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
-from app.database import SessionLocal
+from app.auth import exigir_administrador, get_db, obter_utilizador_atual
 from app.models.user import User
-from app.schemas.user import UserCreate, UserPublic
+from app.schemas.user import UserCreate, UserPublic, UserRoleUpdate
 
 
 router = APIRouter(prefix="/users", tags=["Utilizadores"])
@@ -37,14 +37,6 @@ ALLOWED_TYPES = {
 }
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @router.post(
     "/",
     response_model=UserPublic,
@@ -52,6 +44,7 @@ def get_db():
 )
 def registar_utilizador(
     dados: UserCreate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     email = str(dados.email).lower()
@@ -70,6 +63,7 @@ def registar_utilizador(
         name=dados.name.strip(),
         email=email,
         password_hash=password_hash.hash(dados.password),
+        role=dados.role,
     )
 
     try:
@@ -87,14 +81,61 @@ def registar_utilizador(
 
 
 @router.get("/", response_model=list[UserPublic])
-def listar_utilizadores(db: Session = Depends(get_db)):
+def listar_utilizadores(
+    _: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+):
     return db.query(User).order_by(User.id).all()
+
+
+@router.patch("/{user_id}/role", response_model=UserPublic)
+def atualizar_perfil_utilizador(
+    user_id: int,
+    dados: UserRoleUpdate,
+    current_user: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilizador não encontrado.",
+        )
+
+    if user.id == current_user.id and dados.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não pode remover o seu próprio acesso de administrador.",
+        )
+
+    if user.role == "admin" and dados.role != "admin":
+        administradores_ativos = (
+            db.query(User)
+            .filter(
+                User.role == "admin",
+                User.is_active.is_(True),
+            )
+            .order_by(User.id)
+            .with_for_update()
+            .all()
+        )
+        if len(administradores_ativos) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A plataforma precisa de manter pelo menos um administrador ativo.",
+            )
+
+    user.role = dados.role
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.post("/{user_id}/avatar", response_model=UserPublic)
 async def carregar_fotografia_perfil(
     user_id: int,
     file: UploadFile = File(...),
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     utilizador = db.query(User).filter(
@@ -105,6 +146,12 @@ async def carregar_fotografia_perfil(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Utilizador não encontrado.",
+        )
+
+    if current_user.id != utilizador.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só pode alterar a sua própria fotografia.",
         )
 
     extensao = ALLOWED_TYPES.get(file.content_type or "")

@@ -120,12 +120,9 @@ interface FormularioTarefa {
 // CONFIGURAÇÃO
 // --------------------------------------------------
 
-const config = useRuntimeConfig()
-const apiBase = String(config.public.apiBase).replace(/\/$/, '')
+const api = useNuxtApp().$api
+const auth = useAuth()
 const route = useRoute()
-
-// Temporário até implementarmos autenticação.
-const utilizadorId = 1
 
 // --------------------------------------------------
 // DADOS
@@ -152,11 +149,14 @@ const tarefaSelecionada = ref<Tarefa | null>(null)
 const formularioRef = ref<HTMLElement | null>(null)
 
 const erro = ref('')
+const erroMembros = ref('')
 const sucesso = ref('')
 const carregando = ref(false)
 const aGuardar = ref(false)
 const tarefaEmEliminacao = ref<number | null>(null)
 const carregandoMembros = ref(false)
+const tarefaEmArrasto = ref<number | null>(null)
+const colunaEmDestaque = ref<EstadoTarefa | null>(null)
 
 let pedidoMembros = 0
 
@@ -289,12 +289,13 @@ async function deslocarAteFormulario() {
   })
 }
 
-async function abrirFormularioCriar() {
+async function abrirFormularioCriar(estadoInicial: EstadoTarefa = 'Por fazer') {
   erro.value = ''
   sucesso.value = ''
   mostrarDetalhes.value = false
 
   limparFormulario()
+  novaTarefa.value.status = estadoInicial
 
   const projectQuery = route.query.project
   const projectId = Array.isArray(projectQuery)
@@ -337,6 +338,7 @@ async function carregarMembrosProjeto(projectId: number) {
   const pedidoAtual = ++pedidoMembros
 
   membrosProjeto.value = []
+  erroMembros.value = ''
 
   if (!projectId) {
     carregandoMembros.value = false
@@ -346,8 +348,8 @@ async function carregarMembrosProjeto(projectId: number) {
   carregandoMembros.value = true
 
   try {
-    const membros = await $fetch<MembroAPI[]>(
-      `${apiBase}/projects/${projectId}/members`,
+    const membros = await api<MembroAPI[]>(
+      `/projects/${projectId}/members/`,
     )
 
     if (pedidoAtual !== pedidoMembros) return
@@ -359,7 +361,8 @@ async function carregarMembrosProjeto(projectId: number) {
 
     if (pedidoAtual === pedidoMembros) {
       membrosProjeto.value = []
-      erro.value = 'Não foi possível carregar os membros deste projeto.'
+      erroMembros.value =
+        'Não foi possível carregar os membros. Confirma se a API está ativa e tenta novamente.'
     }
 
   } finally {
@@ -430,6 +433,16 @@ const tarefasFiltradas = computed(() => {
     )
   })
 })
+
+// Mantém uma coluna Kanban por estado; cada coluna respeita os filtros ativos.
+const colunasKanban = computed(() =>
+  estados.map((estado) => ({
+    estado,
+    tarefas: tarefasFiltradas.value.filter(
+      (tarefa) => tarefa.status === estado,
+    ),
+  })),
+)
 
 // --------------------------------------------------
 // RESUMO
@@ -504,9 +517,9 @@ async function carregarDados() {
       listaUtilizadores,
       listaTarefas,
     ] = await Promise.all([
-      $fetch<ProjetoAPI[]>(`${apiBase}/projects/`),
-      $fetch<UtilizadorAPI[]>(`${apiBase}/users/`),
-      $fetch<TarefaAPI[]>(`${apiBase}/tasks/`),
+      api<ProjetoAPI[]>('/projects/'),
+      api<UtilizadorAPI[]>('/users/'),
+      api<TarefaAPI[]>('/tasks/'),
     ])
 
     projetosDisponiveis.value = listaProjetos.map((projeto) => ({
@@ -651,6 +664,14 @@ async function guardarTarefa() {
     return
   }
 
+  if (
+    modoFormulario.value === 'criar' &&
+    !auth.user.value
+  ) {
+    erro.value = 'A sessão expirou. Inicia sessão novamente.'
+    return
+  }
+
   aGuardar.value = true
 
   try {
@@ -669,14 +690,13 @@ async function guardarTarefa() {
     let resultado: TarefaAPI
 
     if (modoFormulario.value === 'criar') {
-      resultado = await $fetch<TarefaAPI>(
-        `${apiBase}/tasks/`,
+      resultado = await api<TarefaAPI>(
+        '/tasks/',
         {
           method: 'POST',
           body: {
             project_id: projetoId,
             ...corpo,
-            created_by: utilizadorId,
           },
         },
       )
@@ -685,8 +705,8 @@ async function guardarTarefa() {
       sucesso.value = 'Tarefa criada com sucesso.'
 
     } else {
-      resultado = await $fetch<TarefaAPI>(
-        `${apiBase}/tasks/${tarefaEmEdicao.value}`,
+      resultado = await api<TarefaAPI>(
+        `/tasks/${tarefaEmEdicao.value}`,
         {
           method: 'PATCH',
           body: corpo,
@@ -725,19 +745,17 @@ async function guardarTarefa() {
 
 async function alterarEstado(
   tarefa: Tarefa,
-  evento: Event,
+  novoEstado: EstadoTarefa,
+  elemento?: HTMLSelectElement,
 ) {
-  const elemento = evento.target as HTMLSelectElement
-
   const estadoAnterior = tarefa.status
-  const novoEstado = elemento.value as EstadoTarefa
 
   if (!estados.includes(novoEstado)) return
   if (novoEstado === estadoAnterior) return
 
   if (tarefa.projectStatus === 'archived') {
     erro.value = 'Não é possível alterar tarefas de projetos arquivados.'
-    elemento.value = estadoAnterior
+    if (elemento) elemento.value = estadoAnterior
     return
   }
 
@@ -747,8 +765,8 @@ async function alterarEstado(
   tarefa.status = novoEstado
 
   try {
-    const atualizada = await $fetch<TarefaAPI>(
-      `${apiBase}/tasks/${tarefa.id}`,
+    const atualizada = await api<TarefaAPI>(
+      `/tasks/${tarefa.id}`,
       {
         method: 'PATCH',
         body: {
@@ -762,21 +780,115 @@ async function alterarEstado(
     )
 
     if (indice !== -1) {
-      tarefas.value[indice] = converterTarefa(atualizada)
+      const tarefaAtualizada = converterTarefa(atualizada)
+      tarefas.value[indice] = tarefaAtualizada
+
+      if (tarefaSelecionada.value?.id === tarefa.id) {
+        tarefaSelecionada.value = tarefaAtualizada
+      }
     }
 
     sucesso.value = 'Estado da tarefa atualizado.'
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro ao atualizar estado:', error)
 
     tarefa.status = estadoAnterior
-    elemento.value = estadoAnterior
+    if (elemento) elemento.value = estadoAnterior
 
-    erro.value =
-      error?.data?.detail ||
-      'Não foi possível atualizar o estado da tarefa.'
+    erro.value = obterMensagemErro(error)
   }
+}
+
+function alterarEstadoPorEvento(tarefa: Tarefa, evento: Event): void {
+  const elemento = evento.target as HTMLSelectElement
+  const novoEstado = elemento.value as EstadoTarefa
+
+  if (!estados.includes(novoEstado)) {
+    elemento.value = tarefa.status
+    return
+  }
+
+  void alterarEstado(tarefa, novoEstado, elemento)
+}
+
+function obterMensagemErro(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'detail' in data &&
+      typeof data.detail === 'string'
+    ) {
+      return data.detail
+    }
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    error.statusCode === 0
+  ) {
+    return 'Não foi possível contactar a API. Confirma se o backend está ativo e tenta novamente.'
+  }
+
+  return 'Não foi possível atualizar o estado da tarefa.'
+}
+
+function iniciarArrasto(evento: DragEvent, tarefa: Tarefa): void {
+  if (tarefa.projectStatus === 'archived') {
+    evento.preventDefault()
+    return
+  }
+
+  tarefaEmArrasto.value = tarefa.id
+  evento.dataTransfer?.setData('text/plain', String(tarefa.id))
+  if (evento.dataTransfer) evento.dataTransfer.effectAllowed = 'move'
+}
+
+function permitirLargada(evento: DragEvent, estado: EstadoTarefa): void {
+  evento.preventDefault()
+  colunaEmDestaque.value = estado
+  if (evento.dataTransfer) evento.dataTransfer.dropEffect = 'move'
+}
+
+function terminarLargada(): void {
+  colunaEmDestaque.value = null
+}
+
+function sairColuna(evento: DragEvent): void {
+  const coluna = evento.currentTarget
+  const proximoAlvo = evento.relatedTarget
+
+  if (
+    coluna instanceof HTMLElement &&
+    proximoAlvo instanceof Node &&
+    coluna.contains(proximoAlvo)
+  ) {
+    return
+  }
+
+  terminarLargada()
+}
+
+async function largarTarefa(
+  evento: DragEvent,
+  estado: EstadoTarefa,
+): Promise<void> {
+  evento.preventDefault()
+  const tarefaId = Number(
+    evento.dataTransfer?.getData('text/plain') ||
+      tarefaEmArrasto.value ||
+      '',
+  )
+  const tarefa = tarefas.value.find((item) => item.id === tarefaId)
+
+  terminarLargada()
+  tarefaEmArrasto.value = null
+
+  if (tarefa) await alterarEstado(tarefa, estado)
 }
 
 // --------------------------------------------------
@@ -801,8 +913,8 @@ async function eliminarTarefa(tarefa: Tarefa) {
   tarefaEmEliminacao.value = tarefa.id
 
   try {
-    await $fetch(
-      `${apiBase}/tasks/${tarefa.id}`,
+    await api(
+      `/tasks/${tarefa.id}`,
       {
         method: 'DELETE',
       },
@@ -860,16 +972,12 @@ function formatarDataHora(data: string | null) {
   return dataConvertida.toLocaleString('pt-PT')
 }
 
-// --------------------------------------------------
-// CLASSES CSS
-// --------------------------------------------------
-
 function classeEstado(estado: EstadoTarefa) {
   return {
     'por-fazer': estado === 'Por fazer',
     'em-curso': estado === 'Em curso',
-    'concluida': estado === 'Concluída',
-    'bloqueada': estado === 'Bloqueada',
+    concluida: estado === 'Concluída',
+    bloqueada: estado === 'Bloqueada',
   }
 }
 
@@ -910,7 +1018,7 @@ onMounted(() => {
       <button
         class="primary-button"
         type="button"
-        @click="abrirFormularioCriar"
+        @click="abrirFormularioCriar()"
       >
         + Nova tarefa
       </button>
@@ -925,38 +1033,15 @@ onMounted(() => {
       {{ sucesso }}
     </p>
 
-    <!-- CARREGAMENTO -->
-    <p v-if="carregando" class="empty-state">
-      A carregar tarefas...
-    </p>
-
-    <!-- RESUMO -->
-    <section class="summary-grid">
-      <article class="summary-card">
-        <span>Total de tarefas</span>
-        <strong>{{ resumo.total }}</strong>
-      </article>
-
-      <article class="summary-card summary-todo">
-        <span>Por fazer</span>
-        <strong>{{ resumo.porFazer }}</strong>
-      </article>
-
-      <article class="summary-card summary-progress">
-        <span>Em curso</span>
-        <strong>{{ resumo.emCurso }}</strong>
-      </article>
-
-      <article class="summary-card summary-completed">
-        <span>Concluídas</span>
-        <strong>{{ resumo.concluidas }}</strong>
-      </article>
-
-      <article class="summary-card summary-blocked">
-        <span>Bloqueadas</span>
-        <strong>{{ resumo.bloqueadas }}</strong>
-      </article>
-    </section>
+    <nav class="board-tabs" aria-label="Visualizações de tarefas">
+      <NuxtLink to="/tasks" class="board-tab">
+        <span aria-hidden="true">▦</span> Quadro
+      </NuxtLink>
+      <span class="board-tab board-tab-muted">
+        <span aria-hidden="true">▤</span> Tarefas
+      </span>
+      <span class="board-total">{{ resumo.total }} tarefas no quadro</span>
+    </nav>
 
     <!-- FORMULÁRIO -->
     <section
@@ -1070,8 +1155,27 @@ onMounted(() => {
               A carregar membros...
             </small>
 
-            <small v-else-if="novaTarefa.projectId && membrosAtivos.length === 0">
-              Este projeto ainda não tem membros ativos.
+            <div v-if="erroMembros" class="member-load-error" role="alert">
+              <small>{{ erroMembros }}</small>
+              <button
+                type="button"
+                :disabled="carregandoMembros"
+                @click="carregarMembrosProjeto(Number(novaTarefa.projectId))"
+              >
+                Tentar novamente
+              </button>
+            </div>
+
+            <small
+              v-else-if="
+                !carregandoMembros &&
+                novaTarefa.projectId &&
+                membrosAtivos.length === 0
+              "
+            >
+              Este projeto não tem membros ativos. Adiciona o utilizador em
+              <NuxtLink to="/projects">Projetos → Membros</NuxtLink>
+              antes de o atribuir à tarefa.
             </small>
           </div>
 
@@ -1168,27 +1272,24 @@ onMounted(() => {
     <!-- LISTAGEM -->
     <section class="tasks-section">
 
-      <div class="section-heading">
-        <div>
-          <span class="section-eyebrow">ACOMPANHAMENTO</span>
-          <h2>Lista de tarefas</h2>
-          <p>Consulta e gere as tarefas dos projetos.</p>
-        </div>
-        <span class="task-count">
-          {{ tarefasFiltradas.length }}
-          {{ tarefasFiltradas.length === 1 ? 'tarefa' : 'tarefas' }}
-        </span>
-      </div>
-
-      <!-- FILTROS -->
       <div class="filters">
+        <button
+          class="new-task-button"
+          type="button"
+          @click="abrirFormularioCriar()"
+        >
+          <span aria-hidden="true">＋</span> Nova tarefa
+        </button>
 
-        <input
-          v-model="pesquisa"
-          type="search"
-          placeholder="Pesquisar tarefa, projeto ou responsável..."
-          aria-label="Pesquisar tarefas"
-        />
+        <label class="board-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            v-model="pesquisa"
+            type="search"
+            placeholder="Pesquisar..."
+            aria-label="Pesquisar tarefas"
+          />
+        </label>
 
         <select
           v-model="filtroProjeto"
@@ -1207,10 +1308,7 @@ onMounted(() => {
           </option>
         </select>
 
-        <select
-          v-model="filtroEstado"
-          aria-label="Filtrar por estado"
-        >
+        <select v-model="filtroEstado" aria-label="Filtrar por estado">
           <option value="">
             Todos os estados
           </option>
@@ -1224,10 +1322,7 @@ onMounted(() => {
           </option>
         </select>
 
-        <select
-          v-model="filtroPrioridade"
-          aria-label="Filtrar por prioridade"
-        >
+        <select v-model="filtroPrioridade" aria-label="Filtrar por prioridade">
           <option value="">
             Todas as prioridades
           </option>
@@ -1241,10 +1336,7 @@ onMounted(() => {
           </option>
         </select>
 
-        <select
-          v-model="filtroCategoria"
-          aria-label="Filtrar por categoria"
-        >
+        <select v-model="filtroCategoria" aria-label="Filtrar por categoria">
           <option value="">
             Todas as categorias
           </option>
@@ -1260,136 +1352,87 @@ onMounted(() => {
 
       </div>
 
-      <!-- TABELA -->
-      <div class="table-container">
-        <table>
+      <div class="kanban-scroll">
+        <div v-if="carregando" class="board-loading">
+          <span class="board-spinner" aria-hidden="true"></span>
+          A carregar tarefas...
+        </div>
 
-          <thead>
-            <tr>
-              <th>Tarefa</th>
-              <th>Projeto</th>
-              <th>Responsável</th>
-              <th>Prazo</th>
-              <th>Prioridade</th>
-              <th>Estado</th>
-              <th class="actions-column">Ações</th>
-            </tr>
-          </thead>
+        <div v-else class="kanban-board">
+          <section
+            v-for="(coluna, indice) in colunasKanban"
+            :key="coluna.estado"
+            class="kanban-column"
+            :class="[
+              `column-${indice}`,
+              { 'column-drop-active': colunaEmDestaque === coluna.estado },
+            ]"
+            @dragenter.prevent="permitirLargada($event, coluna.estado)"
+            @dragover="permitirLargada($event, coluna.estado)"
+            @dragleave="sairColuna"
+            @drop="largarTarefa($event, coluna.estado)"
+          >
+            <header class="column-heading">
+              <span>{{ coluna.estado }}</span>
+              <span class="column-count">{{ coluna.tarefas.length }}</span>
+              <button
+                type="button"
+                :aria-label="`Criar tarefa em ${coluna.estado}`"
+                title="Criar tarefa nesta coluna"
+                @click="abrirFormularioCriar(coluna.estado)"
+              >
+                +
+              </button>
+            </header>
 
-          <tbody>
+            <div class="column-cards">
+              <article
+                v-for="tarefa in coluna.tarefas"
+                :key="tarefa.id"
+                class="kanban-card"
+                role="button"
+                tabindex="0"
+                :aria-label="`Abrir detalhes da tarefa ${tarefa.title}`"
+                :class="[
+                  classeEstado(tarefa.status),
+                  {
+                    'card-dragging': tarefaEmArrasto === tarefa.id,
+                    'card-archived': tarefa.projectStatus === 'archived',
+                  },
+                ]"
+                :draggable="tarefa.projectStatus !== 'archived'"
+                @click="consultarTarefa(tarefa)"
+                @keydown.enter.prevent="consultarTarefa(tarefa)"
+                @keydown.space.prevent="consultarTarefa(tarefa)"
+                @dragstart="iniciarArrasto($event, tarefa)"
+                @dragend="tarefaEmArrasto = null; terminarLargada()"
+              >
+                <div class="card-topline">
+                  <span class="category">{{ tarefa.category }}</span>
+                  <span class="card-id">#{{ tarefa.id }}</span>
+                </div>
 
-            <tr
-              v-for="tarefa in tarefasFiltradas"
-              :key="tarefa.id"
-            >
-
-              <td>
-                <div class="task-title">
+                <h3 class="card-title">
                   {{ tarefa.title }}
+                </h3>
+
+                <div class="card-meta">
+                  <span
+                    class="priority"
+                    :class="classePrioridade(tarefa.priority)"
+                  >
+                    {{ tarefa.priority }}
+                  </span>
                 </div>
+              </article>
 
-                <div
-                  v-if="tarefa.description"
-                  class="task-description"
-                >
-                  {{ tarefa.description }}
-                </div>
-
-                <span class="category">
-                  {{ tarefa.category }}
-                </span>
-              </td>
-
-              <td>
-                {{ tarefa.project }}
-              </td>
-
-              <td>
-                {{ tarefa.responsible }}
-              </td>
-
-              <td>
-                {{ formatarData(tarefa.dueDate) }}
-              </td>
-
-              <td>
-                <span
-                  class="priority"
-                  :class="classePrioridade(tarefa.priority)"
-                >
-                  {{ tarefa.priority }}
-                </span>
-              </td>
-
-              <td>
-                <select
-                  class="status-select"
-                  :class="classeEstado(tarefa.status)"
-                  :value="tarefa.status"
-                  :disabled="tarefa.projectStatus === 'archived'"
-                  :aria-label="`Estado da tarefa ${tarefa.title}`"
-                  @change="alterarEstado(tarefa, $event)"
-                >
-                  <option
-                    v-for="estado in estados"
-                    :key="estado"
-                    :value="estado"
-                  >
-                    {{ estado }}
-                  </option>
-                </select>
-              </td>
-
-              <td>
-                <div class="action-buttons">
-                  <button
-                    type="button"
-                    class="view-button"
-                    title="Consultar detalhes"
-                    @click="consultarTarefa(tarefa)"
-                  >
-                    Ver
-                  </button>
-
-                  <button
-                    type="button"
-                    class="edit-button"
-                    :disabled="tarefa.projectStatus === 'archived'"
-                    title="Editar tarefa"
-                    @click="editarTarefa(tarefa)"
-                  >
-                    Editar
-                  </button>
-
-                  <button
-                    type="button"
-                    class="delete-button"
-                    :disabled="
-                      tarefa.projectStatus === 'archived' ||
-                      tarefaEmEliminacao === tarefa.id
-                    "
-                    title="Eliminar tarefa"
-                    @click="eliminarTarefa(tarefa)"
-                  >
-                    {{
-                      tarefaEmEliminacao === tarefa.id
-                        ? 'A eliminar...'
-                        : 'Eliminar'
-                    }}
-                  </button>
-                </div>
-              </td>
-
-            </tr>
-
-            <tr v-if="!carregando && tarefasFiltradas.length === 0">
-              <td colspan="7" class="empty-state">
-                Não foram encontradas tarefas com estes filtros.
-              </td>
-            </tr>
-
-          </tbody>
-        </table>
+              <div v-if="!coluna.tarefas.length" class="column-empty">
+                <span aria-hidden="true">＋</span>
+                <span>Arraste uma tarefa para aqui</span>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
 
       <p class="results-count">
@@ -1466,12 +1509,22 @@ onMounted(() => {
 
           <div class="detail-item">
             <span>Estado</span>
-            <span
-              class="status-select"
+            <select
+              class="detail-status-select"
               :class="classeEstado(tarefaSelecionada.status)"
+              :value="tarefaSelecionada.status"
+              :disabled="tarefaSelecionada.projectStatus === 'archived'"
+              :aria-label="`Alterar estado de ${tarefaSelecionada.title}`"
+              @change="alterarEstadoPorEvento(tarefaSelecionada, $event)"
             >
-              {{ tarefaSelecionada.status }}
-            </span>
+              <option
+                v-for="estado in estados"
+                :key="estado"
+                :value="estado"
+              >
+                {{ estado }}
+              </option>
+            </select>
           </div>
 
           <div class="detail-item">
@@ -1499,7 +1552,27 @@ onMounted(() => {
 
         </div>
 
+        <p v-if="erro" class="error-message" role="alert">
+          {{ erro }}
+        </p>
+
+        <p v-if="sucesso" class="success-message" role="status">
+          {{ sucesso }}
+        </p>
+
         <footer class="details-actions">
+          <button
+            type="button"
+            class="delete-task-button"
+            :disabled="
+              tarefaSelecionada.projectStatus === 'archived' ||
+              tarefaEmEliminacao === tarefaSelecionada.id
+            "
+            @click="eliminarTarefa(tarefaSelecionada)"
+          >
+            {{ tarefaEmEliminacao === tarefaSelecionada.id ? 'A eliminar...' : 'Eliminar tarefa' }}
+          </button>
+
           <button
             type="button"
             class="secondary-button"
@@ -1579,16 +1652,25 @@ onMounted(() => {
 
 .primary-button,
 .secondary-button {
-  border: 0;
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 17px;
+  border: 1px solid transparent;
   border-radius: 10px;
-  padding: 12px 18px;
   font-weight: 650;
   cursor: pointer;
-  transition: transform .2s ease, background .2s ease, box-shadow .2s ease, opacity .2s ease;
+  transition:
+    transform .18s ease,
+    background .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    opacity .18s ease;
 }
 
 .primary-button {
-  border: 1px solid #4f46e5;
   background: linear-gradient(135deg, #5b5ce2, #4338ca);
   color: white;
   box-shadow: 0 7px 16px -8px rgb(67 56 202 / 62%);
@@ -1596,17 +1678,33 @@ onMounted(() => {
 
 .primary-button:hover {
   background: linear-gradient(135deg, #4f46e5, #3730a3);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 10px 20px -8px rgb(67 56 202 / 62%);
 }
 
 .secondary-button {
-  background: #f1f5f9;
-  color: #334155;
+  border-color: #e2e8f0;
+  background: #fff;
+  color: #475569;
 }
 
 .secondary-button:hover {
-  background: #e2e8f0;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  box-shadow: 0 3px 8px rgb(15 23 42 / 6%);
+}
+
+.primary-button:active,
+.secondary-button:active {
+  transform: translateY(0);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.new-task-button:focus-visible,
+.delete-task-button:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
 }
 
 .primary-button:disabled,
@@ -1635,72 +1733,40 @@ onMounted(() => {
   border: 1px solid #bbf7d0;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.summary-card {
-  position: relative;
-  overflow: hidden;
+.board-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 100px;
-  padding: 17px 18px;
-  border: 1px solid #e7ebf3;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #fff 65%, #f8f9ff);
-  box-shadow: 0 5px 16px rgb(23 37 84 / 3%);
-  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  align-items: center;
+  gap: 24px;
+  min-height: 48px;
+  padding: 0 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #dfe5ef;
 }
 
-.summary-card::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 3px;
-  background: #7c83ef;
-  content: '';
-}
-
-.summary-card:hover {
-  transform: translateY(-2px);
-  border-color: #d9e0ef;
-  box-shadow: 0 12px 22px -15px rgb(23 37 84 / 38%);
-}
-
-.summary-card span {
-  color: #6f7d95;
+.board-tab {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  color: #526078;
+  border-bottom: 2px solid transparent;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
 }
 
-.summary-card strong {
-  color: #1e2b50;
-  font-size: 29px;
-  font-weight: 800;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+.board-tab:first-child {
+  color: #34446a;
+  border-bottom-color: #4f46e5;
 }
 
-.summary-todo::before {
-  background: #94a3b8;
+.board-tab-muted {
+  color: #94a3b8;
 }
 
-.summary-progress::before {
-  background: #3b82f6;
-}
-
-.summary-completed::before {
-  background: #22a06b;
-}
-
-.summary-blocked::before {
-  background: #ef6262;
+.board-total {
+  margin-left: auto;
+  color: #8b97aa;
+  font-size: 11px;
 }
 
 .form-card {
@@ -1814,11 +1880,55 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.field small a {
+  color: #4f46e5;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.field small a:hover {
+  text-decoration: underline;
+}
+
+.member-load-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #b91c1c;
+}
+
+.member-load-error small {
+  color: inherit;
+}
+
+.member-load-error button {
+  padding: 5px 8px;
+  color: #4338ca;
+  background: #eef2ff;
+  border: 1px solid #dfe4ff;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.member-load-error button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 20px;
+  padding-top: 17px;
+  border-top: 1px solid #edf0f5;
+}
+
+.form-actions .primary-button {
+  min-width: 160px;
 }
 
 .tasks-section {
@@ -1865,79 +1975,296 @@ onMounted(() => {
 }
 
 .filters {
-  display: grid;
-  grid-template-columns:
-    minmax(220px, 2fr)
-    repeat(4, minmax(140px, 1fr));
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  padding: 13px;
-  margin-bottom: 16px;
-  border: 1px solid #edf0f5;
-  border-radius: 13px;
-  background: #f8faff;
+  padding: 0 0 16px;
+  margin-bottom: 2px;
 }
 
-.table-container {
-  overflow-x: auto;
-  border: 1px solid #e8edf5;
-  border-radius: 13px;
+.new-task-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #2788f5, #176bd1);
+  border: 1px solid #176bd1;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 5px 12px -7px rgb(23 107 209 / 70%);
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.new-task-button:hover {
+  background: linear-gradient(135deg, #1878e6, #125bb5);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 14px -8px rgb(23 107 209 / 70%);
+}
+
+.new-task-button > span {
+  font-size: 17px;
+}
+
+.board-search {
+  display: flex;
+  flex: 1 1 170px;
+  max-width: 280px;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: #8290a5;
   background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+}
+
+.board-search > span {
+  font-size: 17px;
+}
+
+.board-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: #334155;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 11px;
+}
+
+.board-search input::placeholder {
+  color: #9aa7ba;
+}
+
+.filters > select {
+  width: auto;
+  min-width: 132px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: #58667c;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.kanban-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding: 1px 2px 12px;
   scrollbar-color: #cbd5e1 transparent;
   scrollbar-width: thin;
 }
 
-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 13px;
+.kanban-board {
+  display: grid;
+  min-width: 882px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
 }
 
-th {
-  padding: 13px 12px;
-  border-bottom: 1px solid #e8edf5;
-  background: #f7f9fd;
-  color: #738098;
+.kanban-column {
+  min-height: 310px;
+  overflow: hidden;
+  background: #f5f7fb;
+  border: 1px solid #edf0f5;
+  border-radius: 9px;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.column-drop-active {
+  background: #eef4ff;
+  border-color: #93b4f8;
+  box-shadow: 0 0 0 3px rgb(79 145 248 / 12%);
+}
+
+.column-heading {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.column-0 .column-heading { background: #4b96f7; }
+.column-1 .column-heading { background: #f49b12; }
+.column-2 .column-heading { background: #08bf7b; }
+.column-3 .column-heading { background: #ff6257; }
+
+.column-count {
+  display: grid;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  place-items: center;
+  color: rgb(255 255 255 / 90%);
+  background: rgb(255 255 255 / 20%);
+  border-radius: 999px;
   font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .07em;
-  text-transform: uppercase;
+}
+
+.column-heading button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  margin-left: auto;
+  place-items: center;
+  color: #fff;
+  background: rgb(255 255 255 / 15%);
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 50%;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.column-heading button:hover {
+  background: rgb(255 255 255 / 30%);
+}
+
+.column-cards {
+  display: flex;
+  min-height: 265px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 13px;
+}
+
+.kanban-card {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 13px 14px;
+  background: #fff;
+  border: 1px solid #e8ebf1;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 9px;
+  box-shadow: 0 2px 6px rgb(24 39 75 / 10%);
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease;
+}
+
+.kanban-card.por-fazer { border-left-color: #7b8ba3; }
+.kanban-card.em-curso { border-left-color: #4b83ef; }
+.kanban-card.concluida { border-left-color: #19a974; }
+.kanban-card.bloqueada { border-left-color: #ed6a60; }
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgb(24 39 75 / 13%);
+}
+
+.kanban-card:active {
+  cursor: grabbing;
+}
+
+.kanban-card:focus-visible {
+  outline: 3px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+.kanban-card.card-dragging {
+  opacity: .4;
+  transform: rotate(1deg);
+}
+
+.kanban-card.card-archived {
+  cursor: default;
+}
+
+.card-topline,
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-topline .category {
+  max-width: calc(100% - 45px);
+  overflow: hidden;
+  margin: 0;
+  padding: 3px 7px;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 9px;
 }
 
-td {
-  padding: 14px 12px;
-  border-bottom: 1px solid #edf0f5;
-  vertical-align: middle;
-  color: #526078;
+.card-id {
+  color: #9aa5b5;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
 }
 
-tbody tr {
-  transition: background .16s ease;
-}
-
-tbody tr:hover {
-  background: #fafbff;
-}
-
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.task-title {
-  min-width: 180px;
-  font-weight: 600;
-  color: #263552;
-  font-size: 13px;
-}
-
-.task-description {
-  max-width: 280px;
-  margin-top: 5px;
-  color: #64748b;
+.card-title {
+  margin: 11px 0 0;
+  color: #29364d;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.card-meta {
+  justify-content: flex-start;
+  margin-top: 11px;
+}
+
+.card-meta .priority {
+  padding: 5px 9px;
+  font-size: 10px;
+}
+
+.column-empty {
+  display: flex;
+  min-height: 82px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #a0a9b8;
+  border: 1px dashed #dfe4ed;
+  border-radius: 7px;
+  font-size: 9px;
+  text-align: center;
+}
+
+.column-empty > span:first-child {
+  font-size: 18px;
+}
+
+.board-loading {
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #75839a;
+  font-size: 12px;
+}
+
+.board-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #dbe3f0;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: board-spin .8s linear infinite;
+}
+
+@keyframes board-spin {
+  to { transform: rotate(360deg); }
 }
 
 .category {
@@ -1953,60 +2280,90 @@ tbody tr:last-child td {
   font-weight: 600;
 }
 
-.priority,
-.status-select {
-  display: inline-block;
-  border: 0;
-  border-radius: 20px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 600;
+.priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
   white-space: nowrap;
 }
 
-.prioridade-baixa {
-  color: #166534;
-  background: #dcfce7;
+.priority::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.priority.prioridade-baixa {
+  border-color: #b7ebcb;
+  color: #147a49;
+  background: #eaf8ef;
 }
 
 .prioridade-media {
-  color: #92400e;
-  background: #fef3c7;
+  border-color: #f5dda0;
+  color: #9a6308;
+  background: #fff7df;
 }
 
 .prioridade-alta {
-  color: #b91c1c;
-  background: #fee2e2;
+  border-color: #f4c2c2;
+  color: #b33131;
+  background: #fff0ef;
 }
 
-.status-select {
-  max-width: 130px;
+.detail-status-select {
+  min-width: 140px;
+  padding: 9px 34px 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.status-select:disabled {
-  opacity: 0.65;
+.detail-status-select.por-fazer {
+  border-color: #d7dfe9;
+  color: #526174;
+  background: #f1f4f8;
+}
+
+.detail-status-select.em-curso {
+  border-color: #c5d7ff;
+  color: #315eb7;
+  background: #edf3ff;
+}
+
+.detail-status-select.concluida {
+  border-color: #b7ebcb;
+  color: #147a49;
+  background: #eaf8ef;
+}
+
+.detail-status-select.bloqueada {
+  border-color: #f4c2c2;
+  color: #b33131;
+  background: #fff0ef;
+}
+
+.detail-status-select:disabled {
+  background: #f8fafc;
+  color: #64748b;
   cursor: not-allowed;
 }
 
-.status-select.por-fazer {
-  color: #475569;
-  background: #f1f5f9;
-}
-
-.status-select.em-curso {
-  color: #1d4ed8;
-  background: #dbeafe;
-}
-
-.status-select.concluida {
-  color: #166534;
-  background: #dcfce7;
-}
-
-.status-select.bloqueada {
-  color: #b91c1c;
-  background: #fee2e2;
+.detail-status-select:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
 }
 
 .actions-column {
@@ -2174,25 +2531,36 @@ tbody tr:last-child td {
 
 .details-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
   padding-top: 18px;
   border-top: 1px solid #e2e8f0;
 }
 
-@media (max-width: 1200px) {
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filters input {
-    grid-column: 1 / -1;
-  }
+.delete-task-button {
+  padding: 12px 16px;
+  margin-right: auto;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  font-weight: 650;
+  cursor: pointer;
 }
 
-@media (max-width: 900px) {
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+.delete-task-button:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.delete-task-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1200px) {
+  .filters > select {
+    flex: 1 1 135px;
   }
 }
 
@@ -2216,11 +2584,6 @@ tbody tr:last-child td {
     width: 100%;
   }
 
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 9px;
-  }
-
   .form-grid {
     grid-template-columns: 1fr;
   }
@@ -2229,26 +2592,9 @@ tbody tr:last-child td {
     grid-column: auto;
   }
 
-  .filters {
-    grid-template-columns: 1fr;
-  }
-
-  .filters input {
-    grid-column: auto;
-  }
-
   .tasks-section {
     padding: 14px;
     border-radius: 15px;
-  }
-
-  .summary-card {
-    min-height: 88px;
-    padding: 14px;
-  }
-
-  .summary-card strong {
-    font-size: 26px;
   }
 
   .section-heading {
@@ -2272,6 +2618,10 @@ tbody tr:last-child td {
     width: 100%;
   }
 
+  .form-actions .primary-button {
+    min-width: 0;
+  }
+
   .details-modal {
     padding: 18px;
   }
@@ -2289,8 +2639,22 @@ tbody tr:last-child td {
     width: 100%;
   }
 
-  .action-buttons {
-    flex-wrap: wrap;
+  .delete-task-button {
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-card,
+  .column-drop-active,
+  .primary-button,
+  .secondary-button,
+  .new-task-button {
+    transition: none;
+  }
+
+  .board-spinner {
+    animation-duration: 2s;
   }
 }
 </style>

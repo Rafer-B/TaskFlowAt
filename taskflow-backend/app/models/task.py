@@ -2,11 +2,13 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Identity,
     String,
     Text,
+    Integer,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,6 +18,12 @@ from app.database import Base
 
 class Task(Base):
     __tablename__ = "tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "progress >= 0 AND progress <= 100",
+            name="ck_tasks_progress_range",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(
         BigInteger,
@@ -55,6 +63,12 @@ class Task(Base):
         String(20),
         nullable=False,
         server_default="to_do",
+    )
+
+    progress: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="0",
     )
 
     assigned_to: Mapped[int | None] = mapped_column(

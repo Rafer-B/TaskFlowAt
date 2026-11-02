@@ -41,6 +41,12 @@ class User(Base):
         nullable=False,
     )
 
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="member",
+    )
+
     avatar_url: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,

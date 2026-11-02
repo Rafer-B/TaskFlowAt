@@ -47,6 +47,8 @@ interface Projeto {
 
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/$/, '')
+const api = useNuxtApp().$api
+const auth = useAuth()
 
 // Dados dos projetos
 const projetos = ref<Projeto[]>([])
@@ -77,9 +79,6 @@ const projetoSelecionado = ref<Projeto | null>(null)
 // Mensagens gerais
 const erro = ref('')
 const sucesso = ref('')
-
-// Temporário: substituir pelo ID do utilizador autenticado.
-const utilizadorId = 1
 
 // --------------------------------------------------
 // GESTÃO DE MEMBROS
@@ -231,9 +230,7 @@ async function carregarProjetos() {
   carregando.value = true
 
   try {
-    const resposta = await $fetch<ProjetoAPI[]>(
-      `${apiBase}/projects/`,
-    )
+    const resposta = await api<ProjetoAPI[]>('/projects/')
 
     projetos.value = resposta.map(converterProjeto)
   } catch (error) {
@@ -302,12 +299,17 @@ async function guardarProjeto() {
     return
   }
 
+  if (!modoEdicao.value && !auth.user.value) {
+    erro.value = 'A sessão expirou. Inicia sessão novamente.'
+    return
+  }
+
   aGuardar.value = true
 
   try {
     if (modoEdicao.value && projetoEmEdicao.value !== null) {
-      const atualizado = await $fetch<ProjetoAPI>(
-        `${apiBase}/projects/${projetoEmEdicao.value}`,
+      const atualizado = await api<ProjetoAPI>(
+        `/projects/${projetoEmEdicao.value}`,
         {
           method: 'PATCH',
           body: {
@@ -327,14 +329,13 @@ async function guardarProjeto() {
 
       sucesso.value = 'Projeto atualizado com sucesso.'
     } else {
-      const criado = await $fetch<ProjetoAPI>(
-        `${apiBase}/projects/`,
+      const criado = await api<ProjetoAPI>(
+        '/projects/',
         {
           method: 'POST',
           body: {
             name,
             description: description || null,
-            created_by: utilizadorId,
           },
         },
       )
@@ -369,8 +370,8 @@ async function atualizarEstado(
   aAtualizarEstado.value = projeto.id
 
   try {
-    const atualizado = await $fetch<ProjetoAPI>(
-      `${apiBase}/projects/${projeto.id}`,
+    const atualizado = await api<ProjetoAPI>(
+      `/projects/${projeto.id}`,
       {
         method: 'PATCH',
         body: {
@@ -442,8 +443,8 @@ async function eliminarProjeto(projeto: Projeto) {
   aEliminar.value = true
 
   try {
-    await $fetch(
-      `${apiBase}/projects/${projeto.id}`,
+    await api(
+      `/projects/${projeto.id}`,
       {
         method: 'DELETE',
       },
@@ -491,12 +492,11 @@ async function carregarUtilizadores() {
   carregandoUtilizadores.value = true
 
   try {
-    utilizadores.value = await $fetch<UtilizadorAPI[]>(
-      `${apiBase}/users/`,
-    )
+    utilizadores.value = await api<UtilizadorAPI[]>('/users/')
   } catch (error) {
     console.error('Erro ao carregar utilizadores:', error)
     erroMembros.value = 'Não foi possível carregar os utilizadores registados.'
+    erro.value = 'Não foi possível carregar os utilizadores para selecionar o criador.'
   } finally {
     carregandoUtilizadores.value = false
   }
@@ -553,8 +553,8 @@ async function carregarMembros() {
   erroMembros.value = ''
 
   try {
-    membros.value = await $fetch<MembroAPI[]>(
-      `${apiBase}/projects/${projetoMembros.value.id}/members`,
+    membros.value = await api<MembroAPI[]>(
+      `/projects/${projetoMembros.value.id}/members`,
     )
   } catch (error) {
     console.error('Erro ao carregar membros:', error)
@@ -582,8 +582,8 @@ async function adicionarMembro() {
   aAdicionarMembro.value = true
 
   try {
-    const novo = await $fetch<MembroAPI>(
-      `${apiBase}/projects/${projetoMembros.value.id}/members`,
+    const novo = await api<MembroAPI>(
+      `/projects/${projetoMembros.value.id}/members`,
       {
         method: 'POST',
         body: {
@@ -633,8 +633,8 @@ async function alterarResponsabilidade(
   membroEmAtualizacao.value = membro.user_id
 
   try {
-    const atualizado = await $fetch<MembroAPI>(
-      `${apiBase}/projects/${projetoMembros.value.id}/members/${membro.user_id}`,
+    const atualizado = await api<MembroAPI>(
+      `/projects/${projetoMembros.value.id}/members/${membro.user_id}`,
       {
         method: 'PATCH',
         body: {
@@ -689,8 +689,8 @@ async function removerMembro(membro: MembroAPI) {
   membroEmRemocao.value = membro.user_id
 
   try {
-    await $fetch(
-      `${apiBase}/projects/${projetoMembros.value.id}/members/${membro.user_id}`,
+    await api(
+      `/projects/${projetoMembros.value.id}/members/${membro.user_id}`,
       {
         method: 'DELETE',
       },
@@ -1443,8 +1443,25 @@ onMounted(carregarProjetos)
 
 .primary-button:hover {
   background: linear-gradient(135deg, #4f46e5, #3730a3);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 10px 20px -8px rgb(67 56 202 / 62%);
+}
+
+.primary-button:active {
+  transform: translateY(0);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.action-button:focus-visible,
+.state-button:focus-visible,
+.delete-action:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
+}
+
+.form-actions .primary-button {
+  min-width: 160px;
 }
 
 .primary-button:disabled,
@@ -1682,10 +1699,13 @@ onMounted(carregarProjetos)
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .secondary-button:hover {
+  border-color: #cbd5e1;
   background: #f7f8fb;
+  box-shadow: 0 3px 8px rgb(15 23 42 / 6%);
 }
 
 .secondary-button:disabled {
@@ -1912,10 +1932,14 @@ onMounted(carregarProjetos)
   font-size: 11px;
   font-weight: 650;
   cursor: pointer;
+  transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .action-button:hover {
+  transform: translateY(-1px);
+  border-color: #cfd5f3;
   background: #f4f5ff;
+  box-shadow: 0 4px 10px rgb(35 49 91 / 7%);
 }
 
 .members-action {
@@ -1938,16 +1962,22 @@ onMounted(carregarProjetos)
 .state-button {
   min-height: 29px;
   padding: 0 9px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 6px;
   font-size: 10px;
   font-weight: 650;
   cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
-.complete-action { background: #eaf2ff; color: #376bc0; }
-.archive-action { background: #f0f1f5; color: #69768a; }
-.reactivate-action { background: #e8f7ef; color: #168653; }
+.state-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgb(35 49 91 / 8%);
+}
+
+.complete-action { background: #eaf2ff; color: #376bc0; border-color: #d7e4ff; }
+.archive-action { background: #f0f1f5; color: #69768a; border-color: #e0e3e9; }
+.reactivate-action { background: #e8f7ef; color: #168653; border-color: #ccebd9; }
 
 .delete-action {
   display: flex;
@@ -1962,10 +1992,13 @@ onMounted(carregarProjetos)
   color: #c04444;
   font-size: 17px;
   cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .delete-action:hover {
+  border-color: #ecc3c3;
   background: #fff0f0;
+  box-shadow: 0 3px 8px rgb(192 68 68 / 10%);
 }
 
 .updating-label {
@@ -2512,6 +2545,16 @@ onMounted(carregarProjetos)
 
   .member-summary {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-button,
+  .secondary-button,
+  .action-button,
+  .state-button,
+  .delete-action {
+    transition: none;
   }
 }
 </style>

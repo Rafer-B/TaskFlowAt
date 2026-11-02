@@ -1,5 +1,8 @@
 
 <script setup lang="ts">
+const route = useRoute()
+const auth = useAuth()
+
 defineProps<{
   title: string
 }>()
@@ -24,7 +27,8 @@ const searchQuery = ref('')
 
       <div class="header-heading">
         <span class="header-eyebrow">
-          TASKFLOW / BACK-OFFICE
+          TASKFLOW /
+          {{ route.path.startsWith('/my-work') ? 'FRONT-OFFICE' : 'BACK-OFFICE' }}
         </span>
 
         <h1>{{ title }}</h1>
@@ -58,14 +62,24 @@ const searchQuery = ref('')
       <div class="header-divider"></div>
 
       <div class="header-profile">
-        <div class="profile-avatar">AD</div>
-
-        <div class="profile-copy">
-          <strong>Administrador</strong>
-          <span>Gestão da plataforma</span>
+        <div class="profile-avatar">
+          {{ auth.user.value?.name.slice(0, 1).toUpperCase() ?? 'A' }}
         </div>
 
-        <span class="profile-chevron">⌄</span>
+        <div class="profile-copy">
+          <strong>{{ auth.user.value?.name ?? 'Administrador' }}</strong>
+          <span>Administrador</span>
+        </div>
+
+        <button
+          class="logout-button"
+          type="button"
+          title="Terminar sessão"
+          aria-label="Terminar sessão"
+          @click="auth.logout"
+        >
+          ↪
+        </button>
       </div>
     </div>
   </header>
@@ -219,6 +233,24 @@ const searchQuery = ref('')
 .profile-chevron {
   color: #91a0b5;
   font-size: 17px;
+}
+
+.logout-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  color: #4338ca;
+  background: #eef2ff;
 }
 
 .mobile-menu-button {

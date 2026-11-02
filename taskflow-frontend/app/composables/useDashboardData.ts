@@ -104,8 +104,7 @@ export function useDashboardData(_today: Date): DashboardData & {
   erro: ReturnType<typeof ref<string>>
   atualizar: () => Promise<void>
 } {
-  const config = useRuntimeConfig()
-  const apiBase = String(config.public.apiBase).replace(/\/$/, '')
+  const api = useNuxtApp().$api
 
   const projects = reactive<DashboardProject[]>([])
   const tasks = reactive<DashboardTask[]>([])
@@ -120,9 +119,9 @@ export function useDashboardData(_today: Date): DashboardData & {
 
     try {
       const [projetosAPI, tarefasAPI, utilizadoresAPI] = await Promise.all([
-        $fetch<ProjetoAPI[]>(`${apiBase}/projects/`),
-        $fetch<TarefaAPI[]>(`${apiBase}/tasks/`),
-        $fetch<UtilizadorAPI[]>(`${apiBase}/users/`),
+        api<ProjetoAPI[]>('/projects/'),
+        api<TarefaAPI[]>('/tasks/'),
+        api<UtilizadorAPI[]>('/users/'),
       ])
 
       const nomesProjetos = new Map(

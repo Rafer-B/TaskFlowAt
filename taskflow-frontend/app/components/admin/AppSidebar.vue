@@ -1,6 +1,7 @@
 
 <script setup lang="ts">
 const route = useRoute()
+const auth = useAuth()
 
 defineProps<{
   mobileOpen: boolean
@@ -12,6 +13,7 @@ const emit = defineEmits<{
 
 const mainLinks = [
   { label: 'Dashboard', to: '/', icon: '▦' },
+  { label: 'A minha área', to: '/my-work', icon: '✦' },
   { label: 'Projetos', to: '/projects', icon: '▤' },
   { label: 'Tarefas', to: '/tasks', icon: '✓' },
   { label: 'Utilizadores', to: '/users', icon: '♙' },
@@ -127,6 +129,11 @@ function isActive(path: string) {
         <span class="sidebar-link-icon" aria-hidden="true">⚙</span>
         <span>Definições</span>
       </NuxtLink>
+
+      <button class="sidebar-link sidebar-logout" type="button" @click="auth.logout">
+        <span class="sidebar-link-icon" aria-hidden="true">↪</span>
+        <span>Terminar sessão</span>
+      </button>
 
       <div class="sidebar-help">
         <div class="help-symbol">?</div>
@@ -362,6 +369,11 @@ function isActive(path: string) {
 
 .sidebar-settings {
   margin-bottom: 10px;
+}
+
+.sidebar-logout {
+  margin-bottom: 12px;
+  text-align: left;
 }
 
 .sidebar-help {

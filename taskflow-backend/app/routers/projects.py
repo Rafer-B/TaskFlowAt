@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.auth import exigir_administrador, get_db, obter_utilizador_atual
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -22,14 +22,6 @@ from app.schemas.project_member import (
 router = APIRouter(prefix="/projects", tags=["Projetos"])
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 # --------------------------------------------------
 # PROJETOS
 # --------------------------------------------------
@@ -41,9 +33,10 @@ def get_db():
 )
 def criar_projeto(
     dados: ProjectCreate,
+    current_user: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
-    utilizador = db.get(User, dados.created_by)
+    utilizador = db.get(User, current_user.id)
 
     if utilizador is None or not utilizador.is_active:
         raise HTTPException(
@@ -54,7 +47,7 @@ def criar_projeto(
     projeto = Project(
         name=dados.name.strip(),
         description=dados.description,
-        created_by=dados.created_by,
+        created_by=current_user.id,
     )
 
     try:
@@ -83,13 +76,23 @@ def criar_projeto(
 
 
 @router.get("/", response_model=list[ProjectResponse])
-def listar_projetos(db: Session = Depends(get_db)):
-    return db.query(Project).order_by(Project.id.desc()).all()
+def listar_projetos(
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    consulta = db.query(Project)
+    if current_user.role != "admin":
+        consulta = consulta.join(
+            ProjectMember,
+            ProjectMember.project_id == Project.id,
+        ).filter(ProjectMember.user_id == current_user.id)
+    return consulta.order_by(Project.id.desc()).all()
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def obter_projeto(
     project_id: int,
+    current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -100,6 +103,14 @@ def obter_projeto(
             detail="Projeto não encontrado.",
         )
 
+    if current_user.role != "admin":
+        membro = db.get(ProjectMember, (project_id, current_user.id))
+        if membro is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Projeto não encontrado.",
+            )
+
     return projeto
 
 
@@ -107,6 +118,7 @@ def obter_projeto(
 def atualizar_projeto(
     project_id: int,
     dados: ProjectUpdate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -161,6 +173,7 @@ def atualizar_projeto(
 )
 def eliminar_projeto(
     project_id: int,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -196,6 +209,7 @@ def eliminar_projeto(
 )
 def listar_membros(
     project_id: int,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -236,6 +250,7 @@ def listar_membros(
 def adicionar_membro(
     project_id: int,
     dados: ProjectMemberCreate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     projeto = db.get(Project, project_id)
@@ -308,6 +323,7 @@ def atualizar_responsabilidade(
     project_id: int,
     user_id: int,
     dados: ProjectMemberUpdate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     membro = db.get(
@@ -379,6 +395,7 @@ def atualizar_responsabilidade(
 def remover_membro(
     project_id: int,
     user_id: int,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
     membro = db.get(

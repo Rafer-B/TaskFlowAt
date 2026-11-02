@@ -5,6 +5,7 @@ const mobileOpen = ref(false)
 
 const pageTitle = computed(() => {
   if (route.path === '/') return 'Dashboard'
+  if (route.path.startsWith('/my-work')) return 'A minha área'
   if (route.path.startsWith('/projects')) return 'Projetos'
   if (route.path.startsWith('/tasks')) return 'Tarefas'
   if (route.path.startsWith('/users')) return 'Utilizadores'

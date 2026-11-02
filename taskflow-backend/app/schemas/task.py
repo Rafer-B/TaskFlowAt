@@ -56,8 +56,6 @@ class TaskCreate(BaseModel):
         gt=0,
     )
 
-    created_by: int = Field(gt=0)
-
     due_date: datetime | None = None
 
     @field_validator("title")
@@ -101,6 +99,12 @@ class TaskUpdate(BaseModel):
     priority: TaskPriority | None = None
 
     status: TaskStatus | None = None
+
+    progress: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
 
     assigned_to: int | None = Field(
         default=None,
@@ -149,9 +153,30 @@ class TaskResponse(BaseModel):
     category: TaskCategory
     priority: TaskPriority
     status: TaskStatus
+    progress: int
     assigned_to: int | None
     created_by: int
     due_date: datetime | None
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+
+
+class TaskWorkLogAttachmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    original_name: str
+    content_type: str
+    size: int
+
+
+class TaskWorkLogResponse(BaseModel):
+    id: int
+    task_id: int
+    author_id: int
+    author_name: str
+    note: str
+    progress: int
+    created_at: datetime
+    attachments: list[TaskWorkLogAttachmentResponse]

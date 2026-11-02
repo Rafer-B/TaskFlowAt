@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine
 from app.routers import project_members
+from app.routers.auth import router as auth_router
 from app.routers.projects import router as projects_router
 from app.routers.tasks import router as tasks_router
 from app.routers.users import router as users_router
@@ -66,6 +67,7 @@ app.add_middleware(
 # --------------------------------------------------
 
 app.include_router(users_router)
+app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(tasks_router)
 app.include_router(project_members.router)

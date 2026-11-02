@@ -8,6 +8,7 @@ interface Utilizador {
   id: number
   name: string
   email: string
+  role: 'admin' | 'member'
   avatar_url: string | null
   is_active: boolean
   created_at: string
@@ -17,10 +18,13 @@ interface UtilizadorCreate {
   name: string
   email: string
   password: string
+  role: 'admin' | 'member'
 }
 
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
+const api = useNuxtApp().$api
+const auth = useAuth()
 
 const utilizadores = ref<Utilizador[]>([])
 const carregando = ref(true)
@@ -33,12 +37,14 @@ const pesquisa = ref('')
 const mostrarFormulario = ref(false)
 
 const utilizadorAAtualizar = ref<number | null>(null)
+const utilizadorAAtualizarPerfil = ref<number | null>(null)
 const fotografiasComErro = ref<number[]>([])
 
 const formulario = reactive<UtilizadorCreate>({
   name: '',
   email: '',
   password: '',
+  role: 'member',
 })
 
 const utilizadoresFiltrados = computed(() => {
@@ -142,9 +148,7 @@ async function carregarUtilizadores() {
   erro.value = ''
 
   try {
-    utilizadores.value = await $fetch<Utilizador[]>(
-      `${apiBase}/users/`,
-    )
+    utilizadores.value = await api<Utilizador[]>('/users/')
 
     fotografiasComErro.value = []
   } catch (error) {
@@ -190,8 +194,8 @@ async function carregarFotografia(
   utilizadorAAtualizar.value = utilizador.id
 
   try {
-    const resposta = await $fetch<Partial<Utilizador>>(
-      `${apiBase}/users/${utilizador.id}/avatar`,
+    const resposta = await api<Partial<Utilizador>>(
+      `/users/${utilizador.id}/avatar`,
       {
         method: 'POST',
         body: dados,
@@ -234,6 +238,7 @@ function fecharFormulario() {
   formulario.name = ''
   formulario.email = ''
   formulario.password = ''
+  formulario.role = 'member'
 }
 
 async function criarUtilizador() {
@@ -257,14 +262,15 @@ async function criarUtilizador() {
   submetendo.value = true
 
   try {
-    const novoUtilizador = await $fetch<Utilizador>(
-      `${apiBase}/users/`,
+    const novoUtilizador = await api<Utilizador>(
+      '/users/',
       {
         method: 'POST',
         body: {
           name: formulario.name.trim(),
           email: formulario.email.trim().toLowerCase(),
           password: formulario.password,
+          role: formulario.role,
         },
       },
     )
@@ -278,6 +284,37 @@ async function criarUtilizador() {
     erro.value = obterMensagemErro(error)
   } finally {
     submetendo.value = false
+  }
+}
+
+async function alterarPerfil(
+  utilizador: Utilizador,
+  evento: Event,
+): Promise<void> {
+  const elemento = evento.target as HTMLSelectElement
+  const novoPerfil = elemento.value
+  if (novoPerfil !== 'admin' && novoPerfil !== 'member') return
+  if (novoPerfil === utilizador.role) return
+
+  const perfilAnterior = utilizador.role
+  utilizadorAAtualizarPerfil.value = utilizador.id
+
+  try {
+    const atualizado = await api<Utilizador>(
+      `/users/${utilizador.id}/role`,
+      {
+        method: 'PATCH',
+        body: { role: novoPerfil },
+      },
+    )
+    utilizador.role = atualizado.role
+    sucesso.value = `Perfil de ${utilizador.name} atualizado.`
+  } catch (error) {
+    console.error('Erro ao alterar perfil:', error)
+    elemento.value = perfilAnterior
+    erro.value = obterMensagemErro(error)
+  } finally {
+    utilizadorAAtualizarPerfil.value = null
   }
 }
 
@@ -388,6 +425,7 @@ onMounted(carregarUtilizadores)
             <tr>
               <th>UTILIZADOR</th>
               <th>EMAIL</th>
+              <th>PERFIL / ACESSO</th>
               <th>DATA DE REGISTO</th>
               <th>ESTADO</th>
             </tr>
@@ -442,6 +480,22 @@ onMounted(carregarUtilizadores)
               </td>
 
               <td class="email-cell">{{ utilizador.email }}</td>
+
+              <td>
+                <select
+                  class="role-select"
+                  :value="utilizador.role"
+                  :disabled="
+                    utilizador.id === auth.user.value?.id ||
+                    utilizadorAAtualizarPerfil === utilizador.id
+                  "
+                  :aria-label="`Perfil de ${utilizador.name}`"
+                  @change="alterarPerfil(utilizador, $event)"
+                >
+                  <option value="member">Utilizador · front-office</option>
+                  <option value="admin">Administrador · ambas as áreas</option>
+                </select>
+              </td>
 
               <td class="date-cell">
                 {{ formatarData(utilizador.created_at) }}
@@ -547,6 +601,14 @@ onMounted(carregarUtilizadores)
             <small>
               A palavra-passe será enviada à API para ser guardada com hash.
             </small>
+          </div>
+
+          <div class="form-group">
+            <label for="user-role">Perfil e acessos</label>
+            <select id="user-role" v-model="formulario.role">
+              <option value="member">Utilizador — apenas front-office</option>
+              <option value="admin">Administrador — ambas as áreas</option>
+            </select>
           </div>
 
           <div class="modal-actions">
@@ -873,6 +935,23 @@ tbody tr:hover {
 .email-cell,
 .date-cell {
   color: #66768e;
+}
+
+.role-select {
+  max-width: 230px;
+  min-height: 34px;
+  padding: 0 8px;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.role-select:disabled {
+  color: #64748b;
+  background: #f8fafc;
+  cursor: not-allowed;
 }
 
 .status-badge {

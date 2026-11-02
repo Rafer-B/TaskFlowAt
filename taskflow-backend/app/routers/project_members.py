@@ -3,7 +3,7 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.auth import exigir_administrador, get_db
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -20,17 +20,10 @@ router = APIRouter(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @router.get("/", response_model=list[ProjectMemberResponse])
 def list_project_members(
     project_id: int,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db)
 ):
     project = db.get(Project, project_id)
@@ -71,6 +64,7 @@ def list_project_members(
 def add_project_member(
     project_id: int,
     data: ProjectMemberCreate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db)
 ):
     project = db.get(Project, project_id)
@@ -139,6 +133,7 @@ def update_project_member_role(
     project_id: int,
     user_id: int,
     data: ProjectMemberRoleUpdate,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db)
 ):
     member = db.get(ProjectMember, (project_id, user_id))
@@ -186,6 +181,7 @@ def update_project_member_role(
 def remove_project_member(
     project_id: int,
     user_id: int,
+    _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db)
 ):
     member = db.get(ProjectMember, (project_id, user_id))
