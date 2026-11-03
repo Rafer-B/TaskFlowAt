@@ -148,7 +148,7 @@ watch(
 </template>
 
 <style scoped>
-.front-office-shell { display: flex; min-height: 100vh; color: #172b4d; background: var(--tf-bg); font-family: var(--tf-font, 'Segoe UI', sans-serif); }
+.front-office-shell { display: flex; width: 100%; min-width: 0; min-height: 100vh; color: #172b4d; background: var(--tf-bg); font-family: var(--tf-font, 'Segoe UI', sans-serif); }
 .front-sidebar { position: sticky; z-index: 20; top: 0; display: flex; width: 258px; height: 100vh; flex: 0 0 258px; flex-direction: column; padding: 22px 16px 14px; color: #263957; background: #eaf0fa; border-right: 1px solid #d8e2f1; }
 .sidebar-brand { display: flex; min-height: 54px; align-items: center; gap: 12px; margin-bottom: 26px; padding: 0 7px; text-decoration: none; }
 .brand-mark { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; color: #fff; background: linear-gradient(145deg, #6485d8, #4568b6); border-radius: 12px; box-shadow: 0 5px 12px rgb(55 83 145 / 20%); font-size: 19px; font-weight: 800; }
@@ -169,7 +169,7 @@ watch(
 .sidebar-help strong { color: #344967; font-size: 10px; }
 .sidebar-help small { color: #71819a; font-size: 9px; }
 .sidebar-version { padding: 13px 5px 0; color: #71819a; font-size: 8px; font-weight: 700; letter-spacing: .09em; }
-.front-main { display: flex; min-width: 0; min-height: 100vh; flex: 1; flex-direction: column; background: var(--tf-bg); }
+.front-main { display: flex; width: 0; min-width: 0; min-height: 100vh; flex: 1 1 0%; flex-direction: column; background: var(--tf-bg); }
 .front-topbar { position: sticky; z-index: 10; top: 0; display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 30px; background: rgb(255 255 255 / 96%); border-bottom: 1px solid #e8edf5; backdrop-filter: blur(12px); }
 .topbar-title { display: grid; gap: 5px; }
 .topbar-title > span { color: #94a0b3; font-size: 8px; font-weight: 750; letter-spacing: .12em; }

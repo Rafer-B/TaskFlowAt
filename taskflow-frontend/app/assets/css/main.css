@@ -55,10 +55,13 @@ html[data-reduced-motion='true'] *::after {
 html {
   font-family: var(--tf-font);
   font-size: 16px;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
+  width: 100%;
+  min-height: 100vh;
   min-width: 320px;
   color: var(--tf-text);
   background: var(--tf-bg);
@@ -66,6 +69,11 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#__nuxt {
+  width: 100%;
+  min-height: 100vh;
 }
 
 a {

@@ -61,6 +61,8 @@ watch(
 <style scoped>
 .admin-shell {
   display: flex;
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
   background: var(--tf-bg);
   color: #172b4d;
@@ -68,7 +70,8 @@ watch(
 
 .admin-main {
   display: flex;
-  flex: 1;
+  width: 0;
+  flex: 1 1 0%;
   flex-direction: column;
   min-width: 0;
   min-height: 100vh;
