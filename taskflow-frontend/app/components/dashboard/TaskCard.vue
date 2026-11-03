@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import type { DashboardTask } from '~/composables/useDashboardData'
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
+// Prepara prazo, estado e identificador visual do responsável para uma linha de tarefa.
 const props = defineProps<{
   task: DashboardTask
 }>()
@@ -20,6 +21,7 @@ const validDueDate = computed(() => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 })
 
+// Os rótulos e tons partilham a mesma diferença em dias para não divergirem.
 const daysLeft = computed(() => {
   if (!validDueDate.value) return null
 
@@ -83,6 +85,7 @@ const initials = computed(() => {
 })
 
 const avatarColor = computed(() => {
+  // A cor deriva do nome para ser consistente sem precisar de guardar mais dados.
   const colors = [
     '#4f46e5',
     '#3b82f6',
@@ -110,6 +113,7 @@ const avatarColor = computed(() => {
 </script>
 
 <template>
+  <!-- A linha inteira é um link acessível para abrir os detalhes da tarefa. -->
   <li class="task-row">
     <NuxtLink
       :to="`/tasks?taskId=${task.id}`"

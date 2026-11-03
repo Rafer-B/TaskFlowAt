@@ -1,3 +1,5 @@
+"""Rotas para autenticar contas e consultar a identidade da sessão atual."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
@@ -18,10 +20,12 @@ def login(
     dados: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> AccessToken:
+    """Valida credenciais e emite um token sem revelar se o email existe."""
     user = db.query(User).filter(
         User.email == dados.username.strip().lower(),
     ).first()
 
+    # O hash fictício mantém uma verificação de custo semelhante para emails inexistentes.
     hash_para_verificar = (
         user.password_hash if user is not None else DUMMY_PASSWORD_HASH
     )
@@ -44,4 +48,5 @@ def login(
 def utilizador_atual(
     user: User = Depends(obter_utilizador_atual),
 ) -> User:
+    """Devolve o utilizador autenticado associado ao token enviado."""
     return user

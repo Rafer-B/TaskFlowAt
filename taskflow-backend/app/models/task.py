@@ -1,3 +1,5 @@
+"""Modelo de tarefa com estado, progresso, atribuição e datas de atividade."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -17,6 +19,8 @@ from app.database import Base
 
 
 class Task(Base):
+    """Tarefa pertencente a um projeto, com progresso restrito entre 0 e 100."""
+
     __tablename__ = "tasks"
     __table_args__ = (
         CheckConstraint(

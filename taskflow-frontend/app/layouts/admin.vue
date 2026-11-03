@@ -1,5 +1,6 @@
 
 <script setup lang="ts">
+// Escolhe a navegação administrativa ou a área de membro conforme o papel autenticado.
 const route = useRoute()
 const auth = useAuth()
 const mobileOpen = ref(false)
@@ -20,6 +21,7 @@ const pageTitle = computed(() => {
 watch(
   () => route.fullPath,
   () => {
+    // A mudança de rota também dispensa o menu móvel aberto.
     mobileOpen.value = false
   },
 )

@@ -1,4 +1,4 @@
-"""Add contributor and viewer roles to project memberships.
+"""Adiciona os papéis contributor e viewer às associações de projetos.
 
 Revision ID: 20261102_0005
 Revises: 20261102_0004
@@ -18,10 +18,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Substitui o papel antigo e atualiza o valor predefinido e a restrição."""
+    # Remove possíveis nomes de restrição usados por versões anteriores do esquema.
     op.execute(
         "ALTER TABLE project_members "
         "DROP CONSTRAINT IF EXISTS project_members_role_check"
     )
+    # Preserva o acesso existente ao converter member para contributor.
     op.execute(
         "ALTER TABLE project_members "
         "DROP CONSTRAINT IF EXISTS ck_project_members_role"
@@ -46,6 +49,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Reverte contributor para member antes de restaurar a restrição antiga."""
     op.drop_constraint(
         "ck_project_members_role",
         "project_members",

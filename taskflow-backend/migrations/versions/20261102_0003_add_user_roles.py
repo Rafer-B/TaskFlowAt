@@ -1,4 +1,4 @@
-"""Add user roles for office access control.
+"""Adiciona papéis de acesso para controlar áreas da aplicação.
 
 Revision ID: 20261102_0003
 Revises: 20261030_0002
@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Adiciona o papel member como valor inicial das contas existentes."""
     op.add_column(
         "users",
         sa.Column(
@@ -30,4 +31,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove a coluna de papéis."""
     op.drop_column("users", "role")

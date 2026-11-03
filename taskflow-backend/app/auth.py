@@ -1,3 +1,5 @@
+"""Dependências de autenticação, sessão da base de dados e permissões."""
+
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Generator
@@ -17,6 +19,7 @@ TOKEN_LIFETIME_MINUTES = 60
 
 
 def get_db() -> Generator[Session, None, None]:
+    """Fornece uma sessão por pedido e fecha-a mesmo quando ocorre um erro."""
     db = SessionLocal()
     try:
         yield db
@@ -25,6 +28,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def _jwt_secret() -> str:
+    """Obtém a chave JWT e impede o serviço de operar com uma chave fraca."""
     secret = os.getenv("TASKFLOW_JWT_SECRET", "")
     if len(secret) < 32:
         raise HTTPException(
@@ -35,6 +39,7 @@ def _jwt_secret() -> str:
 
 
 def criar_token_acesso(user: User) -> str:
+    """Assina um token de acesso com identificador, emissão e validade."""
     agora = datetime.now(timezone.utc)
     return jwt.encode(
         {
@@ -51,6 +56,7 @@ def obter_utilizador_atual(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Valida o token e exige que a conta correspondente continue ativa."""
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Sessão inválida ou expirada.",
@@ -78,6 +84,7 @@ def obter_utilizador_atual(
 def exigir_administrador(
     user: User = Depends(obter_utilizador_atual),
 ) -> User:
+    """Restringe a operação a utilizadores com o papel de administrador."""
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -91,6 +98,7 @@ def obter_papel_projeto(
     project_id: int,
     user: User,
 ) -> str | None:
+    """Devolve o papel no projeto; administradores têm acesso transversal."""
     if user.role == "admin":
         return "admin"
 
@@ -104,6 +112,7 @@ def exigir_papel_projeto(
     user: User,
     papeis_permitidos: set[str] | None = None,
 ) -> str:
+    """Exige associação ao projeto e, se indicado, um dos papéis permitidos."""
     role = obter_papel_projeto(db, project_id, user)
     if role is None:
         raise HTTPException(

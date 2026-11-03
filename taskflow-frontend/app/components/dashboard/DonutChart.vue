@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+// Cada segmento mantém o rótulo e a cor de origem para desenho e legenda.
 interface Segment {
   label: string
   value: number
@@ -18,6 +19,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 const total = computed(() => props.segments.reduce((sum, segment) => sum + segment.value, 0))
 
+// Converte proporções em traços SVG; o deslocamento acumulado posiciona cada arco.
 const arcs = computed(() => {
   const visible = props.segments.filter((segment) => segment.value > 0).length
   // Pequeno espaço entre segmentos, só quando há mais do que um.
@@ -46,6 +48,7 @@ const ariaLabel = computed(() =>
 </script>
 
 <template>
+  <!-- O gráfico e a legenda apresentam em conjunto os totais e a respetiva distribuição. -->
   <div class="donut">
     <div class="donut-figure">
       <svg viewBox="0 0 100 100" role="img" :aria-label="ariaLabel">

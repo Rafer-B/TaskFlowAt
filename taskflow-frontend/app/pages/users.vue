@@ -1,5 +1,6 @@
 
 <script setup lang="ts">
+// Administração de contas: pesquisa, criação e edição do perfil selecionado.
 definePageMeta({
   layout: 'admin',
 })
@@ -177,6 +178,7 @@ async function carregarFotografia(
 
   if (!ficheiro) return
 
+  // Verifica tipo e tamanho localmente antes do envio multipart.
   const formatosPermitidos = [
     'image/jpeg',
     'image/png',
@@ -264,6 +266,7 @@ function abrirPerfil(utilizador: Utilizador): void {
 watch(
   [() => route.fullPath, utilizadores],
   () => {
+    // Abre diretamente o perfil pedido na URL quando a lista já contém esse utilizador.
     const userId = route.query.userId
     const value = Array.isArray(userId) ? userId[0] : userId
     if (!value || !/^\d+$/.test(value)) return
@@ -316,6 +319,7 @@ async function guardarPerfil(): Promise<void> {
 
   submetendoPerfil.value = true
   try {
+    // Atualiza a lista e o modal com o mesmo objeto devolvido pelo backend.
     const atualizado = await api<Utilizador>(
       `/users/${selecionado.id}`,
       {
@@ -648,6 +652,7 @@ onMounted(carregarUtilizadores)
       </div>
     </section>
 
+    <!-- O perfil selecionado suporta consulta e edição sem sair da lista de utilizadores. -->
     <div
       v-if="utilizadorSelecionado"
       class="modal-backdrop"

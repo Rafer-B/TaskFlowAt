@@ -1,4 +1,4 @@
-"""Create persistent calendar events.
+"""Cria eventos persistentes de calendário com referências e índices.
 
 Revision ID: 20261102_0006
 Revises: 20261102_0005
@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Cria eventos opcionais de projeto com intervalo e cores restringidos."""
     op.create_table(
         "calendar_events",
         sa.Column(
@@ -84,6 +85,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove os índices e a tabela de eventos."""
     op.drop_index("ix_calendar_events_start_at", table_name="calendar_events")
     op.drop_index("ix_calendar_events_created_by", table_name="calendar_events")
     op.drop_index("ix_calendar_events_project_id", table_name="calendar_events")

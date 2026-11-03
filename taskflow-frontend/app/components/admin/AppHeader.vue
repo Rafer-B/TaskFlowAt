@@ -6,6 +6,7 @@ import type { AuthUser } from '~/composables/useAuth'
 import { useDashboardData } from '~/composables/useDashboardData'
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
+// Junta pesquisa, alertas, navegação e fotografia do utilizador autenticado.
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
@@ -57,6 +58,7 @@ interface Notificacao {
 }
 
 const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
+  // A pesquisa localiza entidades já carregadas e limita a lista para manter o painel compacto.
   const termo = searchQuery.value.trim().toLocaleLowerCase('pt-PT')
   if (!termo) return []
 
@@ -103,6 +105,7 @@ const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
 })
 
 const notificacoes = computed<Notificacao[]>(() => {
+  // Os alertas cobrem apenas projetos ativos e priorizam bloqueios sobre atrasos e inatividade.
   const projectIds = new Set(
     dashboard.projects
       .filter((project) => project.status === 'Ativo')
@@ -192,6 +195,7 @@ function abrirPrimeiroResultado(): void {
 }
 
 function tratarAtalhos(event: KeyboardEvent): void {
+  // Ctrl/Cmd+K foca a pesquisa; Escape fecha os painéis sem navegar.
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     mostrarPesquisa.value = true
@@ -213,6 +217,7 @@ function tratarCliqueFora(event: MouseEvent): void {
 }
 
 onMounted(() => {
+  // Os listeners globais são removidos ao desmontar o cabeçalho para evitar acumulação.
   window.addEventListener('keydown', tratarAtalhos)
   document.addEventListener('click', tratarCliqueFora)
 })
@@ -246,6 +251,7 @@ async function carregarFotografia(event: Event): Promise<void> {
 
   if (!file || !auth.user.value) return
 
+  // Valida o formato e o limite de 5 MB antes do envio multipart.
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
     erroFotografia.value = true
     mensagemFotografia.value = 'Escolha uma imagem JPG, PNG ou WEBP.'

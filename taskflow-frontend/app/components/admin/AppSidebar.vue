@@ -1,5 +1,6 @@
 
 <script setup lang="ts">
+// Define a navegação administrativa e identifica as rotas ativas.
 const route = useRoute()
 const auth = useAuth()
 
@@ -26,6 +27,7 @@ const workspaceLinks = [
 ] as const
 
 function isActive(path: string) {
+  // A rota raiz exige correspondência exata para não destacar todas as páginas.
   if (path === '/') {
     return route.path === '/'
   }

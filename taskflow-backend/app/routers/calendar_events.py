@@ -1,3 +1,5 @@
+"""Rotas e regras de visibilidade e edição dos eventos de calendário."""
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -23,6 +25,7 @@ EDITABLE_PROJECT_ROLES = {"admin", "owner", "contributor"}
 
 
 def listar_eventos_visiveis(db: Session, user: User) -> list[CalendarEvent]:
+    """Limita a lista aos eventos próprios ou ligados a projetos acessíveis."""
     consulta = db.query(CalendarEvent)
 
     if user.role != "admin":
@@ -46,6 +49,7 @@ def validar_acesso_edicao(
     evento: CalendarEvent,
     user: User,
 ) -> None:
+    """Permite editar ao administrador, criador ou responsável do projeto."""
     if user.role == "admin" or evento.created_by == user.id:
         return
 
@@ -69,6 +73,7 @@ def validar_projeto_evento(
     project_id: int | None,
     user: User,
 ) -> None:
+    """Valida associação e impede novos eventos em projetos arquivados."""
     if project_id is None:
         return
 
@@ -132,6 +137,7 @@ def atualizar_evento(
     validar_acesso_edicao(db, evento, current_user)
     alteracoes = dados.model_dump(exclude_unset=True)
 
+    # A validação combina os campos enviados com os valores atuais do evento.
     project_id = alteracoes.get("project_id", evento.project_id)
     if project_id is not None:
         validar_projeto_evento(db, project_id, current_user)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+// Reúne navegação, identificação da conta e adaptação do menu do membro.
 const auth = useAuth()
 const route = useRoute()
 const mobileOpen = ref(false)
@@ -11,6 +12,7 @@ const avatarUrl = computed(() =>
 )
 const avatarFalhou = ref(false)
 
+// Reinicia o fallback caso a conta ou o endereço da fotografia mude.
 watch(avatarUrl, () => {
   avatarFalhou.value = false
 })
@@ -36,6 +38,7 @@ const navigation = [
   { label: 'Definições', to: '/settings', icon: 'settings' },
 ] as const
 
+// Fecha o menu móvel ao navegar, para não o deixar aberto sobre a nova página.
 watch(
   () => route.fullPath,
   () => {
@@ -45,6 +48,7 @@ watch(
 </script>
 
 <template>
+  <!-- O painel lateral e o cabeçalho partilham a área de conteúdo das páginas. -->
   <div class="front-office-shell">
     <button
       v-if="mobileOpen"

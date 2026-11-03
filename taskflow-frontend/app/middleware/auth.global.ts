@@ -1,4 +1,5 @@
 export default defineNuxtRouteMiddleware(async (to) => {
+  // A validação da sessão depende do armazenamento do navegador e só ocorre no cliente.
   if (import.meta.server) return
 
   const auth = useAuth()
@@ -19,6 +20,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   auth.guardarToken(token)
 
   try {
+    // Além de autenticar, carrega o papel usado abaixo para limitar rotas administrativas.
     const user = await auth.carregarUtilizador()
 
     if (isLoginPage) {

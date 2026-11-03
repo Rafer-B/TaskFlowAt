@@ -1,6 +1,9 @@
+"""Script simples para testar e apresentar a ligação PostgreSQL configurada."""
+
 from app.database import testar_ligacao
 
 try:
+    # Mantém o diagnóstico utilizável na linha de comandos sem traceback longo.
     resultado = testar_ligacao()
     print("Ligação ao PostgreSQL estabelecida!")
     print("Base de dados:", resultado[0])

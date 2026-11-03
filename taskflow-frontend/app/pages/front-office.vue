@@ -2,6 +2,7 @@
 import 'sweetalert2/dist/sweetalert2.min.css'
 import Swal from 'sweetalert2'
 
+// O painel do membro separa tarefas atribuídas das tarefas acessíveis usadas no radar do projeto.
 definePageMeta({
   layout: 'member',
 })
@@ -128,6 +129,7 @@ const resumoEstados = computed(() => [
     : 0,
 })))
 
+// Normaliza o dia local antes de comparar prazos, sem depender de conversões UTC.
 function hojeISO(): string {
   const hoje = new Date()
   return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
@@ -183,6 +185,7 @@ async function carregarPainel(): Promise<void> {
   radarErro.value = ''
 
   try {
+    // O resumo pessoal inclui apenas tarefas atribuídas à conta autenticada.
     const [projetosAPI, tarefasAPI] = await Promise.all([
       api<ProjetoAPI[]>('/projects/'),
       api<TarefaAPI[]>(`/tasks/?assigned_to=${encodeURIComponent(userId)}`),
@@ -211,6 +214,7 @@ async function carregarPainel(): Promise<void> {
   }
 
   try {
+    // A segunda consulta alimenta riscos dos projetos acessíveis, não só a lista pessoal.
     const userId = auth.user.value?.id
     const tarefasAcessiveis = await api<TarefaRadarAPI[]>('/tasks/')
     const nomesProjetos = new Map(projetos.value.map(projeto => [projeto.id, projeto.name]))
@@ -239,6 +243,7 @@ async function carregarPainel(): Promise<void> {
 }
 
 async function alertarPrazos(): Promise<void> {
+  // Guarda a confirmação por utilizador e dia para não repetir o aviso durante a sessão.
   const chaveAlerta = `taskflow-prazos-${auth.user.value?.id}-${hojeISO()}`
   if (sessionStorage.getItem(chaveAlerta)) return
 
@@ -280,6 +285,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Os indicadores e a fila de prazos resumem o trabalho pessoal antes do radar partilhado. -->
   <section class="front-dashboard">
     <header class="dashboard-welcome">
       <div>

@@ -1,3 +1,5 @@
+"""Modelos para registos de trabalho e anexos associados a tarefas."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -17,6 +19,8 @@ from app.models.user import User
 
 
 class TaskWorkLog(Base):
+    """Atualização de progresso e nota escrita por um utilizador."""
+
     __tablename__ = "task_work_logs"
 
     id: Mapped[int] = mapped_column(
@@ -63,6 +67,8 @@ class TaskWorkLog(Base):
 
 
 class TaskWorkLogAttachment(Base):
+    """Metadados de um ficheiro guardado para um registo de trabalho."""
+
     __tablename__ = "task_work_log_attachments"
 
     id: Mapped[int] = mapped_column(

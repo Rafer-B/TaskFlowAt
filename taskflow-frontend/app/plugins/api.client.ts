@@ -1,4 +1,5 @@
 export default defineNuxtPlugin(() => {
+  // Centraliza a base da API para que páginas usem caminhos relativos.
   const config = useRuntimeConfig()
   const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
 

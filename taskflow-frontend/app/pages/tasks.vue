@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
+// Gere tarefas em Kanban, sincronizando filtros, projetos, papéis e operações com a API.
 definePageMeta({
   layout: 'admin',
 })
@@ -291,11 +292,13 @@ function papelNoProjeto(projectId: number): ProjetoAPI['current_user_role'] | nu
 }
 
 function podeEditarTarefasDoProjeto(projectId: number): boolean {
+  // Observadores podem consultar, mas só admins, responsáveis e colaboradores alteram tarefas.
   return auth.user.value?.role === 'admin' ||
     ['owner', 'contributor'].includes(papelNoProjeto(projectId) ?? '')
 }
 
 function podeEliminarTarefa(tarefa: Tarefa): boolean {
+  // Eliminar é mais restrito do que editar: apenas admin ou responsável do projeto.
   return auth.user.value?.role === 'admin' ||
     papelNoProjeto(tarefa.projectId) === 'owner'
 }
@@ -393,6 +396,7 @@ async function carregarMembrosProjeto(projectId: number) {
   carregandoMembros.value = true
 
   try {
+    // Ignora respostas de seleções anteriores quando o projeto muda rapidamente no formulário.
     const membros = await api<MembroAPI[]>(
       `/projects/${projectId}/members/`,
     )
@@ -746,6 +750,7 @@ async function guardarTarefa() {
   aGuardar.value = true
 
   try {
+    // Converte rótulos da interface para enums da API e envia datas como início do dia.
     const corpo = {
       title: titulo,
       description: descricao || null,
@@ -839,6 +844,7 @@ async function alterarEstado(
   erro.value = ''
   sucesso.value = ''
 
+  // Atualização otimista: reverte o estado se o servidor rejeitar a alteração.
   tarefa.status = novoEstado
 
   try {
@@ -915,6 +921,7 @@ function obterMensagemErro(error: unknown): string {
 }
 
 function iniciarArrasto(evento: DragEvent, tarefa: Tarefa): void {
+  // Bloqueia o arrasto de projetos arquivados ou de utilizadores sem permissão de edição.
   if (
     tarefa.projectStatus === 'archived' ||
     !podeEditarTarefasDoProjeto(tarefa.projectId)
@@ -1450,6 +1457,7 @@ onMounted(() => {
           A carregar tarefas...
         </div>
 
+        <!-- Cada coluna aceita largadas; a função de estado valida novamente as permissões. -->
         <div v-else class="kanban-board">
           <section
             v-for="(coluna, indice) in colunasKanban"

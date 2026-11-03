@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import type { DashboardProject } from '~/composables/useDashboardData'
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
+// Concentra a apresentação do estado, prazo, progresso e membros de um projeto.
 const props = withDefaults(defineProps<{
   project: DashboardProject
   progress?: number
@@ -25,6 +26,7 @@ const validDueDate = computed(() => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 })
 
+// Usa apenas o dia civil para que a hora atual não altere a indicação do prazo.
 const daysLeft = computed(() => {
   if (!validDueDate.value) return null
 
@@ -68,6 +70,7 @@ const statusClass = computed(() => {
   }
 })
 
+// Protege a barra visual de valores inválidos ou fora do intervalo percentual.
 const safeProgress = computed(() =>
   Math.min(
     100,
@@ -91,6 +94,7 @@ function initials(name: string): string {
 }
 
 function colorFor(value: string): string {
+  // Hash determinístico: a mesma pessoa mantém a mesma cor entre renderizações.
   const colors = [
     '#4f46e5',
     '#2563eb',

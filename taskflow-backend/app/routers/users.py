@@ -1,4 +1,6 @@
 
+"""Rotas de contas, perfis, palavras-passe e fotografias de utilizador."""
+
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -102,6 +104,7 @@ def atualizar_palavra_passe(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Confirma a palavra-passe atual e recusa reutilizá-la como nova."""
     if not password_hash.verify(
         dados.current_password,
         current_user.password_hash,
@@ -168,6 +171,7 @@ def guardar_atualizacao_perfil(
     dados: UserUpdate,
     db: Session,
 ) -> User:
+    """Valida alterações de nome/email e converte conflitos da base de dados."""
     alteracoes = dados.model_dump(exclude_unset=True)
     if not alteracoes:
         raise HTTPException(
@@ -248,6 +252,7 @@ def atualizar_perfil_utilizador(
         )
 
     if user.role == "admin" and dados.role != "admin":
+        # O bloqueio das contas evita remover simultaneamente o último administrador.
         administradores_ativos = (
             db.query(User)
             .filter(
@@ -275,6 +280,7 @@ def remover_fotografia_perfil(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Atualiza a conta e remove o ficheiro com possibilidade de o restaurar."""
     caminho_temporario: Path | None = None
     avatar_url = current_user.avatar_url
 
@@ -288,6 +294,7 @@ def remover_fotografia_perfil(
                     f".{caminho.name}.{uuid4().hex}.deleting",
                 )
                 try:
+                    # Renomeia antes do commit para que o ficheiro antigo deixe de ser servido.
                     caminho.replace(caminho_temporario)
                 except OSError:
                     logger.exception(
@@ -301,6 +308,7 @@ def remover_fotografia_perfil(
     current_user.avatar_url = None
     current_user.updated_at = func.now()
     try:
+        # Se a gravação falhar, o bloco de exceção restaura o ficheiro renomeado.
         db.commit()
         db.refresh(current_user)
     except SQLAlchemyError:
@@ -343,6 +351,7 @@ async def carregar_fotografia_perfil(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Valida a imagem, grava-a e só então associa o URL público à conta."""
     utilizador = db.query(User).filter(
         User.id == user_id
     ).first()

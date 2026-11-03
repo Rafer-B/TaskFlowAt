@@ -1,3 +1,5 @@
+"""Operações de projetos e gestão dos seus membros e respetivos papéis."""
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,6 +45,7 @@ def criar_projeto(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Cria o projeto e associa o criador como responsável na mesma transação."""
     utilizador = db.get(User, current_user.id)
 
     if utilizador is None or not utilizador.is_active:
@@ -204,6 +207,7 @@ def atualizar_projeto(
     novo_estado = alteracoes.get("status", projeto.status)
 
     if novo_estado == "archived":
+        # Conserva a primeira data de arquivo; reativar limpa essa data.
         projeto.archived_at = (
             projeto.archived_at or datetime.now(timezone.utc)
         )
@@ -472,6 +476,7 @@ def atualizar_responsabilidade(
     )
 
     if membro.role == "owner" and dados.role != "owner":
+        # Impede que uma alteração deixe o projeto sem qualquer responsável.
         total_owners = (
             db.query(ProjectMember)
             .filter(
@@ -550,6 +555,7 @@ def remover_membro(
     )
 
     if membro.role == "owner":
+        # A mesma regra aplica-se à remoção do último responsável.
         total_owners = (
             db.query(ProjectMember)
             .filter(

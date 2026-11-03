@@ -1,6 +1,7 @@
 
 import { onMounted, reactive, ref } from 'vue'
 
+// Tipos do dashboard em português para separar o modelo visual do formato da API.
 export type TaskStatus =
   | 'Por fazer'
   | 'Em curso'
@@ -100,6 +101,7 @@ const prioridadeTarefa: Record<TarefaAPI['priority'], TaskPriority> = {
   high: 'Alta',
 }
 
+// Datas ISO recebidas com hora são reduzidas ao dia para os cálculos do painel.
 function apenasData(data: string | null): string | null {
   return data ? data.slice(0, 10) : null
 }
@@ -109,6 +111,7 @@ export function useDashboardData(_today: Date): DashboardData & {
   erro: ReturnType<typeof ref<string>>
   atualizar: () => Promise<void>
 } {
+  // Centraliza a carga e transformação dos dados consumidos pelos indicadores administrativos.
   const api = useNuxtApp().$api
 
   const projects = reactive<DashboardProject[]>([])
@@ -123,6 +126,7 @@ export function useDashboardData(_today: Date): DashboardData & {
     erro.value = ''
 
     try {
+      // As listas são independentes, por isso são pedidas em paralelo antes de as relacionar.
       const [projetosAPI, tarefasAPI, utilizadoresAPI] = await Promise.all([
         api<ProjetoAPI[]>('/projects/'),
         api<TarefaAPI[]>('/tasks/'),
@@ -159,6 +163,7 @@ export function useDashboardData(_today: Date): DashboardData & {
           isActive: utilizador.is_active,
         }))
 
+      // Os identificadores de projeto e responsável são resolvidos para rótulos legíveis.
       const tarefasConvertidas: DashboardTask[] = tarefasAPI.map(
         (tarefa) => ({
           id: tarefa.id,

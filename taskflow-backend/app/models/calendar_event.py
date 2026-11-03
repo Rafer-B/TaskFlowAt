@@ -1,3 +1,5 @@
+"""Modelo de eventos de calendário globais ou associados a projetos."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -16,6 +18,8 @@ from app.database import Base
 
 
 class CalendarEvent(Base):
+    """Evento com datas, cor validada e autor responsável pelo registo."""
+
     __tablename__ = "calendar_events"
     __table_args__ = (
         CheckConstraint(

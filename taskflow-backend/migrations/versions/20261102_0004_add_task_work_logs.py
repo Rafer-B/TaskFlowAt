@@ -1,4 +1,4 @@
-"""Add task progress, work logs, and private attachments.
+"""Adiciona progresso a tarefas e tabelas de registos de trabalho e anexos.
 
 Revision ID: 20261102_0004
 Revises: 20261102_0003
@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Cria limites de progresso e estrutura de registos com os seus ficheiros."""
     op.add_column(
         "tasks",
         sa.Column(
@@ -32,6 +33,7 @@ def upgrade() -> None:
         "tasks",
         "progress >= 0 AND progress <= 100",
     )
+    # Normaliza tarefas já concluídas para satisfazer a nova regra de progresso.
     op.execute(
         sa.text(
             "UPDATE tasks SET progress = 100 WHERE status = 'completed'"
@@ -110,6 +112,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove anexos e registos antes de retirar o progresso das tarefas."""
     op.drop_index(
         "ix_task_work_log_attachments_work_log_id",
         table_name="task_work_log_attachments",

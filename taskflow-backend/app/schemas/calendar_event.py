@@ -1,3 +1,5 @@
+"""Modelos de entrada e saída para eventos e respetiva validação temporal."""
+
 from datetime import datetime
 from typing import Literal
 
@@ -8,6 +10,8 @@ EventColor = Literal["blue", "purple", "green", "red"]
 
 
 class CalendarEventCreate(BaseModel):
+    """Dados de criação; exige datas com fuso e período válido."""
+
     project_id: int | None = Field(default=None, gt=0)
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
@@ -17,6 +21,7 @@ class CalendarEventCreate(BaseModel):
 
     @model_validator(mode="after")
     def validar_periodo(self):
+        """Normaliza texto e rejeita datas sem fuso ou intervalo inválido."""
         if self.start_at.utcoffset() is None or self.end_at.utcoffset() is None:
             raise ValueError("As datas do evento devem incluir o fuso horário.")
         if self.end_at <= self.start_at:
@@ -30,6 +35,8 @@ class CalendarEventCreate(BaseModel):
 
 
 class CalendarEventUpdate(BaseModel):
+    """Campos opcionais de edição, distinguindo omissão de valores nulos."""
+
     project_id: int | None = Field(default=None, gt=0)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
@@ -39,6 +46,7 @@ class CalendarEventUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validar_campos(self):
+        """Valida apenas os campos fornecidos e o intervalo quando completo."""
         if "title" in self.model_fields_set and self.title is None:
             raise ValueError("O título do evento é obrigatório.")
         if "start_at" in self.model_fields_set and self.start_at is None:
@@ -70,6 +78,8 @@ class CalendarEventUpdate(BaseModel):
 
 
 class CalendarEventResponse(BaseModel):
+    """Representação pública de um evento persistido."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int

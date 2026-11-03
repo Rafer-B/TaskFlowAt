@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Mantém um vocabulário de ícones tipado para os menus e controlos da aplicação.
 export type SidebarIconName =
   | 'dashboard'
   | 'my-work'
@@ -36,6 +37,7 @@ const iconPaths: Record<SidebarIconName, string> = {
 </script>
 
 <template>
+  <!-- SVG decorativo: o nome acessível pertence ao controlo que o contém. -->
   <svg
     viewBox="0 0 24 24"
     fill="none"

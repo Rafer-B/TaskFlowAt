@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+// O gráfico recebe valores já agregados e deriva uma escala comum para as barras.
 interface BarItem {
   label: string
   value: number
@@ -17,7 +18,7 @@ const activeIndex = computed(
   () => props.highlight ?? props.data.length - 1
 )
 
-// Calcula uma escala arredondada, sempre iniciada em zero.
+// Mantém a escala iniciada em zero e arredonda o limite superior para divisões regulares.
 const scaleMax = computed(() => {
   const maxValue = Math.max(
     0,
@@ -40,6 +41,7 @@ const yLabels = computed(() => {
 })
 
 function barHeight(value: number): string {
+  // Valores nulos mantêm uma barra mínima visível; os restantes não excedem a escala.
   if (value <= 0) return '4px'
 
   return `${Math.min((value / scaleMax.value) * 100, 100)}%`
@@ -53,6 +55,7 @@ const ariaLabel = computed(() =>
 </script>
 
 <template>
+  <!-- A descrição textual expõe os mesmos dados do gráfico visual a tecnologias de apoio. -->
   <div
     v-if="data.length"
     class="bar-chart"

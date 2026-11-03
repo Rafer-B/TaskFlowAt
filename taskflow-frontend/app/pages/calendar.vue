@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Agrega prazos de tarefas e eventos numa grelha que suporta mês, semana e dia.
 definePageMeta({
   layout: 'admin',
 })
@@ -123,6 +124,7 @@ const projetosEditaveis = computed(() =>
   ),
 )
 
+// Converte os dois tipos de registo para um formato único usado pela grelha e pela lista.
 const todosItens = computed<ItemCalendario[]>(() => {
   const nomesProjetos = new Map(projetos.value.map(projeto => [projeto.id, projeto.name]))
   const tarefasCalendario = tarefas.value
@@ -181,6 +183,7 @@ const itensVisiveis = computed(() =>
   }),
 )
 
+// Calcula a janela visível com semanas iniciadas à segunda-feira, incluindo dias adjacentes.
 const diasCalendario = computed<DiaCalendario[]>(() => {
   let inicio: Date
   let quantidade: number
@@ -243,6 +246,8 @@ const tarefasConcluidas = computed(() =>
 const progressoMes = computed(() => tarefasDoMes.value.length
   ? Math.round(tarefasConcluidas.value / tarefasDoMes.value.length * 100)
   : 0)
+
+// Limita a agenda aos próximos três itens, salvo quando o utilizador pede para a expandir.
 const eventosProximos = computed(() =>
   itensVisiveis.value
     .filter(item => item.data >= hojeISO)
@@ -398,6 +403,7 @@ function editarEvento(item: ItemCalendario): void {
 }
 
 function podeGerirEvento(item: ItemCalendario): boolean {
+  // Administradores, criadores e responsáveis do projeto podem gerir os eventos correspondentes.
   if (item.tipo !== 'event') return false
   if (auth.user.value?.role === 'admin' || item.criadorId === auth.user.value?.id) return true
   return projetos.value.some(projeto =>
@@ -433,6 +439,7 @@ async function guardarEvento(): Promise<void> {
   }
 
   try {
+    // O mesmo formulário cria ou atualiza, conforme exista um identificador selecionado.
     const evento = dados.id
       ? await api<EventoAPI>(`/calendar/events/${dados.id}`, { method: 'PATCH', body: payload })
       : await api<EventoAPI>('/calendar/events/', { method: 'POST', body: payload })
@@ -487,6 +494,7 @@ async function carregarCalendario(): Promise<void> {
   erro.value = ''
 
   try {
+    // Carrega em paralelo projetos, tarefas e eventos para compor o calendário inicial.
     const [projetosAPI, tarefasAPI, eventosAPI] = await Promise.all([
       api<ProjetoAPI[]>('/projects/'),
       api<TarefaAPI[]>('/tasks/'),
@@ -701,6 +709,7 @@ onMounted(carregarCalendario)
       </button>
     </section>
 
+    <!-- O mesmo formulário suporta criação e edição; a capacidade é verificada no script. -->
     <div v-if="modalEventoAberto" class="modal-backdrop" @click.self="modalEventoAberto = false">
       <section class="event-modal" role="dialog" aria-modal="true" :aria-labelledby="'event-modal-title'">
         <header class="modal-heading">

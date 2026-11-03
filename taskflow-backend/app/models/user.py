@@ -1,4 +1,6 @@
 
+"""Modelo de conta, credenciais, papel de acesso e fotografia de perfil."""
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -13,6 +15,8 @@ from app.database import Base
 
 
 class User(Base):
+    """Utilizador autenticável com estado de atividade e papel na plataforma."""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(

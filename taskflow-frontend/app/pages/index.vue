@@ -16,6 +16,7 @@ import {
   formatarDataHora,
 } from '~/utils/dates'
 
+// Dashboard administrativo: agrega dados do composable em indicadores e filas de atenção.
 definePageMeta({
   layout: 'admin',
 })
@@ -151,6 +152,7 @@ const kpiCards = computed(() => [
 ])
 
 // Tarefas concluídas nos últimos sete dias.
+// A janela contém sete dias civis, incluindo hoje, e conta pela data de conclusão.
 const weekly = computed(() =>
   Array.from({ length: 7 }, (_, i) => {
     const date = addDays(today.value, i - 6)
@@ -229,6 +231,7 @@ function dueTone(task: DashboardTask): 'late' | 'soon' | 'ok' {
 }
 
 // Lista de tarefas que precisam de atenção.
+// Ordena primeiro a prioridade da tarefa e depois a proximidade do prazo.
 const attention = computed(() =>
   openTasks.value
     .map((task) => ({

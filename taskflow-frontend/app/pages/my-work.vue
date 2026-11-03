@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Área pessoal: mostra tarefas atribuídas e acompanha os registos de trabalho por tarefa.
 definePageMeta({
   layout: 'member',
 })
@@ -264,6 +265,7 @@ async function carregarTarefas(): Promise<void> {
   tarefas.value = []
 
   try {
+    // O contador descarta respostas antigas se uma nova carga começar antes desta terminar.
     const tarefasAPI = await api<TarefaAPI[]>(
       `/tasks/?assigned_to=${encodeURIComponent(id)}`,
     )
@@ -363,6 +365,7 @@ async function carregarRegistos(tarefa: Tarefa): Promise<void> {
   erro.value = ''
 
   try {
+    // O histórico só é carregado ao abrir o painel e fica em cache na tarefa.
     tarefa.updates = await api<RegistoTrabalhoAPI[]>(
       `/tasks/${tarefa.id}/work-logs`,
     )
@@ -388,6 +391,7 @@ function selecionarFicheiros(tarefa: Tarefa, evento: Event): void {
   const tamanhoTotal = [...tarefa.selectedFiles, ...selecionados]
     .reduce((total, ficheiro) => total + ficheiro.size, 0)
 
+  // Impõe limites por ficheiro e cumulativos antes de guardar os anexos em memória.
   if (selecionados.some((ficheiro) => ficheiro.size > 10 * 1024 * 1024)) {
     erro.value = 'Cada ficheiro pode ter no máximo 10 MB.'
     return
@@ -435,6 +439,7 @@ async function guardarRegisto(tarefa: Tarefa): Promise<void> {
   sucesso.value = ''
 
   const dados = new FormData()
+  // Nota, progresso e anexos são enviados juntos como multipart/form-data.
   dados.set('note', nota)
   dados.set('progress', String(tarefa.updateProgress))
   for (const ficheiro of tarefa.selectedFiles) {
@@ -673,6 +678,7 @@ onMounted(carregarArea)
             </div>
           </article>
 
+          <!-- O painel de registo carrega o histórico ao abrir e permite anexar provas do progresso. -->
           <section
             v-if="tarefa.workPanelOpen"
             class="worklog-panel"

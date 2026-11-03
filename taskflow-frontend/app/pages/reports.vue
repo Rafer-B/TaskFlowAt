@@ -9,6 +9,7 @@ import type {
 
 import { formatarData, parseISODay, toISODay } from '~/utils/dates'
 
+// Constrói um retrato imprimível e exportável a partir dos mesmos dados do dashboard.
 definePageMeta({
   layout: 'admin',
 })
@@ -71,6 +72,7 @@ const activeProjectCount = computed(() =>
   projects.filter((project) => project.status === 'Ativo').length,
 )
 
+// Regista a hora apenas quando os dados estão prontos e não há erro de carregamento.
 watch([carregando, erro], ([isLoading, loadError]) => {
   if (!isLoading && !loadError) {
     generatedAt.value = new Intl.DateTimeFormat('pt-PT', {
@@ -92,11 +94,13 @@ function isOverdue(task: DashboardTask): boolean {
 
 function csvCell(value: string | number): string {
   const text = String(value)
+  // Neutraliza prefixos interpretados como fórmulas por folhas de cálculo.
   const safeText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
   return `"${safeText.replace(/"/g, '""')}"`
 }
 
 function exportCsv(): void {
+  // BOM e separador semicolon ajudam folhas de cálculo a reconhecer o CSV em pt-PT.
   const headers = [
     'Projeto',
     'Tarefa',

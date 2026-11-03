@@ -1,4 +1,4 @@
-"""Create the TaskFlow PostgreSQL schema.
+"""Cria as tabelas base da aplicação TaskFlow.
 
 Revision ID: 20261030_0001
 Revises:
@@ -18,6 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Cria contas, projetos, membros e tarefas com as suas chaves."""
+    # As referências e restrições mantêm a integridade entre entidades relacionadas.
     op.create_table(
         "users",
         sa.Column(
@@ -156,6 +158,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove o esquema inicial pela ordem inversa das dependências."""
     op.drop_table("tasks")
     op.drop_table("project_members")
     op.drop_table("projects")

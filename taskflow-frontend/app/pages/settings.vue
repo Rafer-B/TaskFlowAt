@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 import type { AuthUser } from '~/composables/useAuth'
 
+// Preferências locais e operações da conta usam fluxos separados e mensagens comuns.
 definePageMeta({
   layout: 'admin',
 })
@@ -96,6 +97,7 @@ const iniciais = computed(() =>
 )
 
 function aplicarPreferencias(): void {
+  // Aplica o tema e a preferência de movimento reduzido à interface, sem chamar a API.
   const tema = themes.find((option) => option.id === preferences.value.theme)
   if (tema) {
     document.documentElement.style.setProperty('--tf-bg', tema.background)
@@ -126,6 +128,7 @@ function guardarPreferencias(): void {
 
 function carregarPreferencias(): void {
   try {
+    // Valida cada campo persistido para ignorar valores antigos ou dados malformados.
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       const parsed: unknown = JSON.parse(stored)
@@ -184,6 +187,7 @@ async function guardarPerfil(): Promise<void> {
   perfilAAtualizar.value = true
 
   try {
+    // A resposta canónica substitui a sessão local, incluindo alterações no nome ou email.
     const updatedUser = await api<AuthUser>('/users/me/profile', {
       method: 'PATCH',
       body: {
@@ -214,6 +218,7 @@ async function carregarFotografia(event: Event): Promise<void> {
   const file = input.files?.[0]
   if (!file || !utilizador.value) return
 
+  // Limita formatos e tamanho antes de enviar o ficheiro em multipart/form-data.
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
     erro.value = 'Formato inválido. Escolha uma imagem JPG, PNG ou WEBP.'
     input.value = ''
@@ -274,6 +279,7 @@ async function atualizarPalavraPasse(): Promise<void> {
   erro.value = ''
   sucesso.value = ''
 
+  // Confirmação local evita atualizar a conta com uma palavra-passe digitada incorretamente.
   if (palavrasPasse.value.nova !== palavrasPasse.value.confirmar) {
     erro.value = 'A nova palavra-passe e a confirmação não coincidem.'
     return

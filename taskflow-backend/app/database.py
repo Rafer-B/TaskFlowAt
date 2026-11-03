@@ -1,4 +1,6 @@
 
+"""Configuração do motor PostgreSQL e da fábrica de sessões SQLAlchemy."""
+
 import os
 
 from dotenv import load_dotenv
@@ -36,10 +38,13 @@ SessionLocal = sessionmaker(
 
 
 class Base(DeclarativeBase):
+    """Classe base declarativa partilhada pelos modelos da aplicação."""
+
     pass
 
 
 def testar_ligacao():
+    """Consulta a base de dados atual e a versão do servidor."""
     with engine.connect() as connection:
         resultado = connection.execute(
             text("SELECT current_database(), version()")

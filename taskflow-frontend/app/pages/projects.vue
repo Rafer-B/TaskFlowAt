@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+// Centraliza catálogo, estado e associações; as capacidades do papel controlam ações disponíveis.
 definePageMeta({ layout: 'admin' })
 
 interface ProjetoAPI {
@@ -117,6 +118,7 @@ const totalOwners = computed(
   () => membros.value.filter(membro => membro.role === 'owner').length,
 )
 
+// Administradores ou responsáveis podem gerir dados e membros do projeto.
 const podeGerirProjeto = (projeto: Projeto): boolean =>
   auth.user.value?.role === 'admin' ||
   projeto.currentUserRole === 'owner'
@@ -314,6 +316,7 @@ async function guardarProjeto() {
   aGuardar.value = true
 
   try {
+    // O modo do formulário escolhe entre PATCH e POST sem duplicar a preparação dos campos.
     if (modoEdicao.value && projetoEmEdicao.value !== null) {
       const atualizado = await api<ProjetoAPI>(
         `/projects/${projetoEmEdicao.value}`,
@@ -432,6 +435,7 @@ async function executarAcao() {
   if (!projeto || !acao) return
 
   if (acao === 'archive') {
+    // Arquivar preserva os registos; eliminar é uma operação separada e irreversível.
     mostrarConfirmacao.value = false
     await atualizarEstado(projeto, 'Arquivado')
     projetoSelecionado.value = null
@@ -473,6 +477,7 @@ async function eliminarProjeto(projeto: Projeto) {
       data?: { detail?: string }
     }
 
+    // O conflito indica dependências que impedem a eliminação do projeto.
     if (resposta.statusCode === 409) {
       erro.value =
         'Não é possível eliminar este projeto porque existem tarefas ou membros associados.'
@@ -543,6 +548,7 @@ async function carregarMembros() {
   erroMembros.value = ''
 
   try {
+    // Membros atuais e contas elegíveis são obtidos em paralelo para o mesmo projeto.
     const projectId = projetoMembros.value.id
     const [membrosProjeto, utilizadoresProjeto] = await Promise.all([
       api<MembroAPI[]>(`/projects/${projectId}/members`),
@@ -683,7 +689,7 @@ async function alterarResponsabilidade(
       resposta.data?.detail ||
       'Não foi possível alterar a responsabilidade.'
 
-    // Repõe os dados apresentados com o estado atual da API.
+    // Repõe os dados apresentados com o estado atual da API após falha do PATCH.
     await carregarMembros()
   } finally {
     membroEmAtualizacao.value = null

@@ -1,4 +1,6 @@
 
+"""Modelo de projeto e respetivo estado de arquivo e associação a equipa."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -16,6 +18,8 @@ from app.database import Base
 
 
 class Project(Base):
+    """Representa um projeto que pode conter tarefas e membros."""
+
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(

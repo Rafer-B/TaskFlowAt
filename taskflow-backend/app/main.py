@@ -1,3 +1,5 @@
+"""Inicialização da API, dos recursos estáticos, routers e verificações de saúde."""
+
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -24,7 +26,7 @@ app = FastAPI(
 
 
 # --------------------------------------------------
-# DIRETÓRIO DE FOTOGRAFIAS
+# O diretório é criado na inicialização para que as rotas estáticas estejam prontas.
 # --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,7 +40,7 @@ AVATARS_DIR.mkdir(
 
 
 # --------------------------------------------------
-# FICHEIROS ESTÁTICOS
+# Expõe uploads através de URLs, mantendo a localização física no backend.
 # --------------------------------------------------
 
 app.mount(
@@ -49,7 +51,7 @@ app.mount(
 
 
 # --------------------------------------------------
-# CORS
+# Permite pedidos do frontend local configurado para desenvolvimento.
 # --------------------------------------------------
 
 app.add_middleware(
@@ -83,6 +85,7 @@ app.include_router(teams_router)
 
 @app.get("/")
 def inicio():
+    """Devolve uma resposta simples para confirmar que a API está disponível."""
     return {
         "message": "TaskFlow API está a funcionar",
         "status": "ok",
@@ -95,6 +98,7 @@ def inicio():
 
 @app.get("/health")
 def verificar_estado():
+    """Confirma a disponibilidade da aplicação sem testar dependências externas."""
     return {
         "status": "ok",
         "service": "taskflow-backend",
@@ -107,6 +111,7 @@ def verificar_estado():
 
 @app.get("/health/db")
 def verificar_base_dados():
+    """Testa a ligação SQL e converte falhas do motor numa resposta 503."""
 
     try:
         with engine.connect() as connection:

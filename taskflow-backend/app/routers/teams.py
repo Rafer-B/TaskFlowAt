@@ -1,3 +1,5 @@
+"""Rotas de equipas, membros e associação de projetos."""
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +26,7 @@ router = APIRouter(prefix="/teams", tags=["Equipas"])
 
 
 def pode_gerir_equipa(db: Session, team: Team, user: User) -> bool:
+    """Define gestão para administradores, criadores e owners de projetos da equipa."""
     if user.role == "admin" or team.created_by == user.id:
         return True
 
@@ -41,6 +44,7 @@ def pode_gerir_equipa(db: Session, team: Team, user: User) -> bool:
 
 
 def pode_associar_projetos(db: Session, team: Team, user: User) -> bool:
+    """Permite associar projetos aos gestores ou a qualquer owner de projeto."""
     if pode_gerir_equipa(db, team, user):
         return True
     return (
@@ -55,6 +59,7 @@ def pode_associar_projetos(db: Session, team: Team, user: User) -> bool:
 
 
 def obter_equipa_visivel(db: Session, team_id: int, user: User) -> Team:
+    """Oculta equipas sem relação com o utilizador, respondendo como não encontradas."""
     team = db.get(Team, team_id)
     if team is None:
         raise HTTPException(
@@ -95,6 +100,7 @@ def obter_equipa_visivel(db: Session, team_id: int, user: User) -> Team:
 
 
 def exigir_gestao_equipa(db: Session, team: Team, user: User) -> None:
+    """Impede alterações por utilizadores que apenas podem consultar a equipa."""
     if not pode_gerir_equipa(db, team, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -103,6 +109,7 @@ def exigir_gestao_equipa(db: Session, team: Team, user: User) -> None:
 
 
 def resposta_equipa(db: Session, team: Team, user: User) -> dict:
+    """Prepara os dados derivados e as capacidades visíveis para o utilizador."""
     projetos = (
         db.query(Project)
         .filter(Project.team_id == team.id)
@@ -209,6 +216,7 @@ def criar_equipa(
     )
     db.add(team)
     try:
+        # A associação do criador como membro é confirmada junto com a equipa.
         db.flush()
         db.add(TeamMember(team_id=team.id, user_id=current_user.id))
         db.commit()
@@ -327,6 +335,7 @@ def adicionar_membros(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Adiciona um lote apenas se todas as contas existirem, forem ativas e novas."""
     team = obter_equipa_visivel(db, team_id, current_user)
     exigir_gestao_equipa(db, team, current_user)
     utilizadores = (
@@ -452,6 +461,7 @@ def associar_projeto(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
+    """Liga um projeto a uma única equipa, exigindo papel de owner ou admin."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(

@@ -1,3 +1,5 @@
+"""Contratos de tarefas, progresso e registos de trabalho com anexos."""
+
 from datetime import datetime
 from typing import Literal
 
@@ -33,6 +35,8 @@ TaskStatus = Literal[
 
 
 class TaskCreate(BaseModel):
+    """Dados de criação com valores de estado e prioridade predefinidos."""
+
     project_id: int = Field(gt=0)
 
     title: str = Field(
@@ -61,6 +65,7 @@ class TaskCreate(BaseModel):
     @field_validator("title")
     @classmethod
     def validar_titulo(cls, valor: str) -> str:
+        """Remove espaços periféricos e exige um título não vazio."""
         valor = valor.strip()
 
         if not valor:
@@ -74,6 +79,7 @@ class TaskCreate(BaseModel):
         cls,
         valor: str | None,
     ) -> str | None:
+        """Normaliza a descrição e converte texto vazio em ausência de valor."""
         if valor is None:
             return None
 
@@ -83,6 +89,8 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
+    """Campos parciais de edição, com progresso limitado a 0–100."""
+
     title: str | None = Field(
         default=None,
         min_length=1,
@@ -119,6 +127,7 @@ class TaskUpdate(BaseModel):
         cls,
         valor: str | None,
     ) -> str | None:
+        """Normaliza títulos fornecidos sem alterar campos omitidos."""
         if valor is None:
             return None
 
@@ -135,6 +144,7 @@ class TaskUpdate(BaseModel):
         cls,
         valor: str | None,
     ) -> str | None:
+        """Normaliza descrições fornecidas e preserva valores não enviados."""
         if valor is None:
             return None
 
@@ -144,6 +154,8 @@ class TaskUpdate(BaseModel):
 
 
 class TaskResponse(BaseModel):
+    """Representação persistida de uma tarefa."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -163,6 +175,8 @@ class TaskResponse(BaseModel):
 
 
 class TaskWorkLogAttachmentResponse(BaseModel):
+    """Metadados seguros do anexo, sem expor o caminho armazenado."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -172,6 +186,8 @@ class TaskWorkLogAttachmentResponse(BaseModel):
 
 
 class TaskWorkLogResponse(BaseModel):
+    """Atualização de trabalho com autor e anexos apresentados."""
+
     id: int
     task_id: int
     author_id: int

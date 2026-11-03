@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'admin' })
 
+// Página de equipas: associa pessoas e projetos respeitando capacidades devolvidas pela API.
 interface ProjetoAPI {
   id: number
   name: string
@@ -74,6 +75,7 @@ const equipasFiltradas = computed(() => {
   )
 })
 
+// Oferece projetos livres ou já ligados à equipa, desde que o utilizador os possa gerir.
 const projetosDisponiveis = computed(() =>
   projetos.value.filter(projeto =>
     equipaSelecionada.value &&
@@ -94,6 +96,7 @@ async function carregarDados(): Promise<void> {
   carregando.value = true
   erro.value = ''
   try {
+    // As listas iniciais são carregadas em paralelo para alimentar pesquisa e seleção.
     const [equipasAPI, projetosAPI] = await Promise.all([
       api<EquipaAPI[]>('/teams/'),
       api<ProjetoAPI[]>('/projects/'),
@@ -116,6 +119,7 @@ function abrirCriacao(): void {
 
 async function guardarEquipa(): Promise<void> {
   const name = formulario.value.name.trim()
+  // A validação local evita pedidos vazios; o servidor continua a validar as regras definitivas.
   if (!name) {
     erro.value = 'O nome da equipa é obrigatório.'
     return
@@ -163,6 +167,7 @@ async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
     equipaSelecionada.value = equipaAtualizada
     membros.value = membrosAPI
     if (equipaAtualizada.can_manage) {
+      // Só pede pessoas disponíveis quando a API confirma permissão de gestão.
       utilizadoresDisponiveis.value = await api<MembroEquipa[]>(
         `/teams/${equipa.id}/available-members`,
       )

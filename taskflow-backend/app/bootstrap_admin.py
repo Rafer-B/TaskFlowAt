@@ -1,3 +1,5 @@
+"""Criação interativa e controlada do primeiro administrador da plataforma."""
+
 import os
 from getpass import getpass
 
@@ -11,6 +13,7 @@ password_hash = PasswordHash.recommended()
 
 
 def main() -> None:
+    """Promove a conta configurada ou cria-a após validar os dados introduzidos."""
     email = os.getenv("TASKFLOW_INITIAL_ADMIN_EMAIL", "").strip().lower()
     if not email:
         raise SystemExit(
@@ -42,6 +45,7 @@ def main() -> None:
         elif not user.is_active:
             raise SystemExit("Não é possível promover um utilizador inativo.")
         else:
+            # A promoção altera apenas o papel; os dados e a palavra-passe mantêm-se.
             user.role = "admin"
         db.commit()
         print(f"Permissão de administrador atribuída a {user.email}.")

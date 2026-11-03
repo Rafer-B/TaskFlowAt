@@ -1,3 +1,5 @@
+"""Configura o Alembic para usar o URL e os modelos da aplicação."""
+
 from logging.config import fileConfig
 
 from alembic import context
@@ -17,6 +19,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """Gera operações sem abrir uma ligação direta à base de dados."""
     context.configure(
         url=DATABASE_URL,
         target_metadata=target_metadata,
@@ -30,6 +33,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Executa migrações através de uma ligação SQLAlchemy ativa."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -48,6 +52,7 @@ def run_migrations_online() -> None:
 
 
 if context.is_offline_mode():
+    # O modo é escolhido pelo Alembic conforme o comando e a configuração.
     run_migrations_offline()
 else:
     run_migrations_online()

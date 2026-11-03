@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
+// Recebe os registos já autorizados pelo chamador e apresenta causas concretas de risco.
 type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 
@@ -68,6 +69,7 @@ function elapsedDays(value: string | null): number | null {
 }
 
 function lastActivity(project: ProjetoRadar): string | null {
+  // Considera atividade do projeto e das respetivas tarefas para evitar falsos períodos de inatividade.
   const activityDates = [
     project.createdAt,
     project.updatedAt,
@@ -128,6 +130,7 @@ const risks = computed<Risco[]>(() => {
     }
   }
 
+  // Um projeto ativo sem registos recentes é sinalizado após sete dias sem atividade.
   for (const project of activeProjects.value) {
     const lastActivityDate = lastActivity(project)
     const inactiveDays = elapsedDays(lastActivityDate)
@@ -184,6 +187,7 @@ function riskIcon(type: Risco['type']): string {
 </script>
 
 <template>
+  <!-- Só apresenta a lista quando a análise terminou sem erro; estados alternativos são anunciados. -->
   <section class="risk-radar content-card" aria-labelledby="risk-radar-heading">
     <div class="radar-heading">
       <div>

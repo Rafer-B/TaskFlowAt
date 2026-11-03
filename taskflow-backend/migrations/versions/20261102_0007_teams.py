@@ -1,4 +1,4 @@
-"""Create workspace teams and project associations.
+"""Cria equipas, membros e a associação opcional de projetos.
 
 Revision ID: 20261102_0007
 Revises: 20261102_0006
@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Cria equipas e membros; projetos removidos da equipa ficam sem associação."""
     op.create_table(
         "teams",
         sa.Column(
@@ -76,6 +77,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove a associação dos projetos e as tabelas de equipas."""
     op.drop_index("ix_projects_team_id", table_name="projects")
     op.drop_constraint(
         "fk_projects_team_id_teams",

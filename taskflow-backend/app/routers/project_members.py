@@ -1,3 +1,5 @@
+"""Rotas de consulta e manutenção de membros associados a um projeto."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
@@ -68,6 +70,7 @@ def add_project_member(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
+    """Adiciona uma conta ativa se o autor for administrador ou responsável."""
     project = db.get(Project, project_id)
 
     if not project:
@@ -125,6 +128,7 @@ def add_project_member(
     db.add(member)
 
     try:
+        # A transação trata também corridas que tentem inserir a mesma associação.
         db.commit()
         db.refresh(member)
     except IntegrityError:
@@ -152,6 +156,7 @@ def update_project_member_role(
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
+    """Atualiza o papel, preservando sempre pelo menos um responsável."""
     member = db.get(ProjectMember, (project_id, user_id))
 
     if not member:

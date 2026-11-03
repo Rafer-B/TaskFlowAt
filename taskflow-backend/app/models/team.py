@@ -1,3 +1,5 @@
+"""Modelo de equipa que agrupa projetos e utilizadores."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -15,6 +17,8 @@ from app.database import Base
 
 
 class Team(Base):
+    """Equipa criada por um utilizador e ligada a projetos associados."""
+
     __tablename__ = "teams"
 
     id: Mapped[int] = mapped_column(

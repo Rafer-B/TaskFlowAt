@@ -1,4 +1,6 @@
 
+"""Importa e publica os modelos para registo no metadata do SQLAlchemy."""
+
 from app.models.user import User
 from app.models.project import Project
 from app.models.task import Task

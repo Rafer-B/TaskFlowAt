@@ -1,3 +1,5 @@
+"""Rotas de tarefas, progresso, registos de trabalho e respetivos anexos."""
+
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
@@ -79,6 +81,7 @@ def obter_projeto(
     project_id: int,
     permitir_arquivado: bool = False,
 ) -> Project:
+    """Obtém o projeto e, por omissão, bloqueia alterações após arquivo."""
 
     projeto = db.get(Project, project_id)
 
@@ -139,6 +142,7 @@ def validar_membro_projeto(
     project_id: int,
     user_id: int,
 ) -> User:
+    """Garante que o responsável escolhido pertence ao projeto e não é observador."""
 
     utilizador = obter_utilizador_ativo(
         db,
@@ -174,6 +178,7 @@ def obter_tarefa_acessivel(
     current_user: User,
     papeis_permitidos: set[str] | None = None,
 ) -> Task:
+    """Carrega a tarefa e aplica ao seu projeto as permissões pedidas."""
     tarefa = db.get(Task, task_id)
 
     if tarefa is None:
@@ -192,6 +197,7 @@ def obter_tarefa_acessivel(
 
 
 def limpar_ficheiros(paths: list[Path]) -> None:
+    """Remove anexos escritos antes de uma transação falhada, sem mascarar erros."""
     for path in paths:
         try:
             path.unlink(missing_ok=True)
@@ -235,6 +241,7 @@ def criar_tarefa(
     tarefa = Task(**dados.model_dump(), created_by=current_user.id)
 
     if tarefa.status == "completed":
+        # O estado concluído tem sempre progresso total e uma data de conclusão.
         tarefa.completed_at = datetime.now(timezone.utc)
         tarefa.progress = 100
 
@@ -401,6 +408,7 @@ def atualizar_tarefa(
         )
 
     if tarefa.status == "completed":
+        # Mantém o progresso e a data coerentes ao concluir ou reabrir a tarefa.
         tarefa.progress = 100
 
         if (
@@ -512,6 +520,7 @@ async def registar_trabalho(
             detail=f"Podes anexar no máximo {MAX_ATTACHMENTS_PER_UPDATE} ficheiros por registo.",
         )
 
+    # Primeiro valida todos os ficheiros em memória; só depois começa a gravá-los.
     preparados: list[tuple[str, str, bytes]] = []
     tamanho_total = 0
 
@@ -561,6 +570,7 @@ async def registar_trabalho(
 
     try:
         db.add(registo)
+        # O flush obtém o ID do registo antes de criar caminhos de anexos associados.
         db.flush()
 
         for nome_original, tipo_conteudo, conteudo in preparados:
@@ -587,11 +597,13 @@ async def registar_trabalho(
             )
 
         tarefa.progress = progress
+        # O registo de trabalho também conta como atividade recente da tarefa.
         tarefa.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(registo)
 
     except Exception:
+        # Base de dados e ficheiros são revertidos em conjunto na medida possível.
         db.rollback()
         limpar_ficheiros(caminhos_criados)
         logger.exception("Não foi possível guardar o registo de trabalho.")

@@ -24,6 +24,7 @@ export function toISODay(date: Date): string {
 }
 
 export function parseISODay(iso: string): Date {
+  // Constrói a data no fuso local para evitar o recuo de dia de uma conversão UTC.
   const [year, month, day] = iso.split('-').map(Number) as [
     number,
     number,
@@ -47,6 +48,7 @@ export function formatarData(
 ): string {
   if (!valor) return 'Sem data'
 
+  // Datas sem hora são analisadas localmente; timestamps mantêm a interpretação nativa.
   const data =
     valor instanceof Date
       ? valor

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 
+// Indicador reutilizável: aceita valor, tendência, progresso ou uma série curta para mini-gráfico.
 type Tone = 'indigo' | 'blue' | 'green' | 'red'
 type IconName = 'folder' | 'bolt' | 'check' | 'alert'
 type Trend = 'up' | 'down' | 'none'
@@ -34,11 +35,13 @@ const icons: Record<IconName, string[]> = {
 
 const iconPaths = computed(() => icons[props.icon])
 
+// A barra e o atributo de progresso nunca recebem valores fora do intervalo percentual.
 const clampedProgress = computed(() => {
   if (props.progress === undefined || !Number.isFinite(props.progress)) return undefined
   return Math.min(100, Math.max(0, props.progress))
 })
 
+// Projeta os valores em coordenadas SVG, ignorando entradas não numéricas.
 const sparkPoints = computed(() => {
   const values = props.spark.filter(Number.isFinite)
   if (values.length < 2) return []

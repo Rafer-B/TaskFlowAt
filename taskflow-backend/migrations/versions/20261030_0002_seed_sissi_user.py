@@ -1,4 +1,4 @@
-"""Create the requested initial user.
+"""Insere a conta inicial solicitada, sem duplicar o email.
 
 Revision ID: 20261030_0002
 Revises: 20261030_0001
@@ -18,6 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Cria a conta base usando o hash já armazenado e ignora conflitos."""
+    # A restrição de unicidade do email torna a repetição desta inserção segura.
     op.execute(
         sa.text(
             """
@@ -37,6 +39,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Remove apenas a conta inicial introduzida por esta migração."""
     op.execute(
         sa.text("DELETE FROM users WHERE email = :email").bindparams(
             email="sissi@gmail.com"

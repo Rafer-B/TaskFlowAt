@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Gere credenciais, feedback do formulário e destino após autenticação.
 const auth = useAuth()
 const route = useRoute()
 const email = ref('')
@@ -17,6 +18,7 @@ async function entrar(): Promise<void> {
 
   try {
     const user = await auth.login(email.value, password.value)
+    // Só aceita destinos internos da mesma origem; evita redirecionamentos externos.
     const redirect = typeof route.query.redirect === 'string'
       ? route.query.redirect
       : ''
@@ -31,6 +33,7 @@ async function entrar(): Promise<void> {
 
     await navigateTo(destino)
   } catch (error) {
+    // Prefere o detalhe útil da API, mas não expõe erros internos quando não há 401.
     console.error('Erro ao iniciar sessão:', error)
     const detalhe =
       typeof error === 'object' &&
