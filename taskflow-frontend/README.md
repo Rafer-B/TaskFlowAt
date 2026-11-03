@@ -71,6 +71,15 @@ registadas que ainda não pertencem ao projeto. Uma conta inexistente não é
 criada automaticamente: um administrador tem de a registar primeiro em
 **Utilizadores**.
 
+## Radar de risco
+
+Os dashboards administrativo e do front-office incluem um Radar de risco para
+projetos ativos. O Radar assinala tarefas bloqueadas, tarefas não concluídas
+com prazo ultrapassado e projetos sem atualizações registadas há pelo menos
+sete dias. A atividade considera a criação/atualização do projeto e das tarefas;
+registos de trabalho também atualizam a data da tarefa. No front-office, a API
+limita os riscos aos projetos a que o utilizador tem acesso.
+
 Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
 
 ## Setup

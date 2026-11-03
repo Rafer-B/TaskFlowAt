@@ -10,6 +10,7 @@ const pageTitle = computed(() => {
   if (route.path.startsWith('/calendar')) return 'Calendário'
   if (route.path.startsWith('/projects')) return 'Projetos'
   if (route.path.startsWith('/teams')) return 'Equipas'
+  if (route.path.startsWith('/reports')) return 'Relatórios'
   if (route.path.startsWith('/tasks')) return 'Tarefas'
   if (route.path.startsWith('/users')) return 'Utilizadores'
   if (route.path.startsWith('/settings')) return 'Definições'
@@ -59,7 +60,7 @@ watch(
 .admin-shell {
   display: flex;
   min-height: 100vh;
-  background: #f1f5fc;
+  background: var(--tf-bg);
   color: #172b4d;
 }
 
@@ -69,7 +70,7 @@ watch(
   flex-direction: column;
   min-width: 0;
   min-height: 100vh;
-  background: #f1f5fc;
+  background: var(--tf-bg);
 }
 
 .admin-content {

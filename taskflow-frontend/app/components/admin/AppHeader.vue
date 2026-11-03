@@ -1,7 +1,25 @@
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+
+import type { AuthUser } from '~/composables/useAuth'
+
 const route = useRoute()
 const auth = useAuth()
+const config = useRuntimeConfig()
+const apiBase = String(config.public.apiBase)
+const api = useNuxtApp().$api
+const avatarUrl = computed(() =>
+  obterUrlAvatar(auth.user.value?.avatar_url, apiBase),
+)
+const avatarFalhou = ref(false)
+const fotografiaAEnviar = ref(false)
+const mensagemFotografia = ref('')
+const erroFotografia = ref(false)
+
+watch(avatarUrl, () => {
+  avatarFalhou.value = false
+})
 
 defineProps<{
   title: string
@@ -12,6 +30,66 @@ const emit = defineEmits<{
 }>()
 
 const searchQuery = ref('')
+
+function obterMensagemErro(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'detail' in data &&
+      typeof data.detail === 'string'
+    ) {
+      return data.detail
+    }
+  }
+
+  if (error instanceof Error) return error.message
+  return 'Ocorreu um erro ao comunicar com a API.'
+}
+
+async function carregarFotografia(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  mensagemFotografia.value = ''
+
+  if (!file || !auth.user.value) return
+
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    erroFotografia.value = true
+    mensagemFotografia.value = 'Escolha uma imagem JPG, PNG ou WEBP.'
+    input.value = ''
+    return
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    erroFotografia.value = true
+    mensagemFotografia.value = 'A fotografia não pode ultrapassar 5 MB.'
+    input.value = ''
+    return
+  }
+
+  const form = new FormData()
+  form.append('file', file)
+  fotografiaAEnviar.value = true
+
+  try {
+    const updatedUser = await api<AuthUser>(
+      `/users/${auth.user.value.id}/avatar`,
+      { method: 'POST', body: form },
+    )
+    auth.user.value = updatedUser
+    erroFotografia.value = false
+    mensagemFotografia.value = 'Fotografia atualizada.'
+  } catch (error) {
+    console.error('Erro ao atualizar fotografia de perfil:', error)
+    erroFotografia.value = true
+    mensagemFotografia.value = obterMensagemErro(error)
+  } finally {
+    fotografiaAEnviar.value = false
+    input.value = ''
+  }
+}
 </script>
 
 <template>
@@ -62,14 +140,50 @@ const searchQuery = ref('')
       <div class="header-divider"></div>
 
       <div class="header-profile">
-        <div class="profile-avatar">
-          {{ auth.user.value?.name.slice(0, 1).toUpperCase() ?? 'A' }}
-        </div>
+        <label
+          class="profile-avatar-change"
+          :class="{ 'is-uploading': fotografiaAEnviar }"
+          :title="fotografiaAEnviar ? 'A carregar fotografia...' : 'Alterar fotografia'"
+        >
+          <div class="profile-avatar">
+            <img
+              v-if="avatarUrl && !avatarFalhou"
+              :src="avatarUrl"
+              :alt="`Fotografia de ${auth.user.value?.name ?? 'administrador'}`"
+              @error="avatarFalhou = true"
+            />
+            <span v-else>
+              {{ auth.user.value?.name.slice(0, 1).toUpperCase() ?? 'A' }}
+            </span>
+          </div>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-label="Alterar fotografia de perfil"
+            :disabled="fotografiaAEnviar || !auth.user.value"
+            @change="carregarFotografia"
+          />
+        </label>
 
-        <div class="profile-copy">
-          <strong>{{ auth.user.value?.name ?? 'Administrador' }}</strong>
-          <span>Administrador</span>
-        </div>
+        <NuxtLink
+          to="/settings?editProfile=1"
+          class="header-profile-link"
+          aria-label="Editar perfil"
+          title="Editar perfil"
+        >
+          <div class="profile-copy">
+            <strong>{{ auth.user.value?.name ?? 'Administrador' }}</strong>
+            <span>Administrador</span>
+          </div>
+        </NuxtLink>
+        <span
+          v-if="mensagemFotografia"
+          class="profile-upload-message"
+          :class="{ 'is-error': erroFotografia }"
+          :role="erroFotografia ? 'alert' : 'status'"
+        >
+          {{ mensagemFotografia }}
+        </span>
 
         <button
           class="logout-button"
@@ -78,7 +192,7 @@ const searchQuery = ref('')
           aria-label="Terminar sessão"
           @click="auth.logout"
         >
-          ↪
+          <SidebarIcon name="logout" />
         </button>
       </div>
     </div>
@@ -196,9 +310,82 @@ const searchQuery = ref('')
 }
 
 .header-profile {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.profile-avatar-change {
+  position: relative;
+  display: block;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.profile-avatar-change input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.profile-avatar-change input:focus-visible {
+  outline: 2px solid #6485ff;
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+.profile-avatar-change.is-uploading {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.header-profile-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  color: inherit;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.header-profile-link:hover,
+.header-profile-link:focus-visible {
+  background: #f5f7fb;
+}
+
+.header-profile-link:focus-visible {
+  outline: 2px solid #6485ff;
+  outline-offset: 2px;
+}
+
+.profile-upload-message {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 10px);
+  right: 42px;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 40px));
+  padding: 9px 12px;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  box-shadow: 0 5px 16px rgb(23 43 77 / 12%);
+  font-size: 11px;
+}
+
+.profile-upload-message.is-error {
+  color: #b42318;
+  background: #fff5f4;
+  border-color: #fecdca;
 }
 
 .profile-avatar {
@@ -212,6 +399,17 @@ const searchQuery = ref('')
   border-radius: 50%;
   font-size: 11px;
   font-weight: 800;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-avatar span {
+  line-height: 1;
 }
 
 .profile-copy {
@@ -244,7 +442,6 @@ const searchQuery = ref('')
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 9px;
-  font-size: 17px;
   cursor: pointer;
 }
 

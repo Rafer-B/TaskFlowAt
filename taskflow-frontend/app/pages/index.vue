@@ -445,6 +445,13 @@ const projectsWithProgress = computed(() =>
       </article>
     </section>
 
+    <DashboardRiskRadar
+      :projects="projects"
+      :tasks="tasks"
+      :loading="carregando"
+      :error="erro"
+    />
+
     <!-- Gráficos -->
     <section class="grid-2">
       <div class="content-card animate-in" style="animation-delay: 240ms">

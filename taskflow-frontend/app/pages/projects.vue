@@ -145,18 +145,7 @@ function converterProjeto(projeto: ProjetoAPI): Projeto {
 }
 
 function construirUrlAvatar(avatarUrl: string | null): string {
-  if (!avatarUrl) return ''
-
-  // Se já for um endereço completo, utiliza-o diretamente.
-  if (
-    avatarUrl.startsWith('http://') ||
-    avatarUrl.startsWith('https://')
-  ) {
-    return avatarUrl
-  }
-
-  // Se for um caminho relativo, associa-o ao endereço da API.
-  return `${apiBase}/${avatarUrl.replace(/^\/+/, '')}`
+  return obterUrlAvatar(avatarUrl, apiBase)
 }
 function formatarData(data: string): string {
   if (!data) return 'Data indisponível'

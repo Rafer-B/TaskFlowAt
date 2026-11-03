@@ -12,6 +12,8 @@ interface ProjetoAPI {
   id: number
   name: string
   status: 'active' | 'completed' | 'archived'
+  created_at: string
+  updated_at: string | null
 }
 
 interface TarefaAPI {
@@ -23,6 +25,17 @@ interface TarefaAPI {
   due_date: string | null
 }
 
+interface TarefaRadarAPI {
+  id: number
+  project_id: number
+  title: string
+  status: EstadoTarefa
+  assigned_to: number | null
+  due_date: string | null
+  created_at: string
+  updated_at: string | null
+}
+
 interface TarefaPainel {
   id: number
   title: string
@@ -32,12 +45,46 @@ interface TarefaPainel {
   dueDate: string | null
 }
 
+interface TarefaRadar {
+  id: number
+  projectId: number
+  title: string
+  project: string
+  status: 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
+  responsible: string
+  dueDate: string | null
+  createdAt: string
+  updatedAt: string | null
+}
+
 const api = useNuxtApp().$api
 const auth = useAuth()
 const projetos = ref<ProjetoAPI[]>([])
 const tarefas = ref<TarefaPainel[]>([])
+const tarefasRadar = ref<TarefaRadar[]>([])
 const carregando = ref(true)
 const erro = ref('')
+const radarCarregando = ref(true)
+const radarErro = ref('')
+
+const estadosRadar: Record<EstadoTarefa, TarefaRadar['status']> = {
+  to_do: 'Por fazer',
+  in_progress: 'Em curso',
+  completed: 'Concluída',
+  blocked: 'Bloqueada',
+}
+
+const projetosRadar = computed(() => projetos.value.map(projeto => ({
+  id: projeto.id,
+  name: projeto.name,
+  status: projeto.status === 'active'
+    ? 'Ativo' as const
+    : projeto.status === 'completed'
+      ? 'Concluído' as const
+      : 'Arquivado' as const,
+  createdAt: projeto.created_at,
+  updatedAt: projeto.updated_at,
+})))
 
 const tarefasConcluidas = computed(
   () => tarefas.value.filter(tarefa => tarefa.status === 'completed').length,
@@ -132,6 +179,8 @@ async function carregarPainel(): Promise<void> {
 
   carregando.value = true
   erro.value = ''
+  radarCarregando.value = true
+  radarErro.value = ''
 
   try {
     const [projetosAPI, tarefasAPI] = await Promise.all([
@@ -154,6 +203,38 @@ async function carregarPainel(): Promise<void> {
     erro.value = 'Não foi possível carregar o painel. Verifique a ligação à API e tente novamente.'
   } finally {
     carregando.value = false
+  }
+
+  if (erro.value) {
+    radarCarregando.value = false
+    return
+  }
+
+  try {
+    const userId = auth.user.value?.id
+    const tarefasAcessiveis = await api<TarefaRadarAPI[]>('/tasks/')
+    const nomesProjetos = new Map(projetos.value.map(projeto => [projeto.id, projeto.name]))
+
+    tarefasRadar.value = tarefasAcessiveis.map(tarefa => ({
+      id: tarefa.id,
+      projectId: tarefa.project_id,
+      title: tarefa.title,
+      project: nomesProjetos.get(tarefa.project_id) ?? 'Projeto desconhecido',
+      status: estadosRadar[tarefa.status],
+      responsible: tarefa.assigned_to === userId
+        ? auth.user.value?.name ?? 'Membro atribuído'
+        : tarefa.assigned_to === null
+          ? 'Por atribuir'
+          : 'Outro membro',
+      dueDate: tarefa.due_date,
+      createdAt: tarefa.created_at,
+      updatedAt: tarefa.updated_at,
+    }))
+  } catch (error) {
+    console.error('Erro ao carregar os riscos dos projetos:', error)
+    radarErro.value = 'Não foi possível analisar os riscos. Atualize o painel para tentar novamente.'
+  } finally {
+    radarCarregando.value = false
   }
 }
 
@@ -242,6 +323,13 @@ onMounted(async () => {
           <small>{{ tarefasAtrasadas.length ? 'Precisam da sua atenção' : 'Está em dia' }}</small>
         </article>
       </section>
+
+      <DashboardRiskRadar
+        :projects="projetosRadar"
+        :tasks="tarefasRadar"
+        :loading="radarCarregando"
+        :error="radarErro"
+      />
 
       <section class="dashboard-grid">
         <article class="dashboard-panel progress-panel">

@@ -25,7 +25,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return navigateTo(user.role === 'admin' ? '/' : '/front-office')
     }
 
-    const adminOnlyPaths = ['/', '/users', '/settings']
+    const adminOnlyPaths = ['/', '/users', '/reports']
     const isAdminOnly = adminOnlyPaths.some(
       (path) =>
         to.path === path ||

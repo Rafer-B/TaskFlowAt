@@ -12,18 +12,18 @@ const emit = defineEmits<{
 }>()
 
 const mainLinks = [
-  { label: 'Dashboard', to: '/', icon: '▦' },
-  { label: 'A minha área', to: '/my-work', icon: '✦' },
-  { label: 'Projetos', to: '/projects', icon: '▤' },
-  { label: 'Tarefas', to: '/tasks', icon: '✓' },
-  { label: 'Utilizadores', to: '/users', icon: '♙' },
-]
+  { label: 'Dashboard', to: '/', icon: 'dashboard' },
+  { label: 'A minha área', to: '/my-work', icon: 'my-work' },
+  { label: 'Projetos', to: '/projects', icon: 'projects' },
+  { label: 'Tarefas', to: '/tasks', icon: 'tasks' },
+  { label: 'Utilizadores', to: '/users', icon: 'users' },
+] as const
 
 const workspaceLinks = [
-  { label: 'Calendário', to: '/calendar', icon: '▦' },
-  { label: 'Equipas', to: '/teams', icon: '♙' },
-  { label: 'Relatórios', icon: '▥' },
-]
+  { label: 'Calendário', to: '/calendar', icon: 'calendar' },
+  { label: 'Equipas', to: '/teams', icon: 'teams' },
+  { label: 'Relatórios', to: '/reports', icon: 'reports' },
+] as const
 
 function isActive(path: string) {
   if (path === '/') {
@@ -86,8 +86,8 @@ function isActive(path: string) {
         :aria-current="isActive(link.to) ? 'page' : undefined"
         @click="emit('close')"
       >
-        <span class="sidebar-link-icon" aria-hidden="true">
-          {{ link.icon }}
+        <span class="sidebar-link-icon">
+          <SidebarIcon :name="link.icon" />
         </span>
 
         <span>{{ link.label }}</span>
@@ -111,7 +111,9 @@ function isActive(path: string) {
           :aria-current="isActive(link.to) ? 'page' : undefined"
           @click="emit('close')"
         >
-          <span class="sidebar-link-icon" aria-hidden="true">{{ link.icon }}</span>
+          <span class="sidebar-link-icon">
+            <SidebarIcon :name="link.icon" />
+          </span>
           <span>{{ link.label }}</span>
           <span v-if="isActive(link.to)" class="active-indicator"></span>
         </NuxtLink>
@@ -121,7 +123,9 @@ function isActive(path: string) {
           :title="`${link.label} — disponível numa próxima fase`"
           aria-disabled="true"
         >
-          <span class="sidebar-link-icon" aria-hidden="true">{{ link.icon }}</span>
+          <span class="sidebar-link-icon">
+            <SidebarIcon :name="link.icon" />
+          </span>
           <span>{{ link.label }}</span>
           <span class="upcoming-dot"></span>
         </div>
@@ -135,17 +139,23 @@ function isActive(path: string) {
         :class="{ 'is-active': isActive('/settings') }"
         @click="emit('close')"
       >
-        <span class="sidebar-link-icon" aria-hidden="true">⚙</span>
+        <span class="sidebar-link-icon">
+          <SidebarIcon name="settings" />
+        </span>
         <span>Definições</span>
       </NuxtLink>
 
       <button class="sidebar-link sidebar-logout" type="button" @click="auth.logout">
-        <span class="sidebar-link-icon" aria-hidden="true">↪</span>
+        <span class="sidebar-link-icon">
+          <SidebarIcon name="logout" />
+        </span>
         <span>Terminar sessão</span>
       </button>
 
       <div class="sidebar-help">
-        <div class="help-symbol">?</div>
+        <div class="help-symbol">
+          <SidebarIcon name="help" />
+        </div>
 
         <div>
           <strong>Precisa de ajuda?</strong>

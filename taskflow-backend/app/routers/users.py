@@ -1,4 +1,5 @@
 
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,15 +13,22 @@ from fastapi import (
 )
 from pwdlib import PasswordHash
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import exigir_administrador, get_db, obter_utilizador_atual
 from app.models.user import User
-from app.schemas.user import UserCreate, UserPublic, UserRoleUpdate
+from app.schemas.user import (
+    UserCreate,
+    UserPasswordUpdate,
+    UserPublic,
+    UserRoleUpdate,
+    UserUpdate,
+)
 
 
 router = APIRouter(prefix="/users", tags=["Utilizadores"])
+logger = logging.getLogger(__name__)
 
 password_hash = PasswordHash.recommended()
 
@@ -88,6 +96,137 @@ def listar_utilizadores(
     return db.query(User).order_by(User.id).all()
 
 
+@router.patch("/me/password", response_model=UserPublic)
+def atualizar_palavra_passe(
+    dados: UserPasswordUpdate,
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    if not password_hash.verify(
+        dados.current_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A palavra-passe atual está incorreta.",
+        )
+
+    if password_hash.verify(
+        dados.new_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A nova palavra-passe tem de ser diferente da atual.",
+        )
+
+    current_user.password_hash = password_hash.hash(dados.new_password)
+    current_user.updated_at = func.now()
+
+    try:
+        db.commit()
+        db.refresh(current_user)
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Não foi possível atualizar a palavra-passe do utilizador.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível atualizar a palavra-passe.",
+        )
+
+    return current_user
+
+
+@router.patch("/me/profile", response_model=UserPublic)
+def atualizar_o_proprio_perfil(
+    dados: UserUpdate,
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    return guardar_atualizacao_perfil(current_user, dados, db)
+
+
+@router.patch("/{user_id}", response_model=UserPublic)
+def atualizar_utilizador(
+    user_id: int,
+    dados: UserUpdate,
+    _: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+):
+    utilizador = db.get(User, user_id)
+    if utilizador is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilizador não encontrado.",
+        )
+
+    return guardar_atualizacao_perfil(utilizador, dados, db)
+
+
+def guardar_atualizacao_perfil(
+    utilizador: User,
+    dados: UserUpdate,
+    db: Session,
+) -> User:
+    alteracoes = dados.model_dump(exclude_unset=True)
+    if not alteracoes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Indique pelo menos um dado para atualizar.",
+        )
+
+    novo_nome = alteracoes.get("name", utilizador.name)
+    if "name" in alteracoes:
+        if alteracoes["name"] is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="O nome não pode ficar vazio.",
+            )
+
+    novo_email = utilizador.email
+    if "email" in alteracoes:
+        if alteracoes["email"] is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="O email não pode ficar vazio.",
+            )
+
+        email = str(alteracoes["email"]).strip().lower()
+        existente = (
+            db.query(User)
+            .filter(User.email == email, User.id != utilizador.id)
+            .first()
+        )
+        if existente:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Já existe um utilizador com este email.",
+            )
+        novo_email = email
+
+    utilizador.name = novo_nome
+    utilizador.email = novo_email
+    utilizador.updated_at = func.now()
+    try:
+        db.commit()
+        db.refresh(utilizador)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não foi possível atualizar: o email pode já existir.",
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Não foi possível atualizar o perfil do utilizador.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível atualizar o perfil do utilizador.",
+        )
+
+    return utilizador
+
+
 @router.patch("/{user_id}/role", response_model=UserPublic)
 def atualizar_perfil_utilizador(
     user_id: int,
@@ -129,6 +268,72 @@ def atualizar_perfil_utilizador(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.delete("/me/avatar", response_model=UserPublic)
+def remover_fotografia_perfil(
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    caminho_temporario: Path | None = None
+    avatar_url = current_user.avatar_url
+
+    if avatar_url and avatar_url.startswith("/uploads/avatars/"):
+        nome_ficheiro = Path(avatar_url).name
+        if nome_ficheiro and nome_ficheiro == avatar_url.rsplit("/", 1)[-1]:
+            caminho = (AVATAR_DIR / nome_ficheiro).resolve()
+            diretorio_avatars = AVATAR_DIR.resolve()
+            if caminho.parent == diretorio_avatars and caminho.is_file():
+                caminho_temporario = caminho.with_name(
+                    f".{caminho.name}.{uuid4().hex}.deleting",
+                )
+                try:
+                    caminho.replace(caminho_temporario)
+                except OSError:
+                    logger.exception(
+                        "Não foi possível preparar a remoção da fotografia de perfil.",
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Não foi possível remover a fotografia de perfil.",
+                    )
+
+    current_user.avatar_url = None
+    current_user.updated_at = func.now()
+    try:
+        db.commit()
+        db.refresh(current_user)
+    except SQLAlchemyError:
+        db.rollback()
+        if caminho_temporario is not None and caminho_temporario.exists():
+            try:
+                caminho_temporario.replace(AVATAR_DIR / Path(avatar_url or "").name)
+            except OSError:
+                logger.exception(
+                    "Não foi possível restaurar a fotografia após falha na base de dados.",
+                )
+        logger.exception("Não foi possível remover a fotografia de perfil da conta.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível remover a fotografia de perfil.",
+        )
+
+    if caminho_temporario is not None:
+        try:
+            caminho_temporario.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "A fotografia foi removida da conta, mas o ficheiro não pôde ser apagado.",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "A fotografia foi removida da conta, mas não foi possível "
+                    "apagar o ficheiro armazenado."
+                ),
+            )
+
+    return current_user
 
 
 @router.post("/{user_id}/avatar", response_model=UserPublic)

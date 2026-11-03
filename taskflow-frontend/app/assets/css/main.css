@@ -6,7 +6,7 @@
 /* Tokens de cor e dimensão. */
 :root {
   --tf-font: 'DM Sans', Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
-  --tf-bg: #f8fafc;
+  --tf-bg: #f3f4f0;
   --tf-surface: #ffffff;
   --tf-border: #e2e8f0;
   --tf-border-soft: #f1f5f9;
@@ -36,6 +36,15 @@
   :root {
     --tf-transition: 0.01s linear;
   }
+}
+
+html[data-reduced-motion='true'] *,
+html[data-reduced-motion='true'] *::before,
+html[data-reduced-motion='true'] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* Base. */

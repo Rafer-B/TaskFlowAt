@@ -587,6 +587,7 @@ async def registar_trabalho(
             )
 
         tarefa.progress = progress
+        tarefa.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(registo)
 

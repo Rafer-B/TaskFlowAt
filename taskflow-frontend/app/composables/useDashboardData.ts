@@ -16,6 +16,8 @@ export interface DashboardProject {
   name: string
   status: ProjectStatus
   dueDate: string | null
+  createdAt: string
+  updatedAt: string | null
 }
 
 export interface DashboardUser {
@@ -27,6 +29,7 @@ export interface DashboardUser {
 
 export interface DashboardTask {
   id: number
+  projectId: number
   title: string
   project: string
   responsible: string
@@ -34,6 +37,8 @@ export interface DashboardTask {
   priority: TaskPriority
   status: TaskStatus
   completedAt: string | null
+  createdAt: string
+  updatedAt: string | null
 }
 
 export interface DashboardData {
@@ -141,6 +146,8 @@ export function useDashboardData(_today: Date): DashboardData & {
           name: projeto.name,
           status: estadoProjeto[projeto.status],
           dueDate: null,
+          createdAt: projeto.created_at,
+          updatedAt: projeto.updated_at,
         }),
       )
 
@@ -155,6 +162,7 @@ export function useDashboardData(_today: Date): DashboardData & {
       const tarefasConvertidas: DashboardTask[] = tarefasAPI.map(
         (tarefa) => ({
           id: tarefa.id,
+          projectId: tarefa.project_id,
           title: tarefa.title,
           project:
             nomesProjetos.get(tarefa.project_id) ??
@@ -168,6 +176,8 @@ export function useDashboardData(_today: Date): DashboardData & {
           priority: prioridadeTarefa[tarefa.priority],
           status: estadoTarefa[tarefa.status],
           completedAt: apenasData(tarefa.completed_at),
+          createdAt: tarefa.created_at,
+          updatedAt: tarefa.updated_at,
         }),
       )
 
