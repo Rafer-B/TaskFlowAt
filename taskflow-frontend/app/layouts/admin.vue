@@ -29,32 +29,38 @@ watch(
 
 <template>
   <div class="admin-shell">
-    <template v-if="auth.user.value?.role === 'admin'">
-      <AdminAppSidebar
-        :mobile-open="mobileOpen"
-        @close="mobileOpen = false"
-      />
-
-      <div class="admin-main">
-        <AdminAppHeader
-          :title="pageTitle"
-          @toggle-sidebar="mobileOpen = !mobileOpen"
+    <ClientOnly>
+      <template v-if="auth.user.value?.role === 'admin'">
+        <AdminAppSidebar
+          :mobile-open="mobileOpen"
+          @close="mobileOpen = false"
         />
 
-        <main class="admin-content">
-          <slot />
-        </main>
+        <div class="admin-main">
+          <AdminAppHeader
+            :title="pageTitle"
+            @toggle-sidebar="mobileOpen = !mobileOpen"
+          />
 
-        <footer class="admin-footer">
-          <span>© {{ new Date().getFullYear() }} TaskFlow</span>
-          <span>Gestão de projetos e tarefas académicas</span>
-        </footer>
-      </div>
-    </template>
+          <main class="admin-content">
+            <slot />
+          </main>
 
-    <FrontOfficeShell v-else>
-      <slot />
-    </FrontOfficeShell>
+          <footer class="admin-footer">
+            <span>© {{ new Date().getFullYear() }} TaskFlow</span>
+            <span>Gestão de projetos e tarefas académicas</span>
+          </footer>
+        </div>
+      </template>
+
+      <FrontOfficeShell v-else>
+        <slot />
+      </FrontOfficeShell>
+
+      <template #fallback>
+        <div class="auth-layout-loading" aria-busy="true" aria-label="A carregar sessão"></div>
+      </template>
+    </ClientOnly>
   </div>
 </template>
 
@@ -66,6 +72,12 @@ watch(
   min-height: 100vh;
   background: var(--tf-bg);
   color: #172b4d;
+}
+
+.auth-layout-loading {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--tf-bg);
 }
 
 .admin-main {

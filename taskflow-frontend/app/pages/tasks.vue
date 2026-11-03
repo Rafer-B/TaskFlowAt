@@ -1090,7 +1090,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="page">
+  <div class="page">
 
     <!-- CABEÇALHO -->
     <header class="page-header">
@@ -1125,13 +1125,10 @@ onMounted(() => {
       {{ sucesso }}
     </p>
 
-    <nav class="board-tabs" aria-label="Visualizações de tarefas">
+    <nav class="board-tabs" aria-label="Tarefas">
       <NuxtLink to="/tasks" class="board-tab">
-        <span aria-hidden="true">▦</span> Quadro
+        <span aria-hidden="true">▦</span> Tarefas
       </NuxtLink>
-      <span class="board-tab board-tab-muted">
-        <span aria-hidden="true">▤</span> Tarefas
-      </span>
       <span class="board-total">{{ resumo.total }} tarefas no quadro</span>
     </nav>
 
@@ -1704,12 +1701,14 @@ onMounted(() => {
       </section>
     </div>
 
-  </main>
+  </div>
 </template>
 
 <style scoped>
 .page {
+  width: 100%;
   max-width: 1500px;
+  min-width: 0;
   margin: 0 auto;
   padding: 12px 0 32px;
   color: #172033;
@@ -1868,10 +1867,6 @@ onMounted(() => {
 .board-tab:first-child {
   color: #34446a;
   border-bottom-color: #4f46e5;
-}
-
-.board-tab-muted {
-  color: #94a3b8;
 }
 
 .board-total {

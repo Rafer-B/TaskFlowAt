@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import 'sweetalert2/dist/sweetalert2.min.css'
+import Swal from 'sweetalert2'
+
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
 // Recebe os registos já autorizados pelo chamador e apresenta causas concretas de risco.
@@ -184,22 +187,76 @@ function riskIcon(type: Risco['type']): string {
 
   return icons[type]
 }
+
+async function abrirRisco(risk: Risco): Promise<void> {
+  const result = await Swal.fire({
+    icon: risk.type === 'blocked'
+      ? 'error'
+      : risk.type === 'overdue'
+        ? 'warning'
+        : 'info',
+    title: risk.title,
+    text: `${riskLabel(risk.type)} · ${risk.project}. ${risk.description}`,
+    confirmButtonText: risk.type === 'inactive'
+      ? 'Ver tarefas do projeto'
+      : 'Abrir tarefa',
+    showCancelButton: true,
+    cancelButtonText: 'Fechar',
+    confirmButtonColor: '#4f5fd5',
+    cancelButtonColor: '#64748b',
+    reverseButtons: true,
+    focusCancel: true,
+  })
+
+  if (result.isConfirmed) {
+    await navigateTo(risk.destination)
+  }
+}
 </script>
 
 <template>
   <!-- Só apresenta a lista quando a análise terminou sem erro; estados alternativos são anunciados. -->
-  <section class="risk-radar content-card" aria-labelledby="risk-radar-heading">
+  <section
+    class="risk-radar content-card"
+    :class="{ 'has-risks': risks.length > 0 && !loading && !error }"
+    aria-labelledby="risk-radar-heading"
+  >
     <div class="radar-heading">
-      <div>
-        <span class="radar-eyebrow">PREVENÇÃO</span>
-        <h2 id="risk-radar-heading">Radar de risco</h2>
-        <p>Atrasos, bloqueios e projetos sem atividade recente.</p>
+      <div class="radar-title">
+        <span class="radar-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z" />
+            <path d="M12 8v4m0 3h.01" />
+          </svg>
+        </span>
+        <div>
+          <span class="radar-eyebrow">MONITORIZAÇÃO PROATIVA</span>
+          <h2 id="risk-radar-heading">Radar de risco</h2>
+          <p>Alertas prioritários para manter os projetos em movimento.</p>
+        </div>
       </div>
-      <div v-if="!loading && !error" class="radar-summary" aria-label="Resumo de riscos">
-        <span v-if="blockedCount" class="summary-blocked">{{ blockedCount }} bloqueios</span>
-        <span v-if="overdueCount" class="summary-overdue">{{ overdueCount }} atrasos</span>
-        <span v-if="inactiveCount" class="summary-inactive">{{ inactiveCount }} sem atividade</span>
-        <span v-if="risks.length === 0" class="summary-clear">Tudo em dia</span>
+      <div
+        v-if="!loading && !error"
+        class="radar-summary"
+        :class="{ 'summary-healthy': risks.length === 0 }"
+        aria-label="Resumo de riscos"
+      >
+        <span class="summary-total">
+          <strong>{{ risks.length }}</strong>
+          <small>{{ risks.length === 1 ? 'alerta ativo' : 'alertas ativos' }}</small>
+        </span>
+        <span v-if="blockedCount" class="summary-chip summary-blocked">
+          <span class="summary-dot" aria-hidden="true"></span>{{ blockedCount }} bloqueios
+        </span>
+        <span v-if="overdueCount" class="summary-chip summary-overdue">
+          <span class="summary-dot" aria-hidden="true"></span>{{ overdueCount }} atrasos
+        </span>
+        <span v-if="inactiveCount" class="summary-chip summary-inactive">
+          <span class="summary-dot" aria-hidden="true"></span>{{ inactiveCount }} sem atividade
+        </span>
+        <span v-if="risks.length === 0" class="summary-chip summary-clear">
+          <span class="summary-dot" aria-hidden="true"></span>Tudo em dia
+        </span>
       </div>
     </div>
 
@@ -211,13 +268,16 @@ function riskIcon(type: Risco['type']): string {
     </p>
     <ul v-else-if="risks.length" class="risk-list">
       <li v-for="risk in risks" :key="risk.id">
-        <NuxtLink
-          :to="risk.destination"
+        <button
+          type="button"
+          @click="abrirRisco(risk)"
           class="risk-item"
           :class="`risk-${risk.type}`"
-          :aria-label="`Ver ${risk.title} em ${risk.type === 'inactive' ? 'tarefas do projeto' : 'detalhes da tarefa'}`"
+          :aria-label="`Ver detalhes do risco: ${risk.title}`"
         >
-          <span class="risk-icon" aria-hidden="true">{{ riskIcon(risk.type) }}</span>
+          <span class="risk-icon" :class="`icon-${risk.type}`" aria-hidden="true">
+            {{ riskIcon(risk.type) }}
+          </span>
           <div class="risk-copy">
             <div class="risk-title-row">
               <strong>{{ risk.title }}</strong>
@@ -229,7 +289,7 @@ function riskIcon(type: Risco['type']): string {
           <span class="risk-link" aria-hidden="true">
             Ver <span>→</span>
           </span>
-        </NuxtLink>
+        </button>
       </li>
     </ul>
     <div v-else class="radar-clear">
@@ -244,28 +304,81 @@ function riskIcon(type: Risco['type']): string {
 
 <style scoped>
 .risk-radar {
-  padding: 22px 24px;
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+  border-color: #e4e9f2;
+  background:
+    radial-gradient(ellipse at 100% 0, rgb(99 102 241 / 6%), transparent 34%),
+    #fff;
+  box-shadow: 0 8px 26px rgb(26 39 74 / 5%);
+}
+
+.risk-radar.has-risks {
+  border-color: #f0dfc9;
+  background:
+    radial-gradient(ellipse at 100% 0, rgb(245 158 11 / 8%), transparent 36%),
+    #fff;
 }
 
 .radar-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.radar-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+
+.radar-symbol {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  color: #5362cf;
+  background: linear-gradient(145deg, #f0f2ff, #e8ebff);
+  border: 1px solid #e1e5ff;
+  border-radius: 14px;
+}
+
+.has-risks .radar-symbol {
+  color: #a76b22;
+  background: linear-gradient(145deg, #fff8eb, #fff1d7);
+  border-color: #f7e7c7;
+}
+
+.radar-symbol svg {
+  width: 23px;
+  height: 23px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .radar-eyebrow {
-  color: var(--tf-primary);
+  color: #6673cf;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
 
+.has-risks .radar-eyebrow {
+  color: #a76b22;
+}
+
 .radar-heading h2 {
-  margin: 5px 0;
+  margin: 4px 0;
   color: var(--tf-text);
-  font-size: 17px;
+  font-size: 18px;
+  letter-spacing: -0.025em;
 }
 
 .radar-heading p,
@@ -279,18 +392,61 @@ function riskIcon(type: Risco['type']): string {
 
 .radar-summary {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
 }
 
-.radar-summary span,
+.summary-total {
+  display: grid;
+  min-width: 65px;
+  justify-items: center;
+  gap: 1px;
+  padding: 5px 12px;
+  color: #43516c;
+  background: #f5f7fb;
+  border: 1px solid #e9edf4;
+  border-radius: 12px;
+}
+
+.summary-healthy .summary-total {
+  color: #18764b;
+  background: #effaf4;
+  border-color: #d7f0e2;
+}
+
+.summary-total strong {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-total small {
+  color: #7d899d;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.summary-chip,
 .risk-type {
-  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.summary-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  background: currentColor;
+  border-radius: 50%;
 }
 
 .summary-blocked,
@@ -318,31 +474,38 @@ function riskIcon(type: Risco['type']): string {
 
 .risk-list {
   display: grid;
-  gap: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 11px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .risk-item {
+  width: 100%;
+  min-height: 94px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--tf-border);
-  border-left: 3px solid #94a3b8;
-  border-radius: 10px;
-  background: var(--tf-surface);
+  padding: 14px;
+  border: 1px solid #e8ecf3;
+  border-left: 4px solid #94a3b8;
+  border-radius: 13px;
+  background: linear-gradient(120deg, #fff, #fbfcfe);
   color: inherit;
+  text-align: left;
   text-decoration: none;
-  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease;
 }
 
 .risk-item:hover {
-  border-color: var(--tf-primary);
-  box-shadow: 0 4px 12px rgb(23 43 77 / 8%);
-  transform: translateY(-1px);
+  border-top-color: #d8deee;
+  border-right-color: #d8deee;
+  border-bottom-color: #d8deee;
+  box-shadow: 0 8px 20px rgb(23 43 77 / 9%);
+  transform: translateY(-2px);
 }
 
 .risk-item:focus-visible {
@@ -351,28 +514,40 @@ function riskIcon(type: Risco['type']): string {
 }
 
 .risk-item.risk-blocked {
-  border-left-color: var(--tf-danger);
+  border-left-color: #d94d5c;
+}
+
+.risk-item.risk-blocked:hover {
+  background: linear-gradient(120deg, #fff, #fff8f8);
 }
 
 .risk-item.risk-overdue {
-  border-left-color: var(--tf-warning);
+  border-left-color: #e49a2d;
+}
+
+.risk-item.risk-overdue:hover {
+  background: linear-gradient(120deg, #fff, #fffbf3);
 }
 
 .risk-item.risk-inactive {
-  border-left-color: #94a3b8;
+  border-left-color: #7889bb;
+}
+
+.risk-item.risk-inactive:hover {
+  background: linear-gradient(120deg, #fff, #f8f9ff);
 }
 
 .risk-icon {
   display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   place-items: center;
   color: var(--tf-text-muted);
   background: var(--tf-border-soft);
-  border-radius: 9px;
-  font-size: 14px;
-  font-weight: 800;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 850;
 }
 
 .risk-blocked .risk-icon {
@@ -383,6 +558,11 @@ function riskIcon(type: Risco['type']): string {
 .risk-overdue .risk-icon {
   color: #b45309;
   background: var(--tf-warning-soft);
+}
+
+.risk-inactive .risk-icon {
+  color: #5666a8;
+  background: #eef0ff;
 }
 
 .risk-copy {
@@ -428,10 +608,11 @@ function riskIcon(type: Risco['type']): string {
   color: var(--tf-primary);
   font-size: 11px;
   font-weight: 700;
+  transition: transform .18s ease;
 }
 
-.risk-link:hover {
-  text-decoration: underline;
+.risk-item:hover .risk-link {
+  transform: translateX(2px);
 }
 
 .radar-state {
@@ -483,15 +664,20 @@ function riskIcon(type: Risco['type']): string {
 
 @media (max-width: 620px) {
   .risk-radar {
-    padding: 17px;
+    padding: 17px 15px;
   }
 
   .radar-heading {
+    align-items: flex-start;
     flex-direction: column;
   }
 
   .radar-summary {
     justify-content: flex-start;
+  }
+
+  .risk-list {
+    grid-template-columns: 1fr;
   }
 
   .risk-item {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onBeforeUnmount } from 'vue'
+
 import 'sweetalert2/dist/sweetalert2.min.css'
 import Swal from 'sweetalert2'
 
@@ -278,9 +280,25 @@ async function alertarPrazos(): Promise<void> {
   if (resultado.isConfirmed) await navigateTo('/my-work')
 }
 
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+
+function atualizarPainelVisivel(): void {
+  if (document.visibilityState === 'visible' && !carregando.value) {
+    void carregarPainel()
+  }
+}
+
 onMounted(async () => {
+  // Mantém o painel do membro atualizado sem exigir um botão de atualização.
+  refreshTimer = setInterval(atualizarPainelVisivel, 60_000)
+  document.addEventListener('visibilitychange', atualizarPainelVisivel)
   await carregarPainel()
   if (!erro.value) await alertarPrazos()
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', atualizarPainelVisivel)
 })
 </script>
 
@@ -293,10 +311,6 @@ onMounted(async () => {
         <h1>Olá, {{ auth.user.value?.name ?? 'bem-vindo/a' }}</h1>
         <p>Acompanhe o progresso dos seus projetos e mantenha os prazos sob controlo.</p>
       </div>
-      <button class="refresh-button" type="button" :disabled="carregando" @click="carregarPainel">
-        <span aria-hidden="true">↻</span>
-        Atualizar painel
-      </button>
     </header>
 
     <div v-if="erro" class="dashboard-error" role="alert">
@@ -395,10 +409,6 @@ onMounted(async () => {
 .eyebrow > span { width: 6px; height: 6px; background: #68dfbd; border-radius: 50%; box-shadow: 0 0 10px rgb(104 223 189 / 55%); }
 .dashboard-welcome h1 { margin: 11px 0 6px; font-size: clamp(24px, 3vw, 31px); font-weight: 700; letter-spacing: -.045em; }
 .dashboard-welcome p { margin: 0; color: #d7ddf6; font-size: 13px; line-height: 1.6; }
-.refresh-button { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; padding: 0 12px; color: #fff; background: rgb(255 255 255 / 12%); border: 1px solid rgb(255 255 255 / 26%); border-radius: 8px; font-size: 11px; font-weight: 650; cursor: pointer; white-space: nowrap; }
-.refresh-button:hover:not(:disabled) { background: rgb(255 255 255 / 20%); }
-.refresh-button:disabled { opacity: .65; cursor: wait; }
-.refresh-button > span { font-size: 16px; }
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
 .kpi-card { position: relative; display: grid; min-height: 112px; grid-template-columns: 39px 1fr; align-content: center; align-items: center; column-gap: 11px; padding: 17px; background: #fff; border: 1px solid #e7ebf3; border-radius: 12px; box-shadow: 0 3px 11px rgb(25 42 78 / 3%); }
 .kpi-icon { display: grid; width: 38px; height: 38px; grid-row: span 2; place-items: center; border-radius: 11px; font-size: 17px; font-weight: 700; }
@@ -454,7 +464,6 @@ onMounted(async () => {
 }
 @media (max-width: 560px) {
   .dashboard-welcome { align-items: flex-start; flex-direction: column; padding: 20px; }
-  .refresh-button { align-self: flex-end; }
   .kpi-grid { gap: 9px; }
   .kpi-card { min-height: 100px; grid-template-columns: 32px 1fr; column-gap: 8px; padding: 12px; }
   .kpi-icon { width: 32px; height: 32px; font-size: 15px; }

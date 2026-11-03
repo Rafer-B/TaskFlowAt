@@ -11,6 +11,8 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const dashboard = useDashboardData(new Date())
+const dashboardCarregando = dashboard.carregando
+const dashboardErro = dashboard.erro
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase)
 const api = useNuxtApp().$api
@@ -39,6 +41,8 @@ const searchInput = ref<HTMLInputElement | null>(null)
 const headerRef = ref<HTMLElement | null>(null)
 const mostrarPesquisa = ref(false)
 const mostrarNotificacoes = ref(false)
+const idsNotificacoesLidas = ref<Set<string>>(new Set())
+const estadoLeituraCarregado = ref(false)
 const hojeISO = computed(() => toISODay(new Date()))
 
 interface ResultadoPesquisa {
@@ -178,15 +182,83 @@ const notificacoes = computed<Notificacao[]>(() => {
   })
 })
 
+const notificacoesNaoLidas = computed(() =>
+  notificacoes.value.filter((item) => !idsNotificacoesLidas.value.has(item.id)),
+)
+
+const totalNaoLidas = computed(() =>
+  estadoLeituraCarregado.value ? notificacoesNaoLidas.value.length : 0,
+)
+
+function chaveLeituraNotificacoes(userId: number): string {
+  return `taskflow-notificacoes-lidas:${userId}`
+}
+
+watch(
+  () => auth.user.value?.id,
+  (userId) => {
+    if (!import.meta.client) return
+
+    if (userId == null) {
+      idsNotificacoesLidas.value = new Set()
+      estadoLeituraCarregado.value = true
+      return
+    }
+
+    estadoLeituraCarregado.value = false
+    try {
+      const guardado = localStorage.getItem(chaveLeituraNotificacoes(userId))
+      const parsed: unknown = guardado ? JSON.parse(guardado) : []
+      idsNotificacoesLidas.value = new Set(
+        Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === 'string')
+          : [],
+      )
+    } catch (error) {
+      console.error('Não foi possível carregar o estado das notificações:', error)
+      idsNotificacoesLidas.value = new Set()
+    } finally {
+      estadoLeituraCarregado.value = true
+    }
+  },
+  { immediate: true },
+)
+
 function fecharPainel(): void {
   mostrarPesquisa.value = false
   mostrarNotificacoes.value = false
 }
 
+function marcarNotificacaoComoLida(item: Notificacao): void {
+  idsNotificacoesLidas.value = new Set(idsNotificacoesLidas.value).add(item.id)
+  const userId = auth.user.value?.id
+  if (userId == null) return
+
+  try {
+    localStorage.setItem(
+      chaveLeituraNotificacoes(userId),
+      JSON.stringify([...idsNotificacoesLidas.value]),
+    )
+  } catch (error) {
+    console.error('Não foi possível guardar o estado das notificações:', error)
+  }
+}
+
 async function abrirDestino(destino: string): Promise<void> {
-  const separador = destino.includes('?') ? '&' : '?'
+  const destinoResolvido = router.resolve(destino)
   fecharPainel()
-  await router.push(`${destino}${separador}abrir=${Date.now()}`)
+  await router.push({
+    path: destinoResolvido.path,
+    query: {
+      ...destinoResolvido.query,
+      abrir: String(Date.now()),
+    },
+  })
+}
+
+async function abrirNotificacao(item: Notificacao): Promise<void> {
+  marcarNotificacaoComoLida(item)
+  await abrirDestino(item.to)
 }
 
 function abrirPrimeiroResultado(): void {
@@ -336,11 +408,11 @@ async function carregarFotografia(event: Event): Promise<void> {
           role="listbox"
           aria-label="Resultados da pesquisa"
         >
-          <p v-if="dashboard.carregando" class="popover-state">
+          <p v-if="dashboardCarregando" class="popover-state">
             A pesquisar...
           </p>
-          <p v-else-if="dashboard.erro" class="popover-state popover-error" role="alert">
-            {{ dashboard.erro }}
+          <p v-else-if="dashboardErro" class="popover-state popover-error" role="alert">
+            {{ dashboardErro }}
           </p>
           <template v-else-if="resultadosPesquisa.length">
             <NuxtLink
@@ -370,17 +442,17 @@ async function carregarFotografia(event: Event): Promise<void> {
       <div class="notification-container">
         <button
           class="header-icon-button"
-          :class="{ 'has-notifications': notificacoes.length }"
+          :class="{ 'has-notifications': totalNaoLidas > 0 }"
           type="button"
-          aria-label="Notificações"
+          :aria-label="`Notificações${totalNaoLidas ? `, ${totalNaoLidas} não lidas` : ''}`"
           aria-controls="header-notifications"
           :aria-expanded="mostrarNotificacoes"
           title="Ver notificações"
           @click="mostrarNotificacoes = !mostrarNotificacoes; mostrarPesquisa = false"
         >
           <SidebarIcon name="notifications" />
-          <span v-if="notificacoes.length" class="notification-count">
-            {{ notificacoes.length > 9 ? '9+' : notificacoes.length }}
+          <span v-if="totalNaoLidas" class="notification-count">
+            {{ totalNaoLidas > 9 ? '9+' : totalNaoLidas }}
           </span>
         </button>
 
@@ -393,28 +465,48 @@ async function carregarFotografia(event: Event): Promise<void> {
           <div class="popover-heading">
             <div>
               <strong>Notificações</strong>
-              <span>{{ notificacoes.length }} alertas ativos</span>
+              <span>
+                {{ notificacoes.length }} alertas ativos ·
+                {{ totalNaoLidas }} {{ totalNaoLidas === 1 ? 'não lida' : 'não lidas' }}
+              </span>
             </div>
             <button type="button" aria-label="Fechar notificações" @click="mostrarNotificacoes = false">
               ×
             </button>
           </div>
-          <p v-if="dashboard.carregando" class="popover-state">
+          <p v-if="dashboardCarregando" class="popover-state">
             A verificar tarefas e projetos...
           </p>
-          <p v-else-if="dashboard.erro" class="popover-state popover-error" role="alert">
-            {{ dashboard.erro }}
+          <p v-else-if="dashboardErro" class="popover-state popover-error" role="alert">
+            {{ dashboardErro }}
           </p>
           <ul v-else-if="notificacoes.length" class="notification-list">
             <li v-for="item in notificacoes" :key="item.id">
-              <NuxtLink :to="item.to" @click.prevent="abrirDestino(item.to)">
-                <span class="notification-marker" :class="`marker-${item.kind.toLowerCase()}`"></span>
+              <button
+                type="button"
+                class="notification-item"
+                :class="{ 'is-read': idsNotificacoesLidas.has(item.id) }"
+                :aria-label="`Abrir notificação${idsNotificacoesLidas.has(item.id) ? ' lida' : ' não lida'}: ${item.title}`"
+                @click="abrirNotificacao(item)"
+              >
+                <span
+                  class="notification-marker"
+                  :class="[
+                    `marker-${item.kind.toLowerCase()}`,
+                    { 'marker-read': idsNotificacoesLidas.has(item.id) },
+                  ]"
+                ></span>
                 <span class="notification-copy">
                   <strong>{{ item.title }}</strong>
                   <small>{{ item.description }}</small>
                 </span>
-                <span class="notification-kind">{{ item.kind }}</span>
-              </NuxtLink>
+                <span
+                  class="notification-kind"
+                  :class="{ 'notification-read': idsNotificacoesLidas.has(item.id) }"
+                >
+                  {{ idsNotificacoesLidas.has(item.id) ? 'Lida' : item.kind }}
+                </span>
+              </button>
             </li>
           </ul>
           <p v-else class="popover-state">
@@ -684,8 +776,8 @@ async function carregarFotografia(event: Event): Promise<void> {
 
 .search-result:hover,
 .search-result:focus-visible,
-.notification-list a:hover,
-.notification-list a:focus-visible {
+.notification-item:hover,
+.notification-item:focus-visible {
   background: #f7f9fd;
   outline: none;
 }
@@ -790,13 +882,32 @@ async function carregarFotografia(event: Event): Promise<void> {
   list-style: none;
 }
 
-.notification-list a {
+.notification-item {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 10px;
   padding: 12px 15px;
+  border: 0;
+  background: transparent;
   color: inherit;
-  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.notification-item:focus-visible {
+  outline: 2px solid #6485ff;
+  outline-offset: -2px;
+}
+
+.notification-item.is-read .notification-copy strong,
+.notification-item.is-read .notification-copy small {
+  color: #8b97aa;
+}
+
+.notification-item.is-read .notification-marker {
+  opacity: 0.4;
 }
 
 .notification-marker {
@@ -813,6 +924,15 @@ async function carregarFotografia(event: Event): Promise<void> {
 
 .marker-inatividade {
   background: #6485ff;
+}
+
+.marker-read {
+  background: #aab4c3;
+}
+
+.notification-read {
+  color: #718096;
+  background: #f0f2f5;
 }
 
 .header-divider {

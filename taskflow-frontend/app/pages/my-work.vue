@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted } from 'vue'
+
 // Área pessoal: mostra tarefas atribuídas e acompanha os registos de trabalho por tarefa.
 definePageMeta({
   layout: 'member',
@@ -82,6 +84,8 @@ const carregando = ref(true)
 const erro = ref('')
 const sucesso = ref('')
 let pedidoTarefas = 0
+let atualizacaoEmCurso = false
+let refreshTimer: ReturnType<typeof setInterval> | undefined
 
 const estados: EstadoTarefaAPI[] = [
   'to_do',
@@ -249,7 +253,7 @@ function converterTarefa(
   }
 }
 
-async function carregarTarefas(): Promise<void> {
+async function carregarTarefas(silenciosa = false): Promise<void> {
   const pedidoAtual = ++pedidoTarefas
   const id = auth.user.value?.id
 
@@ -259,10 +263,9 @@ async function carregarTarefas(): Promise<void> {
     return
   }
 
-  carregando.value = true
+  if (!silenciosa) carregando.value = true
   erro.value = ''
-  sucesso.value = ''
-  tarefas.value = []
+  if (!silenciosa) sucesso.value = ''
 
   try {
     // O contador descarta respostas antigas se uma nova carga começar antes desta terminar.
@@ -290,19 +293,24 @@ async function carregarTarefas(): Promise<void> {
   }
 }
 
-async function carregarArea(): Promise<void> {
-  carregando.value = true
+async function carregarArea(silenciosa = false): Promise<void> {
+  if (atualizacaoEmCurso) return
+  atualizacaoEmCurso = true
+
+  if (!silenciosa) carregando.value = true
   erro.value = ''
 
   try {
     const projetosAPI = await api<ProjetoAPI[]>('/projects/')
     projetos.value = projetosAPI
 
-    await carregarTarefas()
+    await carregarTarefas(silenciosa)
   } catch (error) {
     console.error('Erro ao carregar a área de trabalho:', error)
     erro.value = mensagemErro(error)
     carregando.value = false
+  } finally {
+    atualizacaoEmCurso = false
   }
 }
 
@@ -493,7 +501,22 @@ async function descarregarAnexo(
   }
 }
 
-onMounted(carregarArea)
+function atualizarAreaVisivel(): void {
+  if (document.visibilityState === 'visible') {
+    void carregarArea(true)
+  }
+}
+
+onMounted(() => {
+  void carregarArea()
+  refreshTimer = setInterval(atualizarAreaVisivel, 60_000)
+  document.addEventListener('visibilitychange', atualizarAreaVisivel)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', atualizarAreaVisivel)
+})
 </script>
 
 <template>
@@ -505,16 +528,6 @@ onMounted(carregarArea)
         <p>Organize o seu trabalho, acompanhe os prazos e avance tarefa a tarefa.</p>
       </div>
 
-      <button
-        class="refresh-button"
-        type="button"
-        :disabled="carregando"
-        aria-label="Atualizar tarefas"
-        @click="carregarArea"
-      >
-        <span aria-hidden="true">↻</span>
-        Atualizar
-      </button>
     </header>
 
     <div v-if="erro" class="notice notice-error" role="alert">
@@ -900,36 +913,6 @@ onMounted(carregarArea)
   color: #d3def5;
   font-size: 14px;
   line-height: 1.6;
-}
-
-.refresh-button {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  align-self: flex-end;
-  padding: 9px 12px;
-  color: #fff;
-  background: rgb(255 255 255 / 12%);
-  border: 1px solid rgb(255 255 255 / 22%);
-  border-radius: 9px;
-  font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.refresh-button:hover:not(:disabled) {
-  background: rgb(255 255 255 / 22%);
-}
-
-.refresh-button:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-
-.refresh-button > span {
-  font-size: 17px;
 }
 
 .notice {
@@ -1708,7 +1691,6 @@ onMounted(carregarArea)
     padding: 24px 20px;
     border-radius: 16px;
   }
-  .refresh-button { align-self: flex-start; }
   .summary-grid { gap: 9px; }
   .summary-card { padding: 13px; }
   .progress-card { grid-column: span 2; }

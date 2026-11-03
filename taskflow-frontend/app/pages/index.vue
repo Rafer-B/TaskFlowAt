@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 
 import type {
   DashboardTask,
@@ -32,6 +32,25 @@ const {
   erro,
   atualizar,
 } = useDashboardData(today.value)
+
+// Atualiza os indicadores periodicamente e ao regressar ao separador do dashboard.
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+
+function atualizarDashboardVisivel(): void {
+  if (document.visibilityState === 'visible' && !carregando.value) {
+    void atualizar()
+  }
+}
+
+onMounted(() => {
+  refreshTimer = setInterval(atualizarDashboardVisivel, 60_000)
+  document.addEventListener('visibilitychange', atualizarDashboardVisivel)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', atualizarDashboardVisivel)
+})
 
 // Cores e ordem dos estados das tarefas.
 const STATUS_COLORS: Record<TaskStatus, string> = {
