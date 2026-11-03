@@ -1,11 +1,15 @@
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { AuthUser } from '~/composables/useAuth'
+import { useDashboardData } from '~/composables/useDashboardData'
+import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuth()
+const dashboard = useDashboardData(new Date())
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase)
 const api = useNuxtApp().$api
@@ -30,6 +34,193 @@ const emit = defineEmits<{
 }>()
 
 const searchQuery = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+const headerRef = ref<HTMLElement | null>(null)
+const mostrarPesquisa = ref(false)
+const mostrarNotificacoes = ref(false)
+const hojeISO = computed(() => toISODay(new Date()))
+
+interface ResultadoPesquisa {
+  id: string
+  title: string
+  subtitle: string
+  kind: string
+  to: string
+}
+
+interface Notificacao {
+  id: string
+  title: string
+  description: string
+  kind: 'Bloqueio' | 'Atraso' | 'Inatividade'
+  to: string
+}
+
+const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
+  const termo = searchQuery.value.trim().toLocaleLowerCase('pt-PT')
+  if (!termo) return []
+
+  const resultados: ResultadoPesquisa[] = []
+  for (const task of dashboard.tasks) {
+    const texto = `${task.title} ${task.project} ${task.responsible}`.toLocaleLowerCase('pt-PT')
+    if (texto.includes(termo)) {
+      resultados.push({
+        id: `task-${task.id}`,
+        title: task.title,
+        subtitle: `${task.project} · ${task.responsible}`,
+        kind: 'Tarefa',
+        to: `/tasks?taskId=${task.id}`,
+      })
+    }
+  }
+  for (const project of dashboard.projects) {
+    if (project.name.toLocaleLowerCase('pt-PT').includes(termo)) {
+      resultados.push({
+        id: `project-${project.id}`,
+        title: project.name,
+        subtitle: `Projeto · ${project.status}`,
+        kind: 'Projeto',
+        to: `/projects?search=${encodeURIComponent(searchQuery.value.trim())}`,
+      })
+    }
+  }
+  for (const user of dashboard.users) {
+    if (
+      user.name.toLocaleLowerCase('pt-PT').includes(termo) ||
+      user.email.toLocaleLowerCase('pt-PT').includes(termo)
+    ) {
+      resultados.push({
+        id: `user-${user.id}`,
+        title: user.name,
+        subtitle: user.email,
+        kind: 'Utilizador',
+        to: `/users?userId=${user.id}`,
+      })
+    }
+  }
+
+  return resultados.slice(0, 8)
+})
+
+const notificacoes = computed<Notificacao[]>(() => {
+  const projectIds = new Set(
+    dashboard.projects
+      .filter((project) => project.status === 'Ativo')
+      .map((project) => project.id),
+  )
+  const items: Notificacao[] = []
+
+  for (const task of dashboard.tasks) {
+    if (!projectIds.has(task.projectId) || task.status === 'Concluída') continue
+    const overdueDays = task.dueDate
+      ? diffInDays(parseISODay(task.dueDate), parseISODay(hojeISO.value))
+      : 0
+
+    if (task.status === 'Bloqueada') {
+      items.push({
+        id: `blocked-${task.id}`,
+        title: task.title,
+        description: `Tarefa bloqueada · ${task.project}`,
+        kind: 'Bloqueio',
+        to: `/tasks?taskId=${task.id}`,
+      })
+    } else if (overdueDays > 0) {
+      items.push({
+        id: `overdue-${task.id}`,
+        title: task.title,
+        description: `Prazo ultrapassado há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'} · ${task.project}`,
+        kind: 'Atraso',
+        to: `/tasks?taskId=${task.id}`,
+      })
+    }
+  }
+
+  for (const project of dashboard.projects) {
+    if (project.status !== 'Ativo') continue
+    const activityDates = [
+      project.createdAt,
+      project.updatedAt,
+      ...dashboard.tasks
+        .filter((task) => task.projectId === project.id)
+        .flatMap((task) => [task.createdAt, task.updatedAt]),
+    ]
+      .filter((date): date is string => Boolean(date))
+      .map((date) => date.slice(0, 10))
+      .sort()
+    const lastActivity = activityDates.at(-1)
+    if (!lastActivity) continue
+
+    const inactiveDays = diffInDays(
+      parseISODay(lastActivity),
+      parseISODay(hojeISO.value),
+    )
+    if (inactiveDays < 7) continue
+
+    items.push({
+      id: `inactive-${project.id}`,
+      title: project.name,
+      description: `Sem atividade há ${inactiveDays} dias`,
+      kind: 'Inatividade',
+      to: `/projects?search=${encodeURIComponent(project.name)}`,
+    })
+  }
+
+  return items.sort((a, b) => {
+    const priority: Record<Notificacao['kind'], number> = {
+      Bloqueio: 0,
+      Atraso: 1,
+      Inatividade: 2,
+    }
+    return priority[a.kind] - priority[b.kind]
+  })
+})
+
+function fecharPainel(): void {
+  mostrarPesquisa.value = false
+  mostrarNotificacoes.value = false
+}
+
+async function abrirDestino(destino: string): Promise<void> {
+  const separador = destino.includes('?') ? '&' : '?'
+  fecharPainel()
+  await router.push(`${destino}${separador}abrir=${Date.now()}`)
+}
+
+function abrirPrimeiroResultado(): void {
+  const primeiroResultado = resultadosPesquisa.value[0]
+  if (primeiroResultado) void abrirDestino(primeiroResultado.to)
+}
+
+function tratarAtalhos(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    mostrarPesquisa.value = true
+    mostrarNotificacoes.value = false
+    searchInput.value?.focus()
+  } else if (event.key === 'Escape') {
+    fecharPainel()
+    searchInput.value?.blur()
+  }
+}
+
+function tratarCliqueFora(event: MouseEvent): void {
+  if (
+    event.target instanceof Node &&
+    !headerRef.value?.contains(event.target)
+  ) {
+    fecharPainel()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', tratarAtalhos)
+  document.addEventListener('click', tratarCliqueFora)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', tratarAtalhos)
+  document.removeEventListener('click', tratarCliqueFora)
+})
 
 function obterMensagemErro(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'data' in error) {
@@ -93,7 +284,7 @@ async function carregarFotografia(event: Event): Promise<void> {
 </script>
 
 <template>
-  <header class="app-header">
+  <header ref="headerRef" class="app-header">
     <div class="header-left">
       <button
         class="mobile-menu-button"
@@ -114,28 +305,117 @@ async function carregarFotografia(event: Event): Promise<void> {
     </div>
 
     <div class="header-actions">
-      <label class="header-search">
-        <span aria-hidden="true">⌕</span>
+      <div class="search-container">
+        <label class="header-search">
+          <SidebarIcon name="search" />
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="search"
+            placeholder="Pesquisar..."
+            aria-label="Pesquisar tarefas, projetos e utilizadores"
+            aria-controls="global-search-results"
+            :aria-expanded="mostrarPesquisa && Boolean(searchQuery.trim())"
+            @focus="mostrarPesquisa = true; mostrarNotificacoes = false"
+            @input="mostrarPesquisa = true"
+            @keydown.enter.prevent="abrirPrimeiroResultado"
+          />
+          <kbd>Ctrl K</kbd>
+        </label>
 
-        <input
-          v-model="searchQuery"
-          type="search"
-          placeholder="Pesquisar..."
-          aria-label="Pesquisar"
-        />
+        <div
+          v-if="mostrarPesquisa && searchQuery.trim()"
+          id="global-search-results"
+          class="header-popover search-popover"
+          role="listbox"
+          aria-label="Resultados da pesquisa"
+        >
+          <p v-if="dashboard.carregando" class="popover-state">
+            A pesquisar...
+          </p>
+          <p v-else-if="dashboard.erro" class="popover-state popover-error" role="alert">
+            {{ dashboard.erro }}
+          </p>
+          <template v-else-if="resultadosPesquisa.length">
+            <NuxtLink
+              v-for="result in resultadosPesquisa"
+              :key="result.id"
+              :to="result.to"
+              class="search-result"
+              role="option"
+              @click.prevent="abrirDestino(result.to)"
+            >
+              <span class="search-result-icon">
+                <SidebarIcon :name="result.kind === 'Projeto' ? 'projects' : result.kind === 'Utilizador' ? 'users' : 'tasks'" />
+              </span>
+              <span class="search-result-copy">
+                <strong>{{ result.title }}</strong>
+                <small>{{ result.subtitle }}</small>
+              </span>
+              <span class="search-result-kind">{{ result.kind }}</span>
+            </NuxtLink>
+          </template>
+          <p v-else class="popover-state">
+            Não foram encontrados resultados para “{{ searchQuery }}”.
+          </p>
+        </div>
+      </div>
 
-        <kbd>Ctrl K</kbd>
-      </label>
+      <div class="notification-container">
+        <button
+          class="header-icon-button"
+          :class="{ 'has-notifications': notificacoes.length }"
+          type="button"
+          aria-label="Notificações"
+          aria-controls="header-notifications"
+          :aria-expanded="mostrarNotificacoes"
+          title="Ver notificações"
+          @click="mostrarNotificacoes = !mostrarNotificacoes; mostrarPesquisa = false"
+        >
+          <SidebarIcon name="notifications" />
+          <span v-if="notificacoes.length" class="notification-count">
+            {{ notificacoes.length > 9 ? '9+' : notificacoes.length }}
+          </span>
+        </button>
 
-      <button
-        class="header-icon-button"
-        type="button"
-        aria-label="Notificações"
-        title="Notificações — disponível numa próxima fase"
-        disabled
-      >
-        ♧
-      </button>
+        <section
+          v-if="mostrarNotificacoes"
+          id="header-notifications"
+          class="header-popover notification-popover"
+          aria-label="Notificações de tarefas e projetos"
+        >
+          <div class="popover-heading">
+            <div>
+              <strong>Notificações</strong>
+              <span>{{ notificacoes.length }} alertas ativos</span>
+            </div>
+            <button type="button" aria-label="Fechar notificações" @click="mostrarNotificacoes = false">
+              ×
+            </button>
+          </div>
+          <p v-if="dashboard.carregando" class="popover-state">
+            A verificar tarefas e projetos...
+          </p>
+          <p v-else-if="dashboard.erro" class="popover-state popover-error" role="alert">
+            {{ dashboard.erro }}
+          </p>
+          <ul v-else-if="notificacoes.length" class="notification-list">
+            <li v-for="item in notificacoes" :key="item.id">
+              <NuxtLink :to="item.to" @click.prevent="abrirDestino(item.to)">
+                <span class="notification-marker" :class="`marker-${item.kind.toLowerCase()}`"></span>
+                <span class="notification-copy">
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.description }}</small>
+                </span>
+                <span class="notification-kind">{{ item.kind }}</span>
+              </NuxtLink>
+            </li>
+          </ul>
+          <p v-else class="popover-state">
+            Não há atrasos, bloqueios ou projetos sem atividade.
+          </p>
+        </section>
+      </div>
 
       <div class="header-divider"></div>
 
@@ -249,6 +529,11 @@ async function carregarFotografia(event: Event): Promise<void> {
   gap: 19px;
 }
 
+.search-container,
+.notification-container {
+  position: relative;
+}
+
 .header-search {
   display: flex;
   align-items: center;
@@ -260,6 +545,11 @@ async function carregarFotografia(event: Event): Promise<void> {
   background: #f5f7fb;
   border: 1px solid #e6ebf3;
   border-radius: 9px;
+}
+
+.header-search > :deep(svg) {
+  flex: 0 0 18px;
+  color: #8492a8;
 }
 
 .header-search input {
@@ -289,18 +579,234 @@ async function carregarFotografia(event: Event): Promise<void> {
 
 .header-icon-button {
   position: relative;
+  display: grid;
   width: 36px;
   height: 36px;
+  place-items: center;
   color: #64748b;
   background: transparent;
   border: 0;
   border-radius: 9px;
-  font-size: 20px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
-.header-icon-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.header-icon-button:hover,
+.header-icon-button[aria-expanded='true'] {
+  color: #345b9e;
+  background: #edf3ff;
+}
+
+.header-icon-button:focus-visible {
+  outline: 2px solid #6485ff;
+  outline-offset: 2px;
+}
+
+.header-icon-button :deep(svg) {
+  width: 21px;
+  height: 21px;
+}
+
+.header-icon-button.has-notifications {
+  color: #345b9e;
+}
+
+.notification-count {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  place-items: center;
+  color: #fff;
+  background: #e5484d;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.header-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 13px);
+  overflow: hidden;
+  width: min(390px, calc(100vw - 28px));
+  background: #fff;
+  border: 1px solid #e2e9f5;
+  border-radius: 13px;
+  box-shadow: 0 16px 40px rgb(23 43 77 / 16%);
+}
+
+.search-popover {
+  left: 0;
+}
+
+.notification-popover {
+  right: 0;
+  width: min(420px, calc(100vw - 28px));
+}
+
+.popover-state {
+  margin: 0;
+  padding: 20px 16px;
+  color: #74839b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.popover-error {
+  color: #b42318;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.search-result + .search-result,
+.notification-list li + li {
+  border-top: 1px solid #f0f3f8;
+}
+
+.search-result:hover,
+.search-result:focus-visible,
+.notification-list a:hover,
+.notification-list a:focus-visible {
+  background: #f7f9fd;
+  outline: none;
+}
+
+.search-result-icon {
+  display: grid;
+  flex: 0 0 31px;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  color: #4567a7;
+  background: #edf3ff;
+  border-radius: 9px;
+}
+
+.search-result-icon :deep(svg) {
+  width: 17px;
+  height: 17px;
+}
+
+.search-result-copy,
+.notification-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.search-result-copy strong,
+.notification-copy strong {
+  overflow: hidden;
+  color: #263957;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-copy small,
+.notification-copy small {
+  overflow: hidden;
+  color: #8492a8;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-kind,
+.notification-kind {
+  flex: 0 0 auto;
+  color: #8b9ab1;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.popover-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.popover-heading strong {
+  color: #263957;
+  font-size: 13px;
+}
+
+.popover-heading span {
+  color: #8492a8;
+  font-size: 10px;
+}
+
+.popover-heading button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: #73829a;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.popover-heading button:hover {
+  color: #263957;
+  background: #f1f4f9;
+}
+
+.notification-list {
+  max-height: min(390px, 60vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-list a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.notification-marker {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  background: #e5484d;
+  border-radius: 50%;
+}
+
+.marker-atraso {
+  background: #ee9b26;
+}
+
+.marker-inatividade {
+  background: #6485ff;
 }
 
 .header-divider {
@@ -476,13 +982,20 @@ async function carregarFotografia(event: Event): Promise<void> {
   }
 
   .header-actions {
-    gap: 10px;
+    gap: 7px;
   }
 
-  .header-search,
   .header-divider,
   .profile-copy,
   .profile-chevron {
+    display: none;
+  }
+
+  .header-search {
+    width: clamp(110px, 34vw, 190px);
+  }
+
+  .header-search kbd {
     display: none;
   }
 

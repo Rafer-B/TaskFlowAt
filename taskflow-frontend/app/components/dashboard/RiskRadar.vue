@@ -109,7 +109,7 @@ const risks = computed<Risco[]>(() => {
         description: isOverdue
           ? `Bloqueada e atrasada há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}.${responsibleLabel}`
           : `Tarefa bloqueada.${responsibleLabel}`,
-        destination: '/tasks',
+        destination: `/tasks?taskId=${task.id}`,
       })
     } else if (isOverdue) {
       const responsibleLabel = task.responsible
@@ -123,7 +123,7 @@ const risks = computed<Risco[]>(() => {
         title: task.title,
         project: project.name,
         description: `Prazo ultrapassado há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}.${responsibleLabel}`,
-        destination: '/tasks',
+        destination: `/tasks?taskId=${task.id}`,
       })
     }
   }
@@ -141,7 +141,7 @@ const risks = computed<Risco[]>(() => {
       title: project.name,
       project: project.name,
       description: `Sem atividade registada há ${inactiveDays} dias.`,
-      destination: '/projects',
+      destination: `/tasks?projectId=${project.id}`,
     })
   }
 
@@ -206,22 +206,25 @@ function riskIcon(type: Risco['type']): string {
       {{ error }}
     </p>
     <ul v-else-if="risks.length" class="risk-list">
-      <li v-for="risk in risks" :key="risk.id" class="risk-item" :class="`risk-${risk.type}`">
-        <span class="risk-icon" aria-hidden="true">{{ riskIcon(risk.type) }}</span>
-        <div class="risk-copy">
-          <div class="risk-title-row">
-            <strong>{{ risk.title }}</strong>
-            <span class="risk-type">{{ riskLabel(risk.type) }}</span>
-          </div>
-          <span class="risk-project">{{ risk.project }}</span>
-          <p>{{ risk.description }}</p>
-        </div>
+      <li v-for="risk in risks" :key="risk.id">
         <NuxtLink
           :to="risk.destination"
-          class="risk-link"
-          :aria-label="`Ver ${risk.title} em ${risk.destination === '/tasks' ? 'tarefas' : 'projetos'}`"
+          class="risk-item"
+          :class="`risk-${risk.type}`"
+          :aria-label="`Ver ${risk.title} em ${risk.type === 'inactive' ? 'tarefas do projeto' : 'detalhes da tarefa'}`"
         >
-          Ver <span aria-hidden="true">→</span>
+          <span class="risk-icon" aria-hidden="true">{{ riskIcon(risk.type) }}</span>
+          <div class="risk-copy">
+            <div class="risk-title-row">
+              <strong>{{ risk.title }}</strong>
+              <span class="risk-type">{{ riskLabel(risk.type) }}</span>
+            </div>
+            <span class="risk-project">{{ risk.project }}</span>
+            <p>{{ risk.description }}</p>
+          </div>
+          <span class="risk-link" aria-hidden="true">
+            Ver <span>→</span>
+          </span>
         </NuxtLink>
       </li>
     </ul>
@@ -327,6 +330,20 @@ function riskIcon(type: Risco['type']): string {
   border-left: 3px solid #94a3b8;
   border-radius: 10px;
   background: var(--tf-surface);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.risk-item:hover {
+  border-color: var(--tf-primary);
+  box-shadow: 0 4px 12px rgb(23 43 77 / 8%);
+  transform: translateY(-1px);
+}
+
+.risk-item:focus-visible {
+  outline: 2px solid var(--tf-primary);
+  outline-offset: 2px;
 }
 
 .risk-item.risk-blocked {

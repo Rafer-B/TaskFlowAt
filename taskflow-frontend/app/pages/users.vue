@@ -25,6 +25,7 @@ const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
 const api = useNuxtApp().$api
 const auth = useAuth()
+const route = useRoute()
 
 const utilizadores = ref<Utilizador[]>([])
 const carregando = ref(true)
@@ -36,6 +37,13 @@ const erroPerfil = ref('')
 const sucessoPerfil = ref('')
 
 const pesquisa = ref('')
+watch(
+  () => route.query.search,
+  (value) => {
+    pesquisa.value = Array.isArray(value) ? value[0] ?? '' : value ?? ''
+  },
+  { immediate: true },
+)
 const mostrarFormulario = ref(false)
 const utilizadorSelecionado = ref<Utilizador | null>(null)
 const editarPerfil = ref(false)
@@ -252,6 +260,21 @@ function abrirPerfil(utilizador: Utilizador): void {
   perfilFormulario.email = utilizador.email
   editarPerfil.value = false
 }
+
+watch(
+  [() => route.fullPath, utilizadores],
+  () => {
+    const userId = route.query.userId
+    const value = Array.isArray(userId) ? userId[0] : userId
+    if (!value || !/^\d+$/.test(value)) return
+
+    const utilizador = utilizadores.value.find(
+      (item) => item.id === Number(value),
+    )
+    if (utilizador) abrirPerfil(utilizador)
+  },
+  { immediate: true },
+)
 
 function fecharPerfil(): void {
   if (submetendoPerfil.value) return

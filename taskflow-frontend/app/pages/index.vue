@@ -120,6 +120,7 @@ const kpiCards = computed(() => [
     hint: `${activeProjects.value.length} ativos · ${finishedProjects.value} concluídos · ${archivedProjects.value} arquivados`,
     tone: 'indigo',
     icon: 'folder',
+    to: '/projects',
   },
   {
     label: 'Utilizadores',
@@ -127,6 +128,7 @@ const kpiCards = computed(() => [
     hint: `${activeUsers.value} ativos · ${inactiveUsers.value} inativos`,
     tone: 'blue',
     icon: 'users',
+    to: '/users',
   },
   {
     label: 'Total de tarefas',
@@ -134,6 +136,7 @@ const kpiCards = computed(() => [
     hint: `${todo.value} por fazer · ${inProgress.value} em curso`,
     tone: 'green',
     icon: 'check',
+    to: '/tasks',
   },
   {
     label: 'Tarefas bloqueadas',
@@ -143,6 +146,7 @@ const kpiCards = computed(() => [
       : 'Sem tarefas bloqueadas',
     tone: 'red',
     icon: 'alert',
+    to: '/tasks?status=Bloqueada',
   },
 ])
 
@@ -360,13 +364,18 @@ const projectsWithProgress = computed(() =>
 
     <!-- Indicadores globais -->
     <section class="kpi-grid" aria-label="Indicadores globais">
-      <article
+      <NuxtLink
         v-for="(card, i) in kpiCards"
         :key="card.label"
-        class="kpi-card"
-        :class="`kpi-${card.tone}`"
-        :style="{ animationDelay: `${120 + i * 70}ms` }"
+        :to="card.to"
+        class="kpi-link"
+        :aria-label="`Ver ${card.label.toLowerCase()}`"
       >
+        <article
+          class="kpi-card"
+          :class="`kpi-${card.tone}`"
+          :style="{ animationDelay: `${120 + i * 70}ms` }"
+        >
         <div class="kpi-top">
           <div class="kpi-icon">
             <!-- Projetos -->
@@ -442,7 +451,8 @@ const projectsWithProgress = computed(() =>
         >
           <span :style="{ width: `${card.progress}%` }"></span>
         </div>
-      </article>
+        </article>
+      </NuxtLink>
     </section>
 
     <DashboardRiskRadar
@@ -510,14 +520,13 @@ const projectsWithProgress = computed(() =>
       </div>
 
       <ul class="task-list">
-        <li
+        <TaskCard
           v-for="(item, i) in attention"
           :key="item.task.id"
+          :task="item.task"
           class="animate-in"
           :style="{ animationDelay: `${420 + i * 60}ms` }"
-        >
-          <TaskCard :task="item.task" />
-        </li>
+        />
 
         <li
           v-if="attention.length === 0"
@@ -857,6 +866,20 @@ const projectsWithProgress = computed(() =>
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 24px;
+}
+
+.kpi-link {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.kpi-link:focus-visible {
+  border-radius: 18px;
+  outline: 2px solid #6485ff;
+  outline-offset: 3px;
 }
 
 .kpi-card {

@@ -111,48 +111,54 @@ const avatarColor = computed(() => {
 
 <template>
   <li class="task-row">
-    <div class="task-main">
-      <div
-        class="avatar"
-        :style="{ background: avatarColor }"
-        aria-hidden="true"
-      >
-        {{ initials }}
+    <NuxtLink
+      :to="`/tasks?taskId=${task.id}`"
+      class="task-card-link"
+      :aria-label="`Ver detalhes da tarefa ${task.title}`"
+    >
+      <div class="task-main">
+        <div
+          class="avatar"
+          :style="{ background: avatarColor }"
+          aria-hidden="true"
+        >
+          {{ initials }}
+        </div>
+
+        <div class="task-information">
+          <strong class="task-title">
+            {{ task.title }}
+          </strong>
+
+          <em class="task-project">
+            {{ task.project }}
+          </em>
+        </div>
       </div>
 
-      <div class="task-information">
-        <strong class="task-title">
-          {{ task.title }}
-        </strong>
-
-        <em class="task-project">
-          {{ task.project }}
-        </em>
-      </div>
-    </div>
-
-    <div class="task-meta">
-      <span
-        class="priority"
-        :class="`priority-${task.priority.toLowerCase()}`"
-      >
-        <span class="priority-dot" aria-hidden="true" />
-        <span class="priority-text">
-          {{ task.priority }}
+      <div class="task-meta">
+        <span
+          class="priority"
+          :class="`priority-${task.priority.toLowerCase()}`"
+        >
+          <span class="priority-dot" aria-hidden="true" />
+          <span class="priority-text">
+            {{ task.priority }}
+          </span>
         </span>
-      </span>
 
-      <span class="due" :class="`due-${dueTone}`">
-        {{ dueLabel }}
-      </span>
+        <span class="due" :class="`due-${dueTone}`">
+          {{ dueLabel }}
+        </span>
 
-      <span
-        class="badge badge-status"
-        :class="`badge-${statusClass}`"
-      >
-        {{ task.status }}
-      </span>
-    </div>
+        <span
+          class="badge badge-status"
+          :class="`badge-${statusClass}`"
+        >
+          {{ task.status }}
+        </span>
+      </div>
+    </NuxtLink>
   </li>
 </template>
 
@@ -172,6 +178,22 @@ const avatarColor = computed(() => {
 .task-row:hover {
   border-color: var(--tf-primary);
   box-shadow: 0 2px 8px -4px rgb(79 70 229 / 12%);
+}
+
+.task-card-link {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.task-card-link:focus-visible {
+  border-radius: 9px;
+  outline: 2px solid var(--tf-primary);
+  outline-offset: 4px;
 }
 
 .task-main {

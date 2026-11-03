@@ -141,6 +141,14 @@ const filtroPrioridade = ref('')
 const filtroProjeto = ref('')
 const filtroCategoria = ref('')
 
+watch(
+  () => route.query.search,
+  (value) => {
+    pesquisa.value = Array.isArray(value) ? value[0] ?? '' : value ?? ''
+  },
+  { immediate: true },
+)
+
 const mostrarFormulario = ref(false)
 const modoFormulario = ref<ModoFormulario>('criar')
 const tarefaEmEdicao = ref<number | null>(null)
@@ -172,6 +180,21 @@ const estados: EstadoTarefa[] = [
   'Concluída',
   'Bloqueada',
 ]
+
+watch(
+  [() => route.query.projectId, () => route.query.status],
+  ([projectId, status]) => {
+    const projectValue = Array.isArray(projectId) ? projectId[0] : projectId
+    const statusValue = Array.isArray(status) ? status[0] : status
+    filtroProjeto.value = projectValue && /^\d+$/.test(projectValue)
+      ? projectValue
+      : ''
+    filtroEstado.value = estados.includes(statusValue as EstadoTarefa)
+      ? statusValue as EstadoTarefa
+      : ''
+  },
+  { immediate: true },
+)
 
 const prioridades: Prioridade[] = [
   'Baixa',
@@ -589,6 +612,19 @@ function consultarTarefa(tarefa: Tarefa) {
   tarefaSelecionada.value = tarefa
   mostrarDetalhes.value = true
 }
+
+watch(
+  [() => route.fullPath, tarefas],
+  () => {
+    const taskId = route.query.taskId
+    const value = Array.isArray(taskId) ? taskId[0] : taskId
+    if (!value || !/^\d+$/.test(value)) return
+
+    const tarefa = tarefas.value.find((item) => item.id === Number(value))
+    if (tarefa) consultarTarefa(tarefa)
+  },
+  { immediate: true },
+)
 
 function fecharDetalhes() {
   mostrarDetalhes.value = false

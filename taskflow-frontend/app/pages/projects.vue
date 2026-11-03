@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 definePageMeta({ layout: 'admin' })
 
@@ -50,6 +50,7 @@ const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/$/, '')
 const api = useNuxtApp().$api
 const auth = useAuth()
+const route = useRoute()
 
 // Dados dos projetos
 const projetos = ref<Projeto[]>([])
@@ -61,6 +62,14 @@ const aEliminar = ref(false)
 // Pesquisa e filtros
 const pesquisa = ref('')
 const filtroEstado = ref<FiltroEstado>('Todos')
+
+watch(
+  () => route.query.search,
+  (value) => {
+    pesquisa.value = Array.isArray(value) ? value[0] ?? '' : value ?? ''
+  },
+  { immediate: true },
+)
 
 // Formulário de projeto
 const mostrarFormulario = ref(false)

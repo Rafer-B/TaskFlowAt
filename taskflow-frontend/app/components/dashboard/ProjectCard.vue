@@ -114,6 +114,11 @@ function colorFor(value: string): string {
 </script>
 
 <template>
+  <NuxtLink
+    :to="`/tasks?projectId=${project.id}`"
+    class="project-card-link"
+    :aria-label="`Ver tarefas do projeto ${project.name}`"
+  >
   <article class="project-card">
     <header class="project-header">
       <div class="project-identity">
@@ -193,6 +198,7 @@ function colorFor(value: string): string {
       </span>
     </footer>
   </article>
+  </NuxtLink>
 </template>
 
 <style scoped>
@@ -207,6 +213,19 @@ function colorFor(value: string): string {
   background: #fff;
   box-shadow: 0 4px 16px rgb(15 23 42 / 4%);
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.project-card-link {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.project-card-link:focus-visible {
+  border-radius: 16px;
+  outline: 2px solid #6485ff;
+  outline-offset: 3px;
 }
 
 .project-card:hover {
