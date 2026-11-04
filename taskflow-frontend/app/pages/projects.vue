@@ -10,6 +10,7 @@ interface ProjetoAPI {
   name: string
   description: string | null
   status: 'active' | 'completed' | 'archived'
+  team_id: number | null
   created_by: number
   created_at: string
   updated_at: string
@@ -34,6 +35,25 @@ interface UtilizadorDisponivelAPI {
   avatar_url: string | null
 }
 
+interface EquipaDisponivelAPI {
+  id: number
+  name: string
+  can_associate_projects: boolean
+}
+
+interface MembroEquipaAPI {
+  user_id: number
+  name: string
+  email: string
+  avatar_url: string | null
+}
+
+interface EquipaProjetoAPI {
+  id: number
+  name: string
+  can_manage: boolean
+}
+
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 type FiltroEstado = 'Todos' | EstadoProjeto
 type AcaoProjeto = 'archive' | 'delete'
@@ -44,6 +64,7 @@ interface Projeto {
   description: string
   status: EstadoProjeto
   createdAt: string
+  teamId: number | null
   currentUserRole: ProjetoAPI['current_user_role']
 }
 
@@ -76,10 +97,17 @@ watch(
 const mostrarFormulario = ref(false)
 const modoEdicao = ref(false)
 const projetoEmEdicao = ref<number | null>(null)
+const equipasDisponiveis = ref<EquipaDisponivelAPI[]>([])
+const membrosCandidatos = ref<UtilizadorDisponivelAPI[]>([])
+const membrosSelecionados = ref<number[]>([])
+const tarefasIniciais = ref<Array<{ title: string; description: string }>>([])
+const aCarregarOpcoesCriacao = ref(false)
+const opcoesCriacaoCarregadas = ref(false)
 
 const formulario = ref({
   name: '',
   description: '',
+  team_id: '',
 })
 
 // Confirmações de projeto
@@ -99,10 +127,14 @@ const mostrarModalMembros = ref(false)
 const projetoMembros = ref<Projeto | null>(null)
 const membros = ref<MembroAPI[]>([])
 const utilizadoresDisponiveis = ref<UtilizadorDisponivelAPI[]>([])
+const equipaProjeto = ref<EquipaProjetoAPI | null>(null)
+const membrosEquipa = ref<MembroEquipaAPI[]>([])
+const utilizadoresDisponiveisEquipa = ref<MembroEquipaAPI[]>([])
 
 const carregandoMembros = ref(false)
 const carregandoUtilizadoresDisponiveis = ref(false)
 const aAdicionarMembro = ref(false)
+const aAdicionarMembroEquipa = ref(false)
 const membroEmAtualizacao = ref<number | null>(null)
 const membroEmRemocao = ref<number | null>(null)
 
@@ -113,6 +145,7 @@ const novoMembro = ref({
   user_id: '',
   role: 'contributor' as 'owner' | 'contributor' | 'viewer',
 })
+const novoMembroEquipa = ref('')
 
 const totalOwners = computed(
   () => membros.value.filter(membro => membro.role === 'owner').length,
@@ -151,6 +184,7 @@ function converterProjeto(projeto: ProjetoAPI): Projeto {
     description: projeto.description ?? '',
     status: estadosAPI[projeto.status],
     createdAt: projeto.created_at,
+    teamId: projeto.team_id,
     currentUserRole: projeto.current_user_role,
   }
 }
@@ -254,18 +288,54 @@ async function carregarProjetos() {
 // CRIAR E EDITAR PROJETOS
 // --------------------------------------------------
 
-function abrirCriacao() {
+async function abrirCriacao() {
   erro.value = ''
   sucesso.value = ''
   modoEdicao.value = false
   projetoEmEdicao.value = null
+  membrosSelecionados.value = []
+  tarefasIniciais.value = []
+  equipasDisponiveis.value = []
+  membrosCandidatos.value = []
+  opcoesCriacaoCarregadas.value = false
 
   formulario.value = {
     name: '',
     description: '',
+    team_id: '',
   }
 
   mostrarFormulario.value = true
+  await carregarOpcoesCriacao()
+}
+
+async function carregarOpcoesCriacao() {
+  aCarregarOpcoesCriacao.value = true
+  erro.value = ''
+  try {
+    const [equipas, candidatos] = await Promise.all([
+      api<EquipaDisponivelAPI[]>('/teams/'),
+      api<UtilizadorDisponivelAPI[]>('/projects/member-candidates'),
+    ])
+    equipasDisponiveis.value = equipas.filter(
+      equipa => equipa.can_associate_projects,
+    )
+    membrosCandidatos.value = candidatos
+    opcoesCriacaoCarregadas.value = true
+  } catch (error) {
+    console.error('Erro ao carregar opções para novo projeto:', error)
+    erro.value = mensagemErroMembro(error)
+  } finally {
+    aCarregarOpcoesCriacao.value = false
+  }
+}
+
+function adicionarTarefaInicial() {
+  tarefasIniciais.value.push({ title: '', description: '' })
+}
+
+function removerTarefaInicial(index: number) {
+  tarefasIniciais.value.splice(index, 1)
 }
 
 function abrirEdicao(projeto: Projeto) {
@@ -277,23 +347,31 @@ function abrirEdicao(projeto: Projeto) {
   formulario.value = {
     name: projeto.name,
     description: projeto.description,
+    team_id: '',
   }
 
   mostrarFormulario.value = true
 }
 
-function fecharFormulario() {
-  if (aGuardar.value) return
-
+function limparFormulario() {
   mostrarFormulario.value = false
   modoEdicao.value = false
   projetoEmEdicao.value = null
   erro.value = ''
+  membrosSelecionados.value = []
+  tarefasIniciais.value = []
 
   formulario.value = {
     name: '',
     description: '',
+    team_id: '',
   }
+}
+
+function fecharFormulario() {
+  if (aGuardar.value || aCarregarOpcoesCriacao.value) return
+
+  limparFormulario()
 }
 
 async function guardarProjeto() {
@@ -310,6 +388,19 @@ async function guardarProjeto() {
 
   if (!modoEdicao.value && !auth.user.value) {
     erro.value = 'A sessão expirou. Inicia sessão novamente.'
+    return
+  }
+
+  if (!modoEdicao.value && !opcoesCriacaoCarregadas.value) {
+    erro.value = 'Carrega as opções de membros e equipas antes de criar o projeto.'
+    return
+  }
+
+  if (
+    !modoEdicao.value &&
+    tarefasIniciais.value.some(tarefa => !tarefa.title.trim())
+  ) {
+    erro.value = 'Preenche o título de cada tarefa inicial ou remove a tarefa vazia.'
     return
   }
 
@@ -346,6 +437,14 @@ async function guardarProjeto() {
           body: {
             name,
             description: description || null,
+            team_id: formulario.value.team_id
+              ? Number(formulario.value.team_id)
+              : null,
+            member_ids: membrosSelecionados.value,
+            tasks: tarefasIniciais.value.map(tarefa => ({
+              title: tarefa.title.trim(),
+              description: tarefa.description.trim() || null,
+            })),
           },
         },
       )
@@ -355,13 +454,13 @@ async function guardarProjeto() {
       pesquisa.value = ''
       filtroEstado.value = 'Todos'
 
-      sucesso.value = 'Projeto criado com sucesso. O criador foi associado como responsável.'
+      sucesso.value = 'Projeto criado com sucesso, com as associações selecionadas.'
     }
 
-    fecharFormulario()
+    limparFormulario()
   } catch (error) {
     console.error('Erro ao guardar projeto:', error)
-    erro.value = 'Não foi possível guardar o projeto. Verifica os dados e a API.'
+    erro.value = mensagemErroMembro(error)
   } finally {
     aGuardar.value = false
   }
@@ -505,11 +604,15 @@ async function abrirMembros(projeto: Projeto) {
   mostrarModalMembros.value = true
 
   membros.value = []
+  equipaProjeto.value = null
+  membrosEquipa.value = []
   novoMembro.value = {
     user_id: '',
     role: 'contributor',
   }
+  novoMembroEquipa.value = ''
   utilizadoresDisponiveis.value = []
+  utilizadoresDisponiveisEquipa.value = []
 
   erroMembros.value = ''
   sucessoMembros.value = ''
@@ -522,6 +625,7 @@ function fecharMembros() {
     carregandoMembros.value ||
     carregandoUtilizadoresDisponiveis.value ||
     aAdicionarMembro.value ||
+    aAdicionarMembroEquipa.value ||
     membroEmAtualizacao.value !== null ||
     membroEmRemocao.value !== null
   ) {
@@ -531,7 +635,10 @@ function fecharMembros() {
   mostrarModalMembros.value = false
   projetoMembros.value = null
   membros.value = []
+  equipaProjeto.value = null
+  membrosEquipa.value = []
   utilizadoresDisponiveis.value = []
+  utilizadoresDisponiveisEquipa.value = []
   erroMembros.value = ''
   sucessoMembros.value = ''
 }
@@ -548,16 +655,33 @@ async function carregarMembros() {
   erroMembros.value = ''
 
   try {
-    // Membros atuais e contas elegíveis são obtidos em paralelo para o mesmo projeto.
-    const projectId = projetoMembros.value.id
+    const projeto = projetoMembros.value
+    const podeGerir = podeGerirProjeto(projeto)
     const [membrosProjeto, utilizadoresProjeto] = await Promise.all([
-      api<MembroAPI[]>(`/projects/${projectId}/members`),
-      api<UtilizadorDisponivelAPI[]>(
-        `/projects/${projectId}/available-members`,
-      ),
+      api<MembroAPI[]>(`/projects/${projeto.id}/members`),
+      podeGerir
+        ? api<UtilizadorDisponivelAPI[]>(
+            `/projects/${projeto.id}/available-members`,
+          )
+        : Promise.resolve([]),
     ])
     membros.value = membrosProjeto
     utilizadoresDisponiveis.value = utilizadoresProjeto
+
+    if (projeto.teamId !== null) {
+      const [equipa, membrosDaEquipa] = await Promise.all([
+        api<EquipaProjetoAPI>(`/teams/${projeto.teamId}`),
+        api<MembroEquipaAPI[]>(`/teams/${projeto.teamId}/members`),
+      ])
+      equipaProjeto.value = equipa
+      membrosEquipa.value = membrosDaEquipa
+      utilizadoresDisponiveisEquipa.value = equipa.can_manage
+        ? await api<MembroEquipaAPI[]>(
+            `/teams/${projeto.teamId}/available-members`,
+          )
+        : []
+    }
+
     erroMembros.value = ''
   } catch (error) {
     console.error('Erro ao carregar membros:', error)
@@ -565,6 +689,37 @@ async function carregarMembros() {
   } finally {
     carregandoMembros.value = false
     carregandoUtilizadoresDisponiveis.value = false
+  }
+}
+
+async function adicionarMembroEquipa() {
+  if (!equipaProjeto.value?.can_manage || !novoMembroEquipa.value) return
+
+  erroMembros.value = ''
+  sucessoMembros.value = ''
+  aAdicionarMembroEquipa.value = true
+
+  try {
+    const userId = Number(novoMembroEquipa.value)
+    const novo = await api<MembroEquipaAPI>(
+      `/teams/${equipaProjeto.value.id}/members`,
+      {
+        method: 'POST',
+        body: { user_id: userId },
+      },
+    )
+    membrosEquipa.value.push(novo)
+    utilizadoresDisponiveisEquipa.value =
+      utilizadoresDisponiveisEquipa.value.filter(
+        utilizador => utilizador.user_id !== userId,
+      )
+    novoMembroEquipa.value = ''
+    sucessoMembros.value = `Utilizador adicionado à equipa ${equipaProjeto.value.name}.`
+  } catch (error) {
+    console.error('Erro ao adicionar membro à equipa:', error)
+    erroMembros.value = mensagemErroMembro(error)
+  } finally {
+    aAdicionarMembroEquipa.value = false
   }
 }
 
@@ -847,7 +1002,7 @@ onMounted(carregarProjetos)
           <button
             class="close-button"
             type="button"
-            :disabled="aGuardar"
+            :disabled="aGuardar || aCarregarOpcoesCriacao"
             @click="fecharFormulario"
           >
             ×
@@ -881,6 +1036,140 @@ onMounted(carregarProjetos)
             />
           </div>
 
+          <div
+            v-if="!modoEdicao && !opcoesCriacaoCarregadas"
+            class="creation-options-loading"
+          >
+            <p v-if="aCarregarOpcoesCriacao">A carregar equipas e membros disponíveis...</p>
+            <template v-else>
+              <p>Não foi possível carregar as opções de associação.</p>
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="aCarregarOpcoesCriacao"
+                @click="carregarOpcoesCriacao"
+              >
+                Tentar novamente
+              </button>
+            </template>
+          </div>
+
+          <template v-if="!modoEdicao && opcoesCriacaoCarregadas">
+            <section class="creation-section">
+              <div class="creation-section-heading">
+                <h3>Associar a uma equipa</h3>
+                <span>Opcional</span>
+              </div>
+              <div class="form-field">
+                <label for="project-team">Equipa</label>
+                <select id="project-team" v-model="formulario.team_id">
+                  <option value="">Sem equipa</option>
+                  <option
+                    v-for="equipa in equipasDisponiveis"
+                    :key="equipa.id"
+                    :value="String(equipa.id)"
+                  >
+                    {{ equipa.name }}
+                  </option>
+                </select>
+                <small v-if="!equipasDisponiveis.length">
+                  Não tens equipas disponíveis para associar.
+                </small>
+              </div>
+            </section>
+
+            <section class="creation-section">
+              <div class="creation-section-heading">
+                <div>
+                  <h3>Adicionar membros</h3>
+                  <span>{{ membrosSelecionados.length }} selecionado(s) · máximo 100</span>
+                </div>
+                <small>O criador será responsável automaticamente</small>
+              </div>
+              <div v-if="membrosCandidatos.length" class="creation-member-list">
+                <label
+                  v-for="membro in membrosCandidatos"
+                  :key="membro.id"
+                  class="creation-member-option"
+                >
+                  <input
+                    v-model="membrosSelecionados"
+                    type="checkbox"
+                    :value="membro.id"
+                    :disabled="!membrosSelecionados.includes(membro.id) && membrosSelecionados.length >= 100"
+                  />
+                  <span class="member-avatar">
+                    <img
+                      v-if="membro.avatar_url"
+                      :src="construirUrlAvatar(membro.avatar_url)"
+                      :alt="`Fotografia de ${membro.name}`"
+                    />
+                    <span v-else>{{ membro.name.charAt(0).toUpperCase() }}</span>
+                  </span>
+                  <span class="creation-member-copy">
+                    <strong>{{ membro.name }}</strong>
+                    <small>{{ membro.email }}</small>
+                  </span>
+                </label>
+              </div>
+              <p v-else class="creation-empty-note">
+                Não há outros utilizadores ativos para adicionar.
+              </p>
+            </section>
+
+            <section class="creation-section">
+              <div class="creation-section-heading">
+                <div>
+                  <h3>Tarefas iniciais</h3>
+                  <span>Opcional · {{ tarefasIniciais.length }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="secondary-button add-initial-task"
+                  :disabled="tarefasIniciais.length >= 100"
+                  @click="adicionarTarefaInicial"
+                >
+                  {{ tarefasIniciais.length >= 100 ? 'Limite de 100 tarefas' : '+ Adicionar tarefa' }}
+                </button>
+              </div>
+              <div
+                v-for="(tarefa, index) in tarefasIniciais"
+                :key="index"
+                class="initial-task-fields"
+              >
+                <div class="form-field">
+                  <label :for="`initial-task-title-${index}`">Título da tarefa</label>
+                  <input
+                    :id="`initial-task-title-${index}`"
+                    v-model="tarefa.title"
+                    type="text"
+                    maxlength="255"
+                    placeholder="Ex.: Definir objetivos"
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label :for="`initial-task-description-${index}`">Descrição</label>
+                  <input
+                    :id="`initial-task-description-${index}`"
+                    v-model="tarefa.description"
+                    type="text"
+                    maxlength="5000"
+                    placeholder="Detalhes (opcional)"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="remove-initial-task"
+                  :aria-label="`Remover tarefa ${index + 1}`"
+                  @click="removerTarefaInicial(index)"
+                >
+                  ×
+                </button>
+              </div>
+            </section>
+          </template>
+
           <p v-if="erro && mostrarFormulario" class="form-error">
             {{ erro }}
           </p>
@@ -889,7 +1178,7 @@ onMounted(carregarProjetos)
             <button
               type="button"
               class="secondary-button"
-              :disabled="aGuardar"
+              :disabled="aGuardar || aCarregarOpcoesCriacao"
               @click="fecharFormulario"
             >
               Cancelar
@@ -898,7 +1187,7 @@ onMounted(carregarProjetos)
             <button
               type="submit"
               class="primary-button"
-              :disabled="aGuardar"
+              :disabled="aGuardar || aCarregarOpcoesCriacao || (!modoEdicao && !opcoesCriacaoCarregadas)"
             >
               {{ aGuardar
                 ? 'A guardar...'
@@ -1142,7 +1431,7 @@ onMounted(carregarProjetos)
                 class="close-button"
                 type="button"
                 @click="fecharMembros"
-                :disabled="carregandoMembros || aAdicionarMembro || membroEmAtualizacao !== null || membroEmRemocao !== null"
+                :disabled="carregandoMembros || aAdicionarMembro || aAdicionarMembroEquipa || membroEmAtualizacao !== null || membroEmRemocao !== null"
                 aria-label="Fechar"
               >
                 ×
@@ -1329,12 +1618,91 @@ onMounted(carregarProjetos)
               </form>
             </div>
 
+            <section v-if="equipaProjeto" class="add-member-section">
+              <div class="members-section-title">
+                <h3>Membros da equipa · {{ equipaProjeto.name }}</h3>
+              </div>
+
+              <div v-if="carregandoMembros" class="members-loading">
+                <span class="spinner" />
+                <p>A carregar membros da equipa...</p>
+              </div>
+
+              <div v-else-if="membrosEquipa.length" class="members-list">
+                <article
+                  v-for="membro in membrosEquipa"
+                  :key="membro.user_id"
+                  class="member-row"
+                >
+                  <div class="member-avatar">
+                    <img
+                      v-if="membro.avatar_url"
+                      :src="construirUrlAvatar(membro.avatar_url)"
+                      :alt="`Fotografia de ${membro.name}`"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'"
+                    />
+                    <span v-else>{{ membro.name.charAt(0).toUpperCase() }}</span>
+                  </div>
+                  <div class="member-information">
+                    <strong>{{ membro.name }}</strong>
+                    <span>{{ membro.email }}</span>
+                  </div>
+                </article>
+              </div>
+
+              <div v-else class="members-empty compact-empty">
+                <p>A equipa ainda não tem membros.</p>
+              </div>
+
+              <form
+                v-if="equipaProjeto.can_manage"
+                class="add-member-form team-member-form"
+                @submit.prevent="adicionarMembroEquipa"
+              >
+                <div class="form-field">
+                  <label for="team-member-user">Adicionar à equipa</label>
+                  <select
+                    id="team-member-user"
+                    v-model="novoMembroEquipa"
+                    :disabled="carregandoUtilizadoresDisponiveis || aAdicionarMembroEquipa"
+                    required
+                  >
+                    <option value="" disabled>Seleciona um utilizador</option>
+                    <option
+                      v-for="utilizador in utilizadoresDisponiveisEquipa"
+                      :key="utilizador.user_id"
+                      :value="String(utilizador.user_id)"
+                    >
+                      {{ utilizador.name }} — {{ utilizador.email }}
+                    </option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  class="primary-button add-member-submit"
+                  :disabled="aAdicionarMembroEquipa || !novoMembroEquipa"
+                >
+                  {{ aAdicionarMembroEquipa ? 'A adicionar...' : '+ Adicionar à equipa' }}
+                </button>
+                <p
+                  v-if="!carregandoUtilizadoresDisponiveis && !utilizadoresDisponiveisEquipa.length"
+                  class="team-members-empty"
+                >
+                  Não há outras contas ativas disponíveis para esta equipa.
+                </p>
+              </form>
+            </section>
+            <div v-else-if="projetoMembros.teamId === null" class="members-empty compact-empty">
+              <p>Este projeto ainda não está associado a uma equipa.</p>
+            </div>
+
             <div class="members-footer">
               <button
                 class="secondary-button"
                 type="button"
                 @click="fecharMembros"
-                :disabled="carregandoMembros || aAdicionarMembro || membroEmAtualizacao !== null || membroEmRemocao !== null"
+                :disabled="carregandoMembros || aAdicionarMembro || aAdicionarMembroEquipa || membroEmAtualizacao !== null || membroEmRemocao !== null"
               >
                 Fechar
               </button>
@@ -1733,6 +2101,141 @@ onMounted(carregarProjetos)
 
 .form-field textarea {
   resize: vertical;
+}
+
+.creation-options-loading,
+.creation-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #edf0f5;
+}
+
+.creation-options-loading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #78859a;
+  font-size: 12px;
+}
+
+.creation-options-loading p {
+  margin: 0;
+}
+
+.creation-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.creation-section-heading h3 {
+  margin: 0;
+  color: #344158;
+  font-size: 13px;
+}
+
+.creation-section-heading span,
+.creation-empty-note,
+.form-field small,
+.creation-section-heading > small {
+  color: #8792a5;
+  font-size: 11px;
+}
+
+.creation-section .form-field {
+  margin-bottom: 0;
+}
+
+.creation-member-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.creation-member-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #edf0f5;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.creation-member-option input {
+  flex: 0 0 auto;
+  accent-color: #5363bd;
+}
+
+.creation-member-option .member-avatar {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+
+.creation-member-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.creation-member-copy strong,
+.creation-member-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creation-member-copy strong {
+  color: #344158;
+  font-size: 11px;
+}
+
+.creation-member-copy small {
+  color: #8792a5;
+  font-size: 10px;
+}
+
+.creation-empty-note {
+  margin: 0;
+}
+
+.add-initial-task {
+  min-height: 34px;
+}
+
+.initial-task-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 9px;
+  border: 1px solid #edf0f5;
+  border-radius: 9px;
+  background: #fafbfe;
+}
+
+.initial-task-fields .form-field {
+  min-width: 0;
+}
+
+.remove-initial-task {
+  width: 34px;
+  height: 40px;
+  border: 1px solid #f1dada;
+  border-radius: 7px;
+  background: white;
+  color: #c04444;
+  font-size: 20px;
+  cursor: pointer;
 }
 
 .form-error {
@@ -2485,6 +2988,18 @@ onMounted(carregarProjetos)
   font-size: 11px;
 }
 
+.team-member-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 14px;
+}
+
+.team-members-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #8792a5;
+  font-size: 11px;
+}
+
 .members-footer {
   display: flex;
   justify-content: flex-end;
@@ -2568,6 +3083,23 @@ onMounted(carregarProjetos)
   .form-card,
   .projects-section {
     padding: 17px;
+  }
+
+  .creation-member-list {
+    grid-template-columns: 1fr;
+  }
+
+  .initial-task-fields {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+
+  .initial-task-fields .form-field:nth-child(2) {
+    grid-column: 1;
+  }
+
+  .remove-initial-task {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 
   .members-modal {

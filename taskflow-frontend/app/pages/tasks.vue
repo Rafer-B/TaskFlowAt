@@ -24,6 +24,17 @@ type Categoria =
 
 type EstadoAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
 type PrioridadeAPI = 'low' | 'medium' | 'high'
+type ChaveOrdenacaoTabela = 'id' | 'title' | 'project' | 'responsible' | 'status' | 'priority' | 'dueDate'
+
+const colunasTabela: Array<{ chave: ChaveOrdenacaoTabela; rotulo: string }> = [
+  { chave: 'id', rotulo: 'ID' },
+  { chave: 'title', rotulo: 'Tarefa' },
+  { chave: 'project', rotulo: 'Projeto' },
+  { chave: 'responsible', rotulo: 'Responsável' },
+  { chave: 'status', rotulo: 'Estado' },
+  { chave: 'priority', rotulo: 'Prioridade' },
+  { chave: 'dueDate', rotulo: 'Prazo' },
+]
 
 type CategoriaAPI =
   | 'planning'
@@ -141,6 +152,16 @@ const filtroEstado = ref('')
 const filtroPrioridade = ref('')
 const filtroProjeto = ref('')
 const filtroCategoria = ref('')
+const pesquisaTabela = ref('')
+const paginaTabela = ref(1)
+const tamanhoPaginaTabela = ref(10)
+const ordenacaoTabela = ref<{
+  chave: ChaveOrdenacaoTabela
+  ascendente: boolean
+}>({
+  chave: 'id',
+  ascendente: false,
+})
 
 watch(
   () => route.query.search,
@@ -482,6 +503,72 @@ const tarefasFiltradas = computed(() => {
     )
   })
 })
+
+const tarefasTabelaFiltradas = computed(() => {
+  const termo = pesquisaTabela.value.trim().toLocaleLowerCase('pt-PT')
+  const correspondentes = tarefasFiltradas.value.filter((tarefa) =>
+    !termo ||
+    [
+      tarefa.title,
+      tarefa.project,
+      tarefa.responsible,
+      tarefa.description,
+      tarefa.status,
+      tarefa.priority,
+      tarefa.category,
+    ].some(valor => valor.toLocaleLowerCase('pt-PT').includes(termo)),
+  )
+
+  const { chave, ascendente } = ordenacaoTabela.value
+  return correspondentes.sort((a, b) => {
+    const valorA = a[chave]
+    const valorB = b[chave]
+    const comparacao = typeof valorA === 'number' && typeof valorB === 'number'
+      ? valorA - valorB
+      : String(valorA).localeCompare(String(valorB), 'pt-PT', {
+          numeric: true,
+          sensitivity: 'base',
+        })
+    return ascendente ? comparacao : -comparacao
+  })
+})
+
+const totalPaginasTabela = computed(() =>
+  Math.max(1, Math.ceil(tarefasTabelaFiltradas.value.length / tamanhoPaginaTabela.value)),
+)
+
+const tarefasDaPaginaTabela = computed(() => {
+  const inicio = (paginaTabela.value - 1) * tamanhoPaginaTabela.value
+  return tarefasTabelaFiltradas.value.slice(inicio, inicio + tamanhoPaginaTabela.value)
+})
+
+const inicioTabela = computed(() =>
+  tarefasTabelaFiltradas.value.length
+    ? (paginaTabela.value - 1) * tamanhoPaginaTabela.value + 1
+    : 0,
+)
+
+const fimTabela = computed(() =>
+  Math.min(paginaTabela.value * tamanhoPaginaTabela.value, tarefasTabelaFiltradas.value.length),
+)
+
+watch(
+  [pesquisa, filtroEstado, filtroPrioridade, filtroProjeto, filtroCategoria, pesquisaTabela, tamanhoPaginaTabela],
+  () => {
+    paginaTabela.value = 1
+  },
+)
+
+watch(totalPaginasTabela, (total) => {
+  if (paginaTabela.value > total) paginaTabela.value = total
+})
+
+function ordenarTabela(chave: ChaveOrdenacaoTabela) {
+  ordenacaoTabela.value = ordenacaoTabela.value.chave === chave
+    ? { chave, ascendente: !ordenacaoTabela.value.ascendente }
+    : { chave, ascendente: true }
+  paginaTabela.value = 1
+}
 
 // Mantém uma coluna Kanban por estado; cada coluna respeita os filtros ativos.
 const colunasKanban = computed(() =>
@@ -1541,6 +1628,131 @@ onMounted(() => {
         de {{ tarefas.length }} tarefas
       </p>
 
+      <section class="task-table-section" aria-labelledby="task-table-title">
+        <header class="task-table-heading">
+          <div>
+            <span class="section-eyebrow">VISTA DETALHADA</span>
+            <h2 id="task-table-title">Lista de tarefas</h2>
+            <p>{{ tarefasTabelaFiltradas.length }} tarefa(s) correspondem aos filtros atuais</p>
+          </div>
+          <label class="table-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              v-model="pesquisaTabela"
+              type="search"
+              aria-label="Pesquisar na lista de tarefas"
+              placeholder="Pesquisar na lista..."
+            />
+          </label>
+        </header>
+
+        <div class="task-table-scroll">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th
+                  v-for="coluna in colunasTabela"
+                  :key="coluna.chave"
+                  :aria-sort="
+                    ordenacaoTabela.chave === coluna.chave
+                      ? ordenacaoTabela.ascendente ? 'ascending' : 'descending'
+                      : 'none'
+                  "
+                >
+                  <button
+                    type="button"
+                    @click="ordenarTabela(coluna.chave)"
+                  >
+                    {{ coluna.rotulo }}
+                    <span aria-hidden="true">
+                      {{ ordenacaoTabela.chave === coluna.chave
+                        ? ordenacaoTabela.ascendente ? '↑' : '↓'
+                        : '↕'
+                      }}
+                    </span>
+                  </button>
+                </th>
+                <th scope="col">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tarefa in tarefasDaPaginaTabela" :key="tarefa.id">
+                <td class="table-task-id">#{{ tarefa.id }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="table-task-title"
+                    @click="consultarTarefa(tarefa)"
+                  >
+                    {{ tarefa.title }}
+                  </button>
+                  <small class="table-task-category">{{ tarefa.category }}</small>
+                </td>
+                <td>{{ tarefa.project }}</td>
+                <td>{{ tarefa.responsible }}</td>
+                <td>
+                  <span class="table-status" :class="classeEstado(tarefa.status)">
+                    {{ tarefa.status }}
+                  </span>
+                </td>
+                <td>
+                  <span class="priority" :class="classePrioridade(tarefa.priority)">
+                    {{ tarefa.priority }}
+                  </span>
+                </td>
+                <td>{{ formatarData(tarefa.dueDate) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action"
+                    :aria-label="`Ver detalhes de ${tarefa.title}`"
+                    @click="consultarTarefa(tarefa)"
+                  >
+                    Detalhes
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!tarefasTabelaFiltradas.length">
+                <td colspan="8" class="table-empty">
+                  {{ carregando ? 'A carregar tarefas...' : 'Não foram encontradas tarefas.' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <footer class="table-pagination">
+          <div class="table-page-size">
+            <label for="table-page-size">Linhas por página</label>
+            <select id="table-page-size" v-model.number="tamanhoPaginaTabela">
+              <option :value="10">10</option>
+              <option :value="25">25</option>
+              <option :value="50">50</option>
+            </select>
+            <span>{{ inicioTabela }}–{{ fimTabela }} de {{ tarefasTabelaFiltradas.length }}</span>
+          </div>
+          <div class="table-page-controls" aria-label="Paginação da lista de tarefas">
+            <button
+              type="button"
+              aria-label="Página anterior"
+              :disabled="paginaTabela <= 1"
+              @click="paginaTabela--"
+            >
+              Anterior
+            </button>
+            <span>Página {{ paginaTabela }} de {{ totalPaginasTabela }}</span>
+            <button
+              type="button"
+              aria-label="Página seguinte"
+              :disabled="paginaTabela >= totalPaginasTabela"
+              @click="paginaTabela++"
+            >
+              Seguinte
+            </button>
+          </div>
+        </footer>
+      </section>
+
     </section>
 
     <!-- JANELA DE DETALHES -->
@@ -2538,6 +2750,297 @@ onMounted(() => {
   font-size: 11px;
 }
 
+.task-table-section {
+  margin-top: 26px;
+  padding: 24px;
+  border: 1px solid #e6eaf2;
+  border-radius: 15px;
+  background:
+    radial-gradient(ellipse at 2% 0%, rgb(238 242 255 / 70%), transparent 36%),
+    #fff;
+  box-shadow: 0 8px 24px rgb(23 37 84 / 4%);
+  font-family: var(--tf-font);
+}
+
+.task-table-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.task-table-heading .section-eyebrow {
+  margin-bottom: 5px;
+}
+
+.task-table-heading h2 {
+  margin: 0 0 5px;
+  color: #243452;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -.035em;
+}
+
+.task-table-heading p {
+  margin: 0;
+  color: #8792a5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.table-search {
+  display: flex;
+  width: min(100%, 310px);
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  border: 1px solid #e3e8f1;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 88%);
+  color: #7d8aa1;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.table-search:focus-within {
+  border-color: #818cf8;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgb(99 102 241 / 10%);
+}
+
+.table-search > span {
+  font-size: 18px;
+}
+
+.table-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #26344c;
+  font: inherit;
+  font-size: 13px;
+}
+
+.table-search input::placeholder {
+  color: #a0a9b8;
+}
+
+.task-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e8edf4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(23 37 84 / 2%);
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+.task-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.task-table th,
+.task-table td {
+  padding: 13px 15px;
+  border-bottom: 1px solid #eff2f7;
+  color: #475569;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.task-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7f8fc;
+  color: #77839a;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.task-table th:first-child {
+  padding-left: 18px;
+}
+
+.task-table th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color .16s ease;
+}
+
+.task-table th button span {
+  color: #9ba6b7;
+  font-size: 12px;
+}
+
+.task-table th button:hover,
+.task-table th[aria-sort="ascending"] button,
+.task-table th[aria-sort="descending"] button {
+  color: #4f46e5;
+}
+
+.task-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.task-table tbody tr:hover {
+  background: #f8faff;
+}
+
+.task-table tbody tr {
+  transition: background .15s ease;
+}
+
+.task-table .table-task-id {
+  padding-left: 18px;
+  color: #8995a8;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.table-task-title {
+  display: block;
+  max-width: 340px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #26344c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.table-task-title:hover {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+
+.table-task-category {
+  display: inline-flex;
+  padding: 3px 7px;
+  margin-top: 6px;
+  border-radius: 5px;
+  background: #f1f3f9;
+  color: #78859a;
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.table-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.table-status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.table-status.por-fazer { background: #f1f5f9; color: #526078; }
+.table-status.em-curso { background: #eff6ff; color: #2563eb; }
+.table-status.concluida { background: #ecfdf5; color: #15803d; }
+.table-status.bloqueada { background: #fef2f2; color: #b91c1c; }
+
+.table-action {
+  padding: 7px 11px;
+  border: 1px solid #e2e5ff;
+  border-radius: 7px;
+  background: #f4f5ff;
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.table-action:hover {
+  transform: translateY(-1px);
+  border-color: #c9ceff;
+  background: #e9ebff;
+}
+
+.task-table .table-empty {
+  padding: 28px 14px;
+  color: #8792a5;
+  text-align: center;
+}
+
+.table-pagination,
+.table-page-size,
+.table-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-pagination {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 3px 0;
+  color: #78859a;
+  font-size: 12px;
+}
+
+.table-page-size select {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid #e1e6ef;
+  border-radius: 7px;
+  background: #fff;
+  color: #475569;
+}
+
+.table-page-controls button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #e1e6ef;
+  border-radius: 7px;
+  background: white;
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+
+.table-page-controls button:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.table-page-controls button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 /* MODAL DE DETALHES */
 
 .modal-overlay {
@@ -2705,6 +3208,30 @@ onMounted(() => {
 
   .section-heading {
     align-items: flex-start;
+  }
+
+  .task-table-heading,
+  .table-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-table-section {
+    padding: 16px;
+    border-radius: 13px;
+  }
+
+  .table-search {
+    width: auto;
+  }
+
+  .table-pagination {
+    gap: 11px;
+  }
+
+  .table-page-size,
+  .table-page-controls {
+    justify-content: space-between;
   }
 
   .task-count {

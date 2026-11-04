@@ -15,6 +15,8 @@ from app.auth import (
 )
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.task import Task
+from app.models.team import Team
 from app.models.user import User
 from app.schemas.project import (
     ProjectCreate,
@@ -54,10 +56,61 @@ def criar_projeto(
             detail="O utilizador responsável não existe ou está inativo.",
         )
 
+    ids_membros = set(dados.member_ids)
+    if current_user.id in ids_membros:
+        raise HTTPException(
+            status_code=400,
+            detail="O criador já é associado automaticamente ao projeto.",
+        )
+
+    utilizadores_membros = (
+        db.query(User)
+        .filter(
+            User.id.in_(ids_membros),
+            User.is_active.is_(True),
+        )
+        .all()
+        if ids_membros
+        else []
+    )
+    if len(utilizadores_membros) != len(ids_membros):
+        raise HTTPException(
+            status_code=400,
+            detail="Um ou mais membros selecionados não existem ou estão inativos.",
+        )
+
+    equipa = None
+    if dados.team_id is not None:
+        equipa = db.get(Team, dados.team_id)
+        if equipa is None:
+            raise HTTPException(
+                status_code=404,
+                detail="A equipa selecionada não existe.",
+            )
+        e_responsavel_de_projeto = (
+            db.query(ProjectMember)
+            .filter(
+                ProjectMember.user_id == current_user.id,
+                ProjectMember.role == "owner",
+            )
+            .first()
+            is not None
+        )
+        if (
+            current_user.role != "admin"
+            and equipa.created_by != current_user.id
+            and not e_responsavel_de_projeto
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Não tens permissão para associar projetos a esta equipa.",
+            )
+
     projeto = Project(
         name=dados.name.strip(),
         description=dados.description,
         created_by=current_user.id,
+        team_id=equipa.id if equipa is not None else None,
     )
 
     try:
@@ -72,6 +125,23 @@ def criar_projeto(
         )
 
         db.add(membro)
+        db.add_all(
+            ProjectMember(
+                project_id=projeto.id,
+                user_id=utilizador_membro.id,
+                role="contributor",
+            )
+            for utilizador_membro in utilizadores_membros
+        )
+        db.add_all(
+            Task(
+                project_id=projeto.id,
+                title=tarefa.title,
+                description=tarefa.description,
+                created_by=current_user.id,
+            )
+            for tarefa in dados.tasks
+        )
         db.commit()
         db.refresh(projeto)
 
@@ -94,6 +164,35 @@ def criar_projeto(
         "team_id": projeto.team_id,
         "current_user_role": "owner",
     }
+
+
+@router.get(
+    "/member-candidates",
+    response_model=list[ProjectMemberCandidate],
+)
+def listar_candidatos_a_membro(
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+):
+    """Lista contas ativas que podem ser associadas a um projeto novo."""
+    utilizadores = (
+        db.query(User)
+        .filter(
+            User.is_active.is_(True),
+            User.id != current_user.id,
+        )
+        .order_by(User.name, User.id)
+        .all()
+    )
+    return [
+        {
+            "id": utilizador.id,
+            "name": utilizador.name,
+            "email": utilizador.email,
+            "avatar_url": utilizador.avatar_url,
+        }
+        for utilizador in utilizadores
+    ]
 
 
 @router.get("/", response_model=list[ProjectResponse])
