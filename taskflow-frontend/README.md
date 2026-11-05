@@ -1,9 +1,9 @@
 # Nuxt Minimal Starter
 
-The frontend communicates with the TaskFlow FastAPI backend. Configure its URL
-with `NUXT_PUBLIC_API_BASE` (for example, `http://127.0.0.1:8000`). PostgreSQL
-credentials belong only in the backend environment; do not put them in Nuxt
-runtime configuration.
+The frontend communicates with the TaskFlow FastAPI backend. By default, it
+uses `http://127.0.0.1:8000` for local development; set `NUXT_PUBLIC_API_BASE`
+if the backend is at another address. PostgreSQL credentials belong only in
+the backend environment; do not put them in Nuxt runtime configuration.
 
 ## Área de trabalho (front-office)
 
