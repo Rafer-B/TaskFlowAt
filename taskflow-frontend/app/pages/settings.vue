@@ -60,6 +60,7 @@ const palavraPasseAAtualizar = ref(false)
 const mostrarFormularioPalavraPasse = ref(false)
 const erro = ref('')
 const sucesso = ref('')
+const confirmarRemocaoFotografia = ref(false)
 const avatarFalhou = ref(false)
 const palavrasPasse = ref({
   atual: '',
@@ -253,7 +254,8 @@ async function carregarFotografia(event: Event): Promise<void> {
 
 async function removerFotografia(): Promise<void> {
   if (!utilizador.value?.avatar_url || fotografiaARemover.value) return
-  if (!window.confirm('Tem a certeza de que pretende remover a fotografia de perfil?')) {
+  if (!confirmarRemocaoFotografia.value) {
+    confirmarRemocaoFotografia.value = true
     return
   }
 
@@ -266,6 +268,7 @@ async function removerFotografia(): Promise<void> {
       method: 'DELETE',
     })
     auth.user.value = updatedUser
+    confirmarRemocaoFotografia.value = false
     sucesso.value = 'Fotografia de perfil removida com sucesso.'
   } catch (error) {
     console.error('Erro ao remover fotografia de perfil:', error)
@@ -273,6 +276,10 @@ async function removerFotografia(): Promise<void> {
   } finally {
     fotografiaARemover.value = false
   }
+}
+
+function cancelarRemocaoFotografia(): void {
+  confirmarRemocaoFotografia.value = false
 }
 
 async function atualizarPalavraPasse(): Promise<void> {
@@ -423,6 +430,11 @@ onMounted(() => {
           >
             {{ fotografiaARemover ? 'A remover...' : 'Remover fotografia' }}
           </button>
+          <div v-if="confirmarRemocaoFotografia" class="inline-confirm" role="group" aria-label="Confirmar remoção da fotografia">
+            <span>Remover a fotografia de perfil?</span>
+            <button type="button" class="remove-avatar-button" :disabled="fotografiaARemover" @click="removerFotografia">Confirmar</button>
+            <button type="button" class="btn btn-outline" :disabled="fotografiaARemover" @click="cancelarRemocaoFotografia">Cancelar</button>
+          </div>
         </div>
 
         <form

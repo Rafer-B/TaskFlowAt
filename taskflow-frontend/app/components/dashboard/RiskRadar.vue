@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import 'sweetalert2/dist/sweetalert2.min.css'
-import Swal from 'sweetalert2'
-
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
 // Recebe os registos já autorizados pelo chamador e apresenta causas concretas de risco.
@@ -51,6 +48,7 @@ const props = withDefaults(defineProps<{
   loading: false,
   error: '',
 })
+const riscoSelecionado = ref<Risco | null>(null)
 
 const todayISO = computed(() => toISODay(new Date()))
 const activeProjects = computed(() =>
@@ -189,28 +187,12 @@ function riskIcon(type: Risco['type']): string {
 }
 
 async function abrirRisco(risk: Risco): Promise<void> {
-  const result = await Swal.fire({
-    icon: risk.type === 'blocked'
-      ? 'error'
-      : risk.type === 'overdue'
-        ? 'warning'
-        : 'info',
-    title: risk.title,
-    text: `${riskLabel(risk.type)} · ${risk.project}. ${risk.description}`,
-    confirmButtonText: risk.type === 'inactive'
-      ? 'Ver tarefas do projeto'
-      : 'Abrir tarefa',
-    showCancelButton: true,
-    cancelButtonText: 'Fechar',
-    confirmButtonColor: '#4f5fd5',
-    cancelButtonColor: '#64748b',
-    reverseButtons: true,
-    focusCancel: true,
-  })
+  riscoSelecionado.value = risk
+}
 
-  if (result.isConfirmed) {
-    await navigateTo(risk.destination)
-  }
+async function abrirDestinoRisco(): Promise<void> {
+  if (!riscoSelecionado.value) return
+  await navigateTo(riscoSelecionado.value.destination)
 }
 </script>
 
@@ -292,6 +274,22 @@ async function abrirRisco(risk: Risco): Promise<void> {
         </button>
       </li>
     </ul>
+    <div v-if="riscoSelecionado" class="risk-detail" aria-live="polite">
+      <div>
+        <span>{{ riskLabel(riscoSelecionado.type) }} · {{ riscoSelecionado.project }}</span>
+        <strong>{{ riscoSelecionado.title }}</strong>
+        <p>{{ riscoSelecionado.description }}</p>
+      </div>
+      <div class="risk-detail-actions">
+        <button type="button" class="risk-detail-link" @click="abrirDestinoRisco">
+          {{ riscoSelecionado.type === 'inactive' ? 'Ver tarefas do projeto' : 'Abrir tarefa' }}
+          <span aria-hidden="true">→</span>
+        </button>
+        <button type="button" class="risk-detail-close" @click="riscoSelecionado = null">
+          Fechar
+        </button>
+      </div>
+    </div>
     <div v-else class="radar-clear">
       <span aria-hidden="true">✓</span>
       <div>
@@ -479,6 +477,57 @@ async function abrirRisco(risk: Risco): Promise<void> {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.risk-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #f7f9fc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.risk-detail > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.risk-detail > div:first-child > span,
+.risk-detail p {
+  margin: 0;
+  color: #74839b;
+  font-size: 10px;
+}
+
+.risk-detail strong {
+  color: #263957;
+  font-size: 12px;
+}
+
+.risk-detail-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.risk-detail-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #4f5fd5;
+  background: #fff;
+  border: 1px solid #dfe5ef;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.risk-detail-actions .risk-detail-close {
+  color: #64748b;
 }
 
 .risk-item {

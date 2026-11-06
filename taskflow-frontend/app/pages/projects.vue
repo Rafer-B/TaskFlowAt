@@ -123,7 +123,8 @@ const sucesso = ref('')
 // GESTÃO DE MEMBROS
 // --------------------------------------------------
 
-const mostrarModalMembros = ref(false)
+const mostrarPainelMembros = ref(false)
+const membroPendenteRemocao = ref<number | null>(null)
 const projetoMembros = ref<Projeto | null>(null)
 const membros = ref<MembroAPI[]>([])
 const utilizadoresDisponiveis = ref<UtilizadorDisponivelAPI[]>([])
@@ -601,7 +602,8 @@ async function eliminarProjeto(projeto: Projeto) {
 
 async function abrirMembros(projeto: Projeto) {
   projetoMembros.value = projeto
-  mostrarModalMembros.value = true
+  mostrarPainelMembros.value = true
+  membroPendenteRemocao.value = null
 
   membros.value = []
   equipaProjeto.value = null
@@ -632,8 +634,9 @@ function fecharMembros() {
     return
   }
 
-  mostrarModalMembros.value = false
+  mostrarPainelMembros.value = false
   projetoMembros.value = null
+  membroPendenteRemocao.value = null
   membros.value = []
   equipaProjeto.value = null
   membrosEquipa.value = []
@@ -858,11 +861,10 @@ async function alterarResponsabilidade(
 async function removerMembro(membro: MembroAPI) {
   if (!projetoMembros.value) return
 
-  const confirmado = window.confirm(
-    `Queres remover ${membro.name} deste projeto?`,
-  )
-
-  if (!confirmado) return
+  if (membroPendenteRemocao.value !== membro.user_id) {
+    membroPendenteRemocao.value = membro.user_id
+    return
+  }
 
   erroMembros.value = ''
   sucessoMembros.value = ''
@@ -881,6 +883,7 @@ async function removerMembro(membro: MembroAPI) {
     )
 
     sucessoMembros.value = 'Membro removido do projeto com sucesso.'
+    membroPendenteRemocao.value = null
     await carregarMembros()
   } catch (error: unknown) {
     console.error('Erro ao remover membro:', error)
@@ -1406,18 +1409,12 @@ onMounted(carregarProjetos)
       </div>
     </section>
 
-    <!-- MODAL DE MEMBROS -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div
-          v-if="mostrarModalMembros && projetoMembros"
-          class="modal-overlay members-overlay"
-          @click.self="fecharMembros"
-        >
+    <section
+      v-if="mostrarPainelMembros && projetoMembros"
+      class="inline-members-panel"
+    >
           <section
-            class="members-modal"
-            role="dialog"
-            aria-modal="true"
+            class="member-management-panel"
             aria-labelledby="members-title"
           >
             <div class="members-heading">
@@ -1534,7 +1531,7 @@ onMounted(carregarProjetos)
                     </select>
 
                     <button
-                      v-if="projetoMembros && podeGerirProjeto(projetoMembros)"
+                      v-if="projetoMembros && podeGerirProjeto(projetoMembros) && membroPendenteRemocao !== membro.user_id"
                       type="button"
                       class="remove-member-button"
                       :disabled="membroEmRemocao === membro.user_id || membroEmAtualizacao === membro.user_id"
@@ -1544,6 +1541,11 @@ onMounted(carregarProjetos)
                     >
                       {{ membroEmRemocao === membro.user_id ? '...' : '×' }}
                     </button>
+                  </div>
+                  <div v-if="membroPendenteRemocao === membro.user_id" class="inline-member-confirm">
+                    <span>Remover {{ membro.name }} deste projeto?</span>
+                    <button type="button" class="secondary-button" @click="membroPendenteRemocao = null">Cancelar</button>
+                    <button type="button" class="danger-button" @click="removerMembro(membro)">Confirmar</button>
                   </div>
                 </article>
               </div>
@@ -1708,25 +1710,17 @@ onMounted(carregarProjetos)
               </button>
             </div>
           </section>
-        </div>
-      </Transition>
-    </Teleport>
+    </section>
 
-    <!-- MODAL DE CONFIRMAÇÃO DO PROJETO -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div
-          v-if="mostrarConfirmacao && projetoSelecionado"
-          class="modal-overlay"
-          @click.self="fecharConfirmacao"
-        >
+    <section
+      v-if="mostrarConfirmacao && projetoSelecionado"
+      class="inline-project-confirmation"
+    >
           <section
-            class="confirmation-modal"
-            role="dialog"
-            aria-modal="true"
+            class="project-confirm-card"
             aria-labelledby="confirmation-title"
           >
-            <div class="modal-icon">
+            <div class="confirmation-icon">
               {{ acaoConfirmada === 'delete' ? '!' : '▤' }}
             </div>
 
@@ -1744,16 +1738,16 @@ onMounted(carregarProjetos)
               <strong>{{ projetoSelecionado.name }}</strong>?
             </p>
 
-            <p v-if="acaoConfirmada === 'delete'" class="modal-warning">
+            <p v-if="acaoConfirmada === 'delete'" class="confirmation-warning">
               Esta operação não pode ser desfeita. Se existirem tarefas
               ou membros associados, o servidor poderá impedir a eliminação.
             </p>
 
-            <p v-else class="modal-warning">
+            <p v-else class="confirmation-warning">
               O projeto deixará de estar ativo, mas poderá ser reativado posteriormente.
             </p>
 
-            <div class="modal-actions">
+            <div class="confirmation-actions">
               <button
                 class="secondary-button"
                 type="button"
@@ -1783,9 +1777,7 @@ onMounted(carregarProjetos)
               </button>
             </div>
           </section>
-        </div>
-      </Transition>
-    </Teleport>
+    </section>
 
   </main>
 </template>
@@ -2244,7 +2236,7 @@ onMounted(carregarProjetos)
 }
 
 .form-actions,
-.modal-actions {
+.confirmation-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -2618,30 +2610,22 @@ onMounted(carregarProjetos)
   to { transform: rotate(360deg); }
 }
 
-/* MODAL GERAL */
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(15, 23, 42, .48);
-  backdrop-filter: blur(3px);
+.inline-members-panel,
+.inline-project-confirmation {
+  margin-top: 18px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #e1e7f4;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(23 37 84 / 5%);
 }
 
-.confirmation-modal {
+.project-confirm-card {
   width: 100%;
-  max-width: 440px;
-  padding: 27px;
-  border-radius: 15px;
-  background: white;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .18);
+  max-width: 720px;
 }
 
-.modal-icon {
+.confirmation-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2655,23 +2639,23 @@ onMounted(carregarProjetos)
   font-weight: 800;
 }
 
-.confirmation-modal h2 {
+.project-confirm-card h2 {
   margin: 0 0 10px;
   color: #1e2a43;
   font-size: 20px;
 }
 
-.confirmation-modal p {
+.project-confirm-card p {
   color: #77849a;
   font-size: 13px;
   line-height: 1.7;
 }
 
-.confirmation-modal p strong {
+.project-confirm-card p strong {
   color: #344158;
 }
 
-.modal-warning {
+.confirmation-warning {
   padding: 11px;
   border-radius: 8px;
   background: #fff8e8;
@@ -2679,8 +2663,23 @@ onMounted(carregarProjetos)
   font-size: 11px !important;
 }
 
-.modal-actions {
+.confirmation-actions {
   margin-top: 20px;
+}
+
+.inline-member-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  color: #825b22;
+  background: #fff8eb;
+  border: 1px solid #f3dfb8;
+  border-radius: 8px;
+  font-size: 10px;
 }
 
 .danger-button {
@@ -2706,15 +2705,14 @@ onMounted(carregarProjetos)
 
 /* GESTÃO DE MEMBROS */
 
-.members-modal {
+.member-management-panel {
   width: 100%;
-  max-width: 720px;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 26px;
-  border-radius: 15px;
-  background: white;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .18);
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .members-heading {
@@ -3102,9 +3100,9 @@ onMounted(carregarProjetos)
     grid-row: 1 / span 2;
   }
 
-  .members-modal {
+  .inline-members-panel {
     padding: 18px;
-    max-height: 94vh;
+    max-height: none;
   }
 
   .add-member-form {

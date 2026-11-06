@@ -13,7 +13,7 @@ from sqlalchemy import (
     Integer,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -109,3 +109,14 @@ class Task(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    assignees: Mapped[list["TaskAssignee"]] = relationship(
+        "TaskAssignee",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    @property
+    def assignee_ids(self) -> list[int]:
+        """Expõe os IDs atribuídos no contrato da API."""
+        return [assignee.user_id for assignee in self.assignees]

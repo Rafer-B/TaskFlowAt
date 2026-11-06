@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // Gere tarefas em Kanban, sincronizando filtros, projetos, papéis e operações com a API.
 definePageMeta({
@@ -85,6 +85,7 @@ interface TarefaAPI {
   priority: PrioridadeAPI
   status: EstadoAPI
   assigned_to: number | null
+  assignee_ids: number[]
   created_by: number
   due_date: string | null
   created_at: string
@@ -100,7 +101,7 @@ interface Tarefa {
   project: string
   projectStatus: ProjetoAPI['status']
   responsible: string
-  assignedTo: number | null
+  assignedTo: number[]
   dueDate: string
   priority: Prioridade
   status: EstadoTarefa
@@ -186,9 +187,13 @@ const sucesso = ref('')
 const carregando = ref(false)
 const aGuardar = ref(false)
 const tarefaEmEliminacao = ref<number | null>(null)
+const tarefaPendenteEliminacao = ref<number | null>(null)
 const carregandoMembros = ref(false)
 const tarefaEmArrasto = ref<number | null>(null)
 const colunaEmDestaque = ref<EstadoTarefa | null>(null)
+const responsavelSeletorRef = ref<HTMLElement | null>(null)
+const responsavelAberto = ref(false)
+const pesquisaResponsavel = ref('')
 
 let pedidoMembros = 0
 
@@ -324,11 +329,46 @@ function podeEliminarTarefa(tarefa: Tarefa): boolean {
     papelNoProjeto(tarefa.projectId) === 'owner'
 }
 
+function podeAtribuirTarefa(projectId: number): boolean {
+  return auth.user.value?.role === 'admin' ||
+    papelNoProjeto(projectId) === 'owner'
+}
+
 const membrosAtivos = computed(() =>
   membrosProjeto.value.filter(
     (membro) => membro.is_active && membro.role !== 'viewer',
   ),
 )
+
+const membroResponsavelSelecionado = computed(() =>
+  membrosAtivos.value.find(
+    (membro) => String(membro.user_id) === novaTarefa.value.assignedTo,
+  ) ?? null,
+)
+
+const membrosResponsavelFiltrados = computed(() => {
+  const termo = pesquisaResponsavel.value.trim().toLocaleLowerCase('pt-PT')
+  if (!termo) return membrosAtivos.value
+
+  return membrosAtivos.value.filter((membro) =>
+    `${membro.name} ${membro.email}`.toLocaleLowerCase('pt-PT').includes(termo),
+  )
+})
+
+function selecionarResponsavel(userId: number | null): void {
+  novaTarefa.value.assignedTo = userId === null ? '' : String(userId)
+  responsavelAberto.value = false
+  pesquisaResponsavel.value = ''
+}
+
+function fecharSeletorResponsavelFora(evento: MouseEvent): void {
+  if (
+    evento.target instanceof Node &&
+    !responsavelSeletorRef.value?.contains(evento.target)
+  ) {
+    responsavelAberto.value = false
+  }
+}
 
 function limparFormulario() {
   const primeiroProjeto = projetosAtivos.value[0]
@@ -454,6 +494,8 @@ watch(
     }
 
     novaTarefa.value.assignedTo = ''
+    responsavelAberto.value = false
+    pesquisaResponsavel.value = ''
 
     await carregarMembrosProjeto(Number(novoProjeto))
   },
@@ -613,9 +655,12 @@ function converterTarefa(tarefa: TarefaAPI): Tarefa {
     (item) => item.id === tarefa.project_id,
   )
 
-  const responsavel = utilizadores.value.find(
-    (item) => item.id === tarefa.assigned_to,
-  )
+  const assigneeIds = tarefa.assigned_to === null
+    ? (tarefa.assignee_ids ?? [])
+    : [tarefa.assigned_to]
+  const responsaveis = assigneeIds
+    .map((id) => utilizadores.value.find((item) => item.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
 
   return {
     id: tarefa.id,
@@ -624,8 +669,8 @@ function converterTarefa(tarefa: TarefaAPI): Tarefa {
     description: tarefa.description ?? '',
     project: projeto?.name ?? `Projeto #${tarefa.project_id}`,
     projectStatus: projeto?.status ?? 'archived',
-    responsible: responsavel?.name ?? 'Por atribuir',
-    assignedTo: tarefa.assigned_to,
+    responsible: responsaveis.length ? responsaveis.join(', ') : 'Por atribuir',
+    assignedTo: assigneeIds.length ? String(assigneeIds[0]) : '',
     dueDate: tarefa.due_date
       ? tarefa.due_date.slice(0, 10)
       : '',
@@ -720,6 +765,7 @@ watch(
 function fecharDetalhes() {
   mostrarDetalhes.value = false
   tarefaSelecionada.value = null
+  tarefaPendenteEliminacao.value = null
 }
 
 async function editarTarefa(tarefa: Tarefa) {
@@ -739,9 +785,7 @@ async function editarTarefa(tarefa: Tarefa) {
     title: tarefa.title,
     description: tarefa.description,
     projectId: String(tarefa.projectId),
-    assignedTo: tarefa.assignedTo
-      ? String(tarefa.assignedTo)
-      : '',
+    assignedTo: tarefa.assignedTo.length ? String(tarefa.assignedTo[0]) : '',
     dueDate: tarefa.dueDate,
     priority: tarefa.priority,
     status: tarefa.status,
@@ -810,11 +854,14 @@ async function guardarTarefa() {
 
   if (
     responsavelId !== null &&
-    !membrosAtivos.value.some(
-      (membro) => membro.user_id === responsavelId,
-    )
+    !membrosAtivos.value.some((membro) => membro.user_id === responsavelId)
   ) {
     erro.value = 'O responsável deve ser um membro ativo do projeto.'
+    return
+  }
+
+  if (responsavelId !== null && !podeAtribuirTarefa(projetoId)) {
+    erro.value = 'Só o responsável do projeto pode atribuir tarefas a membros.'
     return
   }
 
@@ -838,16 +885,18 @@ async function guardarTarefa() {
 
   try {
     // Converte rótulos da interface para enums da API e envia datas como início do dia.
-    const corpo = {
+    const corpo: Record<string, string | number | null> = {
       title: titulo,
       description: descricao || null,
       category: categoriaParaAPI[novaTarefa.value.category],
       priority: prioridadeParaAPI[novaTarefa.value.priority],
       status: estadoParaAPI[novaTarefa.value.status],
-      assigned_to: responsavelId,
       due_date: novaTarefa.value.dueDate
         ? `${novaTarefa.value.dueDate}T00:00:00`
         : null,
+    }
+    if (podeAtribuirTarefa(projetoId)) {
+      corpo.assigned_to = responsavelId
     }
 
     let resultado: TarefaAPI
@@ -1082,11 +1131,10 @@ async function eliminarTarefa(tarefa: Tarefa) {
     return
   }
 
-  const confirmado = window.confirm(
-    `Tens a certeza de que pretendes eliminar a tarefa "${tarefa.title}"? Esta operação não pode ser desfeita.`,
-  )
-
-  if (!confirmado) return
+  if (tarefaPendenteEliminacao.value !== tarefa.id) {
+    tarefaPendenteEliminacao.value = tarefa.id
+    return
+  }
 
   tarefaEmEliminacao.value = tarefa.id
 
@@ -1105,6 +1153,7 @@ async function eliminarTarefa(tarefa: Tarefa) {
     if (tarefaSelecionada.value?.id === tarefa.id) {
       fecharDetalhes()
     }
+    tarefaPendenteEliminacao.value = null
 
     sucesso.value = 'Tarefa eliminada com sucesso.'
 
@@ -1118,6 +1167,10 @@ async function eliminarTarefa(tarefa: Tarefa) {
   } finally {
     tarefaEmEliminacao.value = null
   }
+}
+
+function cancelarEliminacaoTarefa(): void {
+  tarefaPendenteEliminacao.value = null
 }
 
 // --------------------------------------------------
@@ -1173,6 +1226,11 @@ function classePrioridade(prioridade: Prioridade) {
 
 onMounted(() => {
   carregarDados()
+  document.addEventListener('click', fecharSeletorResponsavelFora)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', fecharSeletorResponsavelFora)
 })
 </script>
 
@@ -1306,37 +1364,98 @@ onMounted(() => {
             </small>
           </div>
 
-          <div class="field">
-            <label for="responsavel">Responsável</label>
+          <div v-if="novaTarefa.projectId && podeAtribuirTarefa(Number(novaTarefa.projectId))" class="field">
+            <label for="responsavel">Responsável pela tarefa</label>
 
-            <select
-              id="responsavel"
-              v-model="novaTarefa.assignedTo"
-              :disabled="carregandoMembros || !novaTarefa.projectId"
-            >
-              <option value="">
-                Por atribuir
-              </option>
-
-              <option
-                v-for="membro in membrosAtivos"
-                :key="membro.user_id"
-                :value="String(membro.user_id)"
+            <div ref="responsavelSeletorRef" class="assignee-picker">
+              <button
+                id="responsavel"
+                class="assignee-trigger"
+                type="button"
+                aria-controls="assignee-options"
+                :aria-expanded="responsavelAberto"
+                :disabled="carregandoMembros"
+                @click="responsavelAberto = !responsavelAberto; pesquisaResponsavel = ''"
               >
-                {{ membro.name }} —
-                {{ membro.role === 'owner'
-                  ? 'Responsável'
-                  : membro.role === 'viewer'
-                    ? 'Observador'
-                    : 'Colaborador'
-                }}
-              </option>
-            </select>
+                <span v-if="membroResponsavelSelecionado" class="assignee-avatar">
+                  {{ membroResponsavelSelecionado.name.slice(0, 1).toUpperCase() }}
+                </span>
+                <span v-else class="assignee-avatar assignee-avatar-empty">+</span>
+                <span class="assignee-trigger-copy">
+                  <strong>{{ membroResponsavelSelecionado?.name ?? 'Escolher membro do projeto' }}</strong>
+                  <small>
+                    {{ membroResponsavelSelecionado
+                      ? membroResponsavelSelecionado.role === 'owner' ? 'Responsável do projeto' : 'Colaborador'
+                      : 'Apenas um responsável por tarefa'
+                    }}
+                  </small>
+                </span>
+                <span class="assignee-chevron" aria-hidden="true">⌄</span>
+              </button>
 
-            <small v-if="carregandoMembros">
-              A carregar membros...
-            </small>
+              <div v-if="responsavelAberto" id="assignee-options" class="assignee-menu" role="region" aria-label="Responsável pela tarefa">
+                <label class="assignee-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    v-model="pesquisaResponsavel"
+                    type="search"
+                    placeholder="Pesquisar membro..."
+                    aria-label="Pesquisar membros do projeto"
+                    @keydown.esc.prevent="responsavelAberto = false"
+                  />
+                </label>
 
+                <button
+                  class="assignee-option assignee-clear-option"
+                  type="button"
+                  :aria-pressed="!novaTarefa.assignedTo"
+                  @click="selecionarResponsavel(null)"
+                >
+                  <span class="assignee-avatar assignee-avatar-empty">—</span>
+                  <span class="assignee-option-copy">
+                    <strong>Sem responsável</strong>
+                    <small>A tarefa fica por atribuir</small>
+                  </span>
+                  <span v-if="!novaTarefa.assignedTo" class="assignee-check" aria-hidden="true">✓</span>
+                </button>
+
+                <div v-if="membrosResponsavelFiltrados.length" class="assignee-options-list">
+                  <button
+                    v-for="membro in membrosResponsavelFiltrados"
+                    :key="membro.user_id"
+                    class="assignee-option"
+                    type="button"
+                    :aria-pressed="novaTarefa.assignedTo === String(membro.user_id)"
+                    @click="selecionarResponsavel(membro.user_id)"
+                  >
+                    <span class="assignee-avatar">
+                      {{ membro.name.slice(0, 1).toUpperCase() }}
+                    </span>
+                    <span class="assignee-option-copy">
+                      <strong>{{ membro.name }}</strong>
+                      <small>{{ membro.email }}</small>
+                    </span>
+                    <span class="assignee-role" :class="{ 'assignee-role-owner': membro.role === 'owner' }">
+                      {{ membro.role === 'owner' ? 'Responsável' : 'Colaborador' }}
+                    </span>
+                    <span
+                      v-if="novaTarefa.assignedTo === String(membro.user_id)"
+                      class="assignee-check"
+                      aria-hidden="true"
+                    >✓</span>
+                  </button>
+                </div>
+                <p v-else-if="pesquisaResponsavel" class="assignee-empty">
+                  Nenhum membro corresponde à pesquisa.
+                </p>
+                <p v-else-if="!membrosAtivos.length" class="assignee-empty">
+                  Este projeto ainda não tem membros ativos elegíveis.
+                  <NuxtLink to="/projects">Gerir membros do projeto</NuxtLink>
+                </p>
+              </div>
+            </div>
+
+            <small v-if="carregandoMembros">A carregar membros do projeto...</small>
             <div v-if="erroMembros" class="member-load-error" role="alert">
               <small>{{ erroMembros }}</small>
               <button
@@ -1347,19 +1466,14 @@ onMounted(() => {
                 Tentar novamente
               </button>
             </div>
-
-            <small
-              v-else-if="
-                !carregandoMembros &&
-                novaTarefa.projectId &&
-                membrosAtivos.length === 0
-              "
-            >
-              Este projeto não tem membros ativos. Adiciona o utilizador em
-              <NuxtLink to="/projects">Projetos → Membros</NuxtLink>
-              antes de o atribuir à tarefa.
-            </small>
+            <small v-else>Escolhe um membro ativo do projeto. Os observadores não podem ser atribuídos.</small>
           </div>
+          <p
+            v-else-if="novaTarefa.projectId && modoFormulario === 'editar' && novaTarefa.assignedTo"
+            class="assignee-permission-note"
+          >
+            Só o responsável do projeto pode alterar a atribuição desta tarefa.
+          </p>
 
           <div class="field">
             <label for="prazo">Prazo</label>
@@ -1535,7 +1649,18 @@ onMounted(() => {
 
       </div>
 
-      <div class="kanban-scroll">
+      <div class="tasks-dual-view">
+        <section class="kanban-panel" aria-labelledby="kanban-title">
+          <header class="dual-panel-heading">
+            <div>
+              <span class="section-eyebrow">VISTA VISUAL</span>
+              <h2 id="kanban-title">Quadro Kanban</h2>
+              <p>Arraste as tarefas entre colunas para atualizar o estado.</p>
+            </div>
+            <span class="dual-panel-count">{{ tarefasFiltradas.length }}</span>
+          </header>
+
+          <div class="kanban-scroll">
         <div v-if="carregando" class="board-loading">
           <span class="board-spinner" aria-hidden="true"></span>
           A carregar tarefas...
@@ -1620,13 +1745,9 @@ onMounted(() => {
               </div>
             </div>
           </section>
-        </div>
-      </div>
-
-      <p class="results-count">
-        A mostrar {{ tarefasFiltradas.length }}
-        de {{ tarefas.length }} tarefas
-      </p>
+          </div>
+          </div>
+        </section>
 
       <section class="task-table-section" aria-labelledby="task-table-title">
         <header class="task-table-heading">
@@ -1752,20 +1873,18 @@ onMounted(() => {
           </div>
         </footer>
       </section>
+      </div>
 
     </section>
 
     <!-- JANELA DE DETALHES -->
-    <div
+    <section
       v-if="mostrarDetalhes && tarefaSelecionada"
-      class="modal-overlay"
-      @click.self="fecharDetalhes"
-      @keydown.esc="fecharDetalhes"
+      class="inline-details-panel"
+      aria-labelledby="details-title"
     >
       <section
-        class="details-modal"
-        role="dialog"
-        aria-modal="true"
+        class="details-panel-card"
         aria-labelledby="details-title"
       >
         <header class="details-header">
@@ -1877,8 +1996,20 @@ onMounted(() => {
         </p>
 
         <footer class="details-actions">
+          <div v-if="tarefaPendenteEliminacao === tarefaSelecionada.id" class="inline-delete-confirm">
+            <span>Eliminar esta tarefa? Esta ação não pode ser desfeita.</span>
+            <button type="button" class="secondary-button" @click="cancelarEliminacaoTarefa">Cancelar</button>
+            <button
+              type="button"
+              class="delete-task-button"
+              :disabled="tarefaEmEliminacao === tarefaSelecionada.id"
+              @click="eliminarTarefa(tarefaSelecionada)"
+            >
+              {{ tarefaEmEliminacao === tarefaSelecionada.id ? 'A eliminar...' : 'Confirmar eliminação' }}
+            </button>
+          </div>
           <button
-            v-if="podeEliminarTarefa(tarefaSelecionada)"
+            v-else-if="podeEliminarTarefa(tarefaSelecionada)"
             type="button"
             class="delete-task-button"
             :disabled="
@@ -1911,7 +2042,7 @@ onMounted(() => {
           </button>
         </footer>
       </section>
-    </div>
+    </section>
 
   </div>
 </template>
@@ -2193,6 +2324,224 @@ onMounted(() => {
   resize: vertical;
 }
 
+.assignee-picker {
+  position: relative;
+}
+
+.assignee-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 62px;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  color: #263650;
+  background: #fff;
+  border: 1px solid #d7dfeb;
+  border-radius: 11px;
+  text-align: left;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.assignee-trigger:hover:not(:disabled),
+.assignee-trigger[aria-expanded="true"] {
+  background: #fbfcff;
+  border-color: #8797ed;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 9%);
+}
+
+.assignee-trigger:disabled {
+  color: #94a3b8;
+  background: #f8fafc;
+  cursor: wait;
+}
+
+.assignee-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  color: #4855bf;
+  background: #edf0ff;
+  border: 1px solid #e0e5ff;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.assignee-avatar-empty {
+  color: #76839b;
+  background: #f1f4f8;
+  border-color: #e6ebf2;
+  font-size: 18px;
+}
+
+.assignee-trigger-copy,
+.assignee-option-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.assignee-trigger-copy strong,
+.assignee-option-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-trigger-copy small,
+.assignee-option-copy small {
+  overflow: hidden;
+  color: #8591a5;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-chevron {
+  color: #78859b;
+  font-size: 17px;
+}
+
+.assignee-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 7px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: 310px;
+  gap: 5px;
+  padding: 9px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dce3ee;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgb(26 39 68 / 16%);
+}
+
+.assignee-search {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: #8793a7;
+  background: #f7f8fc;
+  border: 1px solid #e9edf4;
+  border-radius: 8px;
+}
+
+.assignee-search > span {
+  font-size: 19px;
+}
+
+.assignee-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 0;
+  color: #263650;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 11px;
+}
+
+.assignee-options-list {
+  display: grid;
+  max-height: 205px;
+  gap: 3px;
+  overflow-y: auto;
+}
+
+.assignee-option {
+  display: flex;
+  width: 100%;
+  min-height: 50px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  color: #34425b;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  text-align: left;
+}
+
+.assignee-option:hover,
+.assignee-option[aria-pressed="true"] {
+  background: #f2f4ff;
+  border-color: #e2e6ff;
+}
+
+.assignee-option-copy {
+  gap: 3px;
+}
+
+.assignee-option-copy strong {
+  font-size: 11px;
+}
+
+.assignee-option-copy small {
+  font-size: 9px;
+}
+
+.assignee-role {
+  padding: 4px 6px;
+  color: #52657e;
+  background: #f0f3f8;
+  border-radius: 20px;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.assignee-role-owner {
+  color: #5360c5;
+  background: #eef0ff;
+}
+
+.assignee-check {
+  color: #4b57c7;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.assignee-clear-option {
+  min-height: 44px;
+  border-bottom: 1px solid #edf0f5;
+  border-radius: 7px;
+}
+
+.assignee-empty,
+.assignee-permission-note {
+  margin: 0;
+  padding: 11px;
+  color: #7d899d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.assignee-empty a {
+  display: inline-block;
+  margin-left: 3px;
+  color: #4f5bcc;
+  font-weight: 700;
+}
+
+.assignee-permission-note {
+  align-self: end;
+  background: #f7f8fc;
+  border: 1px solid #e8edf4;
+  border-radius: 9px;
+}
+
 .field small {
   color: #64748b;
   font-size: 12px;
@@ -2374,6 +2723,69 @@ onMounted(() => {
   font-size: 10px;
 }
 
+.tasks-dual-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.kanban-panel,
+.task-table-section {
+  min-width: 0;
+  border: 1px solid #e6eaf2;
+  border-radius: 15px;
+  background:
+    radial-gradient(ellipse at 2% 0%, rgb(238 242 255 / 70%), transparent 36%),
+    #fff;
+  box-shadow: 0 8px 24px rgb(23 37 84 / 4%);
+}
+
+.kanban-panel {
+  overflow: hidden;
+  padding: 20px;
+}
+
+.dual-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dual-panel-heading .section-eyebrow {
+  margin-bottom: 5px;
+}
+
+.dual-panel-heading h2 {
+  margin: 0 0 5px;
+  color: #243452;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -.035em;
+}
+
+.dual-panel-heading p {
+  margin: 0;
+  color: #8792a5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dual-panel-count {
+  display: grid;
+  min-width: 32px;
+  min-height: 32px;
+  place-items: center;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #dfe4ff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .kanban-scroll {
   width: 100%;
   overflow-x: auto;
@@ -2384,7 +2796,7 @@ onMounted(() => {
 
 .kanban-board {
   display: grid;
-  min-width: 882px;
+  min-width: 760px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 16px;
@@ -2751,14 +3163,8 @@ onMounted(() => {
 }
 
 .task-table-section {
-  margin-top: 26px;
-  padding: 24px;
-  border: 1px solid #e6eaf2;
-  border-radius: 15px;
-  background:
-    radial-gradient(ellipse at 2% 0%, rgb(238 242 255 / 70%), transparent 36%),
-    #fff;
-  box-shadow: 0 8px 24px rgb(23 37 84 / 4%);
+  margin-top: 0;
+  padding: 20px;
   font-family: var(--tf-font);
 }
 
@@ -2829,7 +3235,9 @@ onMounted(() => {
 
 .task-table-scroll {
   width: 100%;
+  max-height: 540px;
   overflow-x: auto;
+  overflow-y: auto;
   border: 1px solid #e8edf4;
   border-radius: 12px;
   background: #fff;
@@ -3041,42 +3449,18 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* MODAL DE DETALHES */
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-  background: rgba(15, 23, 42, 0.58);
-  overflow-y: auto;
+.inline-details-panel {
+  display: block;
+  margin-top: 20px;
 }
 
-.details-modal {
+.details-panel-card {
   width: 100%;
-  max-width: 680px;
-  max-height: 90vh;
-  overflow-y: auto;
   padding: 26px;
-  border-radius: 16px;
+  border: 1px solid #e1e7f4;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  animation: modalEntrada 0.2s ease;
-}
-
-@keyframes modalEntrada {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  box-shadow: 0 4px 16px rgb(23 37 84 / 5%);
 }
 
 .details-header {
@@ -3147,6 +3531,19 @@ onMounted(() => {
   border-top: 1px solid #e2e8f0;
 }
 
+.inline-delete-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px;
+  color: #825b22;
+  background: #fff8eb;
+  border: 1px solid #f3dfb8;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
 .delete-task-button {
   padding: 12px 16px;
   margin-right: auto;
@@ -3167,9 +3564,17 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .filters > select {
     flex: 1 1 135px;
+  }
+
+  .tasks-dual-view {
+    grid-template-columns: 1fr;
+  }
+
+  .task-table-scroll {
+    max-height: none;
   }
 }
 
@@ -3211,11 +3616,13 @@ onMounted(() => {
   }
 
   .task-table-heading,
+  .dual-panel-heading,
   .table-pagination {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .kanban-panel,
   .task-table-section {
     padding: 16px;
     border-radius: 13px;
@@ -3255,7 +3662,7 @@ onMounted(() => {
     min-width: 0;
   }
 
-  .details-modal {
+  .details-panel-card {
     padding: 18px;
   }
 
@@ -3282,7 +3689,8 @@ onMounted(() => {
   .column-drop-active,
   .primary-button,
   .secondary-button,
-  .new-task-button {
+  .new-task-button,
+  .assignee-trigger {
     transition: none;
   }
 

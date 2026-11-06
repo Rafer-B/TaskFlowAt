@@ -47,8 +47,10 @@ const erro = ref('')
 const erroDetalhe = ref('')
 const sucesso = ref('')
 const pesquisa = ref('')
-const modalFormulario = ref(false)
-const modalDetalhe = ref(false)
+const formularioVisivel = ref(false)
+const detalheVisivel = ref(false)
+const confirmarEliminacaoEquipa = ref(false)
+const membroPendenteRemocao = ref<number | null>(null)
 const equipaSelecionada = ref<EquipaAPI | null>(null)
 const editarEquipa = ref(false)
 const aGuardar = ref(false)
@@ -114,7 +116,7 @@ async function carregarDados(): Promise<void> {
 function abrirCriacao(): void {
   formulario.value = { name: '', description: '' }
   erro.value = ''
-  modalFormulario.value = true
+  formularioVisivel.value = true
 }
 
 async function guardarEquipa(): Promise<void> {
@@ -136,7 +138,7 @@ async function guardarEquipa(): Promise<void> {
       },
     })
     equipas.value.push(criada)
-    modalFormulario.value = false
+    formularioVisivel.value = false
     await abrirDetalhe(criada)
     sucesso.value = 'Equipa criada com sucesso.'
   } catch (error) {
@@ -157,7 +159,9 @@ async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
   utilizadoresSelecionados.value = []
   pesquisarUtilizadores.value = ''
   projetoSelecionado.value = ''
-  modalDetalhe.value = true
+  detalheVisivel.value = true
+  confirmarEliminacaoEquipa.value = false
+  membroPendenteRemocao.value = null
   try {
     const [equipaAtualizada, membrosAPI] = await Promise.all([
       api<EquipaAPI>(`/teams/${equipa.id}`),
@@ -216,7 +220,10 @@ async function guardarEdicao(): Promise<void> {
 
 async function eliminarEquipa(): Promise<void> {
   if (!equipaSelecionada.value) return
-  if (!window.confirm(`Eliminar a equipa "${equipaSelecionada.value.name}"? Os projetos associados serão mantidos.`)) return
+  if (!confirmarEliminacaoEquipa.value) {
+    confirmarEliminacaoEquipa.value = true
+    return
+  }
 
   aGuardar.value = true
   erroDetalhe.value = ''
@@ -228,8 +235,9 @@ async function eliminarEquipa(): Promise<void> {
         ? { ...projeto, team_id: null }
         : projeto,
     )
-    modalDetalhe.value = false
+    detalheVisivel.value = false
     equipaSelecionada.value = null
+    confirmarEliminacaoEquipa.value = false
     sucesso.value = 'Equipa eliminada. Os projetos foram mantidos.'
   } catch (error) {
     console.error('Erro ao eliminar equipa:', error)
@@ -280,7 +288,10 @@ function selecionarTodosUtilizadores(selecionar: boolean): void {
 
 async function removerMembro(membro: MembroEquipa): Promise<void> {
   if (!equipaSelecionada.value) return
-  if (!window.confirm(`Remover ${membro.name} desta equipa?`)) return
+  if (membroPendenteRemocao.value !== membro.user_id) {
+    membroPendenteRemocao.value = membro.user_id
+    return
+  }
   membroEmRemocao.value = membro.user_id
   erroDetalhe.value = ''
   try {
@@ -290,6 +301,7 @@ async function removerMembro(membro: MembroEquipa): Promise<void> {
     )
     membros.value = membros.value.filter(item => item.user_id !== membro.user_id)
     utilizadoresDisponiveis.value.push(membro)
+    membroPendenteRemocao.value = null
     await atualizarResumoEquipa()
   } catch (error) {
     console.error('Erro ao remover membro da equipa:', error)
@@ -345,8 +357,10 @@ async function atualizarResumoEquipa(): Promise<void> {
 
 function fecharDetalhe(): void {
   if (aGuardar.value || aAdicionarMembro.value || membroEmRemocao.value !== null || projetoEmAtualizacao.value !== null) return
-  modalDetalhe.value = false
+  detalheVisivel.value = false
   equipaSelecionada.value = null
+  confirmarEliminacaoEquipa.value = false
+  membroPendenteRemocao.value = null
   erroDetalhe.value = ''
 }
 
@@ -421,27 +435,24 @@ onMounted(carregarDados)
       </article>
     </div>
 
-    <div v-if="modalFormulario" class="modal-backdrop" @click.self="modalFormulario = false">
-      <section class="team-modal create-modal" role="dialog" aria-modal="true" aria-labelledby="create-team-title">
-        <header class="modal-heading">
+    <section v-if="formularioVisivel" class="team-inline-panel create-panel" aria-labelledby="create-team-title">
+        <header class="panel-heading">
           <div><span class="eyebrow">NOVA EQUIPA</span><h2 id="create-team-title">Criar equipa</h2></div>
-          <button type="button" aria-label="Fechar" :disabled="aGuardar" @click="modalFormulario = false">×</button>
+          <button type="button" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">×</button>
         </header>
         <form class="team-form" @submit.prevent="guardarEquipa">
           <label>Nome da equipa<input v-model="formulario.name" maxlength="255" required placeholder="Ex.: Desenvolvimento"></label>
           <label>Descrição<textarea v-model="formulario.description" rows="3" maxlength="5000" placeholder="Objetivos e área de atuação"></textarea></label>
           <p v-if="erro" class="form-error" role="alert">{{ erro }}</p>
-          <footer class="modal-actions">
-            <button class="secondary-button" type="button" :disabled="aGuardar" @click="modalFormulario = false">Cancelar</button>
+          <footer class="panel-actions">
+            <button class="secondary-button" type="button" :disabled="aGuardar" @click="formularioVisivel = false">Cancelar</button>
             <button class="primary-button" type="submit" :disabled="aGuardar">{{ aGuardar ? 'A criar…' : 'Criar equipa' }}</button>
           </footer>
         </form>
-      </section>
-    </div>
+    </section>
 
-    <div v-if="modalDetalhe && equipaSelecionada" class="modal-backdrop" @click.self="fecharDetalhe">
-      <section class="team-modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="team-detail-title">
-        <header class="modal-heading">
+    <section v-if="detalheVisivel && equipaSelecionada" class="team-inline-panel detail-panel" aria-labelledby="team-detail-title">
+        <header class="panel-heading">
           <div>
             <span class="eyebrow">EQUIPA · {{ membros.length }} MEMBRO(S)</span>
             <h2 id="team-detail-title">{{ equipaSelecionada.name }}</h2>
@@ -498,7 +509,7 @@ onMounted(carregarDados)
               <span class="member-avatar">{{ membro.name.slice(0, 1).toUpperCase() }}</span>
               <span class="member-copy"><strong>{{ membro.name }}</strong><small>{{ membro.email }}</small></span>
               <button
-                v-if="equipaSelecionada.can_manage"
+                v-if="equipaSelecionada.can_manage && membroPendenteRemocao !== membro.user_id"
                 class="remove-button"
                 type="button"
                 :aria-label="`Remover ${membro.name}`"
@@ -507,6 +518,11 @@ onMounted(carregarDados)
               >
                 {{ membroEmRemocao === membro.user_id ? '…' : 'Remover' }}
               </button>
+              <div v-if="membroPendenteRemocao === membro.user_id" class="inline-confirm">
+                <span>Remover {{ membro.name }} desta equipa?</span>
+                <button type="button" class="danger-button" @click="removerMembro(membro)">Confirmar</button>
+                <button type="button" class="secondary-button" @click="membroPendenteRemocao = null">Cancelar</button>
+              </div>
             </li>
             <li v-if="!membros.length" class="list-empty">Ainda não foram adicionados membros.</li>
           </ul>
@@ -545,12 +561,18 @@ onMounted(carregarDados)
         </section>
 
         <footer v-if="equipaSelecionada.can_manage" class="detail-footer">
-          <button class="danger-button" type="button" :disabled="aGuardar" @click="eliminarEquipa">Eliminar equipa</button>
+          <div v-if="confirmarEliminacaoEquipa" class="inline-confirm team-delete-confirm">
+            <span>Eliminar esta equipa? Os projetos associados serão mantidos.</span>
+            <button class="danger-button" type="button" :disabled="aGuardar" @click="eliminarEquipa">
+              {{ aGuardar ? 'A eliminar…' : 'Confirmar eliminação' }}
+            </button>
+            <button class="secondary-button" type="button" :disabled="aGuardar" @click="confirmarEliminacaoEquipa = false">Cancelar</button>
+          </div>
+          <button v-else class="danger-button" type="button" :disabled="aGuardar" @click="eliminarEquipa">Eliminar equipa</button>
           <button class="secondary-button" type="button" @click="fecharDetalhe">Fechar</button>
         </footer>
       </section>
-    </div>
-  </section>
+    </section>
 </template>
 
 <style scoped>
@@ -592,19 +614,20 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .empty-state h2 { margin: 4px 0 0; color: #34445f; font-size: 15px; }
 .empty-state p { margin: 0 0 5px; }
 .empty-icon { color: #6471db; font-size: 27px; }
-.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; overflow-y: auto; place-items: center; padding: 20px; background: rgb(17 28 48 / 48%); backdrop-filter: blur(3px); }
-.team-modal { width: min(540px, 100%); max-height: min(90vh, 850px); overflow-y: auto; padding: 22px; background: #fff; border: 1px solid #e8ecf3; border-radius: 15px; box-shadow: 0 24px 70px rgb(17 28 48 / 25%); }
-.create-modal { width: min(460px, 100%); }
-.detail-modal { width: min(620px, 100%); }
-.modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding-bottom: 15px; border-bottom: 1px solid #edf0f5; }
-.modal-heading h2 { margin: 5px 0 0; color: #23334f; font-size: 19px; letter-spacing: -.03em; }
-.modal-heading > button { display: grid; width: 30px; height: 30px; place-items: center; color: #78869a; background: #f4f6f9; border: 0; border-radius: 8px; font-size: 21px; cursor: pointer; }
+.team-inline-panel { width: min(760px, 100%); max-height: none; overflow: visible; padding: 22px; background: #fff; border: 1px solid #e8ecf3; border-radius: 12px; box-shadow: 0 3px 12px rgb(17 28 48 / 5%); }
+.create-panel { width: min(460px, 100%); }
+.detail-panel { width: 100%; }
+.inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 10px; }
+.team-delete-confirm { margin-right: auto; }
+.panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding-bottom: 15px; border-bottom: 1px solid #edf0f5; }
+.panel-heading h2 { margin: 5px 0 0; color: #23334f; font-size: 19px; letter-spacing: -.03em; }
+.panel-heading > button { display: grid; width: 30px; height: 30px; place-items: center; color: #78869a; background: #f4f6f9; border: 0; border-radius: 8px; font-size: 21px; cursor: pointer; }
 .team-form { display: grid; gap: 13px; padding-top: 16px; }
 .team-form label { display: grid; gap: 6px; color: #53627a; font-size: 10px; font-weight: 700; }
 .team-form input, .team-form textarea, .add-row select { width: 100%; box-sizing: border-box; padding: 10px 11px; color: #293951; background: #fff; border: 1px solid #dfe5ef; border-radius: 8px; outline: none; font: inherit; font-size: 11px; }
 .team-form textarea { resize: vertical; }
 .team-form input:focus, .team-form textarea:focus, .add-row select:focus { border-color: #8390ec; box-shadow: 0 0 0 3px rgb(99 112 224 / 12%); }
-.modal-actions, .detail-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+.panel-actions, .detail-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
 .form-error { padding: 9px 10px; margin: 12px 0 0; border-radius: 7px; font-size: 10px; }
 .team-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 0; }
 .team-summary p { margin: 0; color: #6f7d93; font-size: 11px; line-height: 1.55; white-space: pre-line; }
@@ -645,7 +668,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .page-heading .primary-button { flex: 0 0 auto; min-height: 34px; padding: 0 9px; font-size: 9px; }
   .team-grid { grid-template-columns: 1fr; }
   .team-summary { flex-direction: column; }
-  .team-modal { padding: 16px; }
+  .team-inline-panel { padding: 16px; }
   .add-row { align-items: stretch; }
   .remove-button { padding: 5px; }
 }

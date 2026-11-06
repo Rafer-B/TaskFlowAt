@@ -17,6 +17,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -28,6 +29,7 @@ from app.auth import (
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
+from app.models.task_assignee import TaskAssignee
 from app.models.task_work_log import TaskWorkLog, TaskWorkLogAttachment
 from app.models.user import User
 from app.schemas.task import (
@@ -142,12 +144,12 @@ def validar_membro_projeto(
     project_id: int,
     user_id: int,
 ) -> User:
-    """Garante que o responsável escolhido pertence ao projeto e não é observador."""
+    """Garante que o membro escolhido pertence ao projeto e não é observador."""
 
     utilizador = obter_utilizador_ativo(
         db,
         user_id,
-        "O responsável selecionado não existe.",
+        "O membro selecionado não existe.",
     )
 
     membro = db.get(
@@ -159,17 +161,27 @@ def validar_membro_projeto(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "O responsável selecionado não pertence "
+                "O membro selecionado não pertence "
                 "a este projeto."
             ),
         )
     if membro.role == "viewer":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Um observador não pode ser atribuído como responsável.",
+            detail="Um observador não pode ser associado a uma tarefa.",
         )
 
     return utilizador
+
+
+def validar_membros_projeto(
+    db: Session,
+    project_id: int,
+    user_ids: list[int],
+) -> None:
+    """Garante que todos os membros atribuídos são elegíveis para a tarefa."""
+    for user_id in user_ids:
+        validar_membro_projeto(db, project_id, user_id)
 
 
 def obter_tarefa_acessivel(
@@ -223,7 +235,7 @@ def criar_tarefa(
     db: Session = Depends(get_db),
 ):
 
-    exigir_papel_projeto(
+    papel_projeto = exigir_papel_projeto(
         db,
         dados.project_id,
         current_user,
@@ -231,14 +243,27 @@ def criar_tarefa(
     )
     obter_projeto(db, dados.project_id)
 
-    if dados.assigned_to is not None:
-        validar_membro_projeto(
-            db,
-            dados.project_id,
-            dados.assigned_to,
+    assignee_ids = (
+        dados.assignee_ids
+        if dados.assignee_ids is not None
+        else ([dados.assigned_to] if dados.assigned_to is not None else [])
+    )
+    if assignee_ids and papel_projeto not in {"admin", "owner"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só o responsável do projeto pode atribuir tarefas a membros.",
         )
+    validar_membros_projeto(db, dados.project_id, assignee_ids)
 
-    tarefa = Task(**dados.model_dump(), created_by=current_user.id)
+    tarefa = Task(
+        **dados.model_dump(exclude={"assignee_ids", "assigned_to"}),
+        assigned_to=assignee_ids[0] if assignee_ids else None,
+        created_by=current_user.id,
+    )
+    tarefa.assignees = [
+        TaskAssignee(user_id=user_id)
+        for user_id in assignee_ids
+    ]
 
     if tarefa.status == "completed":
         # O estado concluído tem sempre progresso total e uma data de conclusão.
@@ -305,7 +330,12 @@ def listar_tarefas(
 
     if assigned_to is not None:
         consulta = consulta.filter(
-            Task.assigned_to == assigned_to,
+            or_(
+                Task.assigned_to == assigned_to,
+                Task.assignees.any(
+                    TaskAssignee.user_id == assigned_to,
+                ),
+            ),
         )
 
     if task_status is not None:
@@ -325,6 +355,7 @@ def listar_tarefas(
 
     return (
         consulta
+        .options(selectinload(Task.assignees))
         .order_by(
             Task.created_at.desc(),
             Task.id.desc(),
@@ -388,15 +419,30 @@ def atualizar_tarefa(
         tarefa.project_id,
     )
 
-    if (
-        "assigned_to" in alteracoes
-        and alteracoes["assigned_to"] is not None
-    ):
-        validar_membro_projeto(
+    if "assignee_ids" in alteracoes or "assigned_to" in alteracoes:
+        exigir_papel_projeto(
             db,
             tarefa.project_id,
-            alteracoes["assigned_to"],
+            current_user,
+            {"admin", "owner"},
         )
+        assignee_ids = (
+            alteracoes.pop("assignee_ids")
+            if "assignee_ids" in alteracoes
+            else (
+                [alteracoes["assigned_to"]]
+                if alteracoes["assigned_to"] is not None
+                else []
+            )
+        )
+        alteracoes.pop("assigned_to", None)
+        assignee_ids = assignee_ids or []
+        validar_membros_projeto(db, tarefa.project_id, assignee_ids)
+        tarefa.assignees = [
+            TaskAssignee(user_id=user_id)
+            for user_id in assignee_ids
+        ]
+        tarefa.assigned_to = assignee_ids[0] if assignee_ids else None
 
     estado_anterior = tarefa.status
 

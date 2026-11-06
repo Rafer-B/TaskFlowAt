@@ -375,7 +375,7 @@ async function carregarFotografia(event: Event): Promise<void> {
       <div class="header-heading">
         <span class="header-eyebrow">
           TASKFLOW /
-          {{ route.path.startsWith('/my-work') ? 'FRONT-OFFICE' : 'BACK-OFFICE' }}
+          {{ auth.user.value?.role === 'admin' ? 'BACK-OFFICE' : 'FRONT-OFFICE' }}
         </span>
 
         <h1>{{ title }}</h1>

@@ -60,6 +60,8 @@ class TaskCreate(BaseModel):
         gt=0,
     )
 
+    assignee_ids: list[int] | None = None
+
     due_date: datetime | None = None
 
     @field_validator("title")
@@ -86,6 +88,23 @@ class TaskCreate(BaseModel):
         valor = valor.strip()
 
         return valor or None
+
+    @field_validator("assignee_ids")
+    @classmethod
+    def validar_assignees(
+        cls,
+        valor: list[int] | None,
+    ) -> list[int] | None:
+        """Exige IDs positivos e distintos para os membros atribuídos."""
+        if valor is None:
+            return None
+        if any(user_id <= 0 for user_id in valor):
+            raise ValueError("Os IDs dos membros devem ser positivos.")
+        if len(valor) != len(set(valor)):
+            raise ValueError("Não é possível repetir um membro na tarefa.")
+        if len(valor) > 1:
+            raise ValueError("Uma tarefa só pode ter um responsável.")
+        return valor
 
 
 class TaskUpdate(BaseModel):
@@ -118,6 +137,8 @@ class TaskUpdate(BaseModel):
         default=None,
         gt=0,
     )
+
+    assignee_ids: list[int] | None = None
 
     due_date: datetime | None = None
 
@@ -152,6 +173,23 @@ class TaskUpdate(BaseModel):
 
         return valor or None
 
+    @field_validator("assignee_ids")
+    @classmethod
+    def validar_assignees(
+        cls,
+        valor: list[int] | None,
+    ) -> list[int] | None:
+        """Exige IDs positivos e distintos para os membros atribuídos."""
+        if valor is None:
+            return None
+        if any(user_id <= 0 for user_id in valor):
+            raise ValueError("Os IDs dos membros devem ser positivos.")
+        if len(valor) != len(set(valor)):
+            raise ValueError("Não é possível repetir um membro na tarefa.")
+        if len(valor) > 1:
+            raise ValueError("Uma tarefa só pode ter um responsável.")
+        return valor
+
 
 class TaskResponse(BaseModel):
     """Representação persistida de uma tarefa."""
@@ -167,6 +205,7 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     progress: int
     assigned_to: int | None
+    assignee_ids: list[int]
     created_by: int
     due_date: datetime | None
     created_at: datetime

@@ -68,6 +68,8 @@ As migrações atuais acrescentam:
 | `20261102_0005` | Papéis de colaborador e observador nos projetos. |
 | `20261102_0006` | Eventos persistentes do calendário. |
 | `20261102_0007` | Equipas, membros de equipa e associação de projetos a equipas. |
+| `20261106_0008` | Associação normalizada de responsáveis por tarefa; preserva as atribuições existentes. |
+| `20261106_0009` | Limita cada tarefa a um responsável e preserva a atribuição principal. |
 
 ### Base de dados que já contém tabelas
 
@@ -156,6 +158,12 @@ API.
   criá-las e documentar o trabalho.
 - **Observador (`viewer`):** pode consultar as tarefas e o histórico, mas não
   pode alterar o projeto ou as tarefas nem ser atribuído a tarefas.
+
+Cada tarefa tem um único responsável, escolhido pelo administrador ou pelo
+responsável do projeto entre os membros ativos que não sejam observadores. A
+associação é criada pela migração `20261106_0008`; a migração
+`20261106_0009` preserva o responsável principal e impõe o limite de um
+responsável por tarefa.
 
 Qualquer utilizador autenticado pode criar um projeto e passa a ser o seu
 responsável. Apenas administradores podem eliminar projetos definitivamente;

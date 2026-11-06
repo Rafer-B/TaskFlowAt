@@ -88,7 +88,8 @@ const carregando = ref(true)
 const erro = ref('')
 const sucesso = ref('')
 const guardandoEvento = ref(false)
-const modalEventoAberto = ref(false)
+const formularioEventoVisivel = ref(false)
+const confirmarEliminacaoEvento = ref(false)
 const mostrarEventosAnteriores = ref(false)
 const modo = ref<ModoCalendario>('month')
 const agora = new Date()
@@ -382,7 +383,8 @@ function abrirNovoEvento(): void {
     formulario.value.projectId = projetoSelecionado.value
   }
   erro.value = ''
-  modalEventoAberto.value = true
+  formularioEventoVisivel.value = true
+  confirmarEliminacaoEvento.value = false
 }
 
 function editarEvento(item: ItemCalendario): void {
@@ -399,7 +401,8 @@ function editarEvento(item: ItemCalendario): void {
     color: evento.color,
   }
   erro.value = ''
-  modalEventoAberto.value = true
+  formularioEventoVisivel.value = true
+  confirmarEliminacaoEvento.value = false
 }
 
 function podeGerirEvento(item: ItemCalendario): boolean {
@@ -450,7 +453,8 @@ async function guardarEvento(): Promise<void> {
 
     diaSelecionado.value = dataLocal(evento.start_at)
     mesVisivel.value = new Date(fromIsoDate(diaSelecionado.value).getFullYear(), fromIsoDate(diaSelecionado.value).getMonth(), 1)
-    modalEventoAberto.value = false
+    formularioEventoVisivel.value = false
+    confirmarEliminacaoEvento.value = false
     sucesso.value = dados.id ? 'Evento atualizado com sucesso.' : 'Evento criado com sucesso.'
   } catch (error) {
     console.error('Erro ao guardar evento:', error)
@@ -462,14 +466,19 @@ async function guardarEvento(): Promise<void> {
 
 async function eliminarEvento(): Promise<void> {
   const eventId = formulario.value.id
-  if (!eventId || !window.confirm(`Eliminar o evento "${formulario.value.title}"?`)) return
+  if (!eventId) return
+  if (!confirmarEliminacaoEvento.value) {
+    confirmarEliminacaoEvento.value = true
+    return
+  }
 
   guardandoEvento.value = true
   erro.value = ''
   try {
     await api(`/calendar/events/${eventId}`, { method: 'DELETE' })
     eventos.value = eventos.value.filter(evento => evento.id !== eventId)
-    modalEventoAberto.value = false
+    formularioEventoVisivel.value = false
+    confirmarEliminacaoEvento.value = false
     sucesso.value = 'Evento eliminado.'
   } catch (error) {
     console.error('Erro ao eliminar evento:', error)
@@ -710,14 +719,13 @@ onMounted(carregarCalendario)
     </section>
 
     <!-- O mesmo formulário suporta criação e edição; a capacidade é verificada no script. -->
-    <div v-if="modalEventoAberto" class="modal-backdrop" @click.self="modalEventoAberto = false">
-      <section class="event-modal" role="dialog" aria-modal="true" :aria-labelledby="'event-modal-title'">
-        <header class="modal-heading">
+    <section v-if="formularioEventoVisivel" class="event-inline-panel">
+        <header class="form-panel-heading">
           <div>
-            <span class="modal-eyebrow">CALENDÁRIO</span>
-            <h2 id="event-modal-title">{{ formulario.id ? 'Editar evento' : 'Criar evento' }}</h2>
+            <span class="form-panel-eyebrow">CALENDÁRIO</span>
+            <h2 id="event-form-title">{{ formulario.id ? 'Editar evento' : 'Criar evento' }}</h2>
           </div>
-          <button type="button" aria-label="Fechar" :disabled="guardandoEvento" @click="modalEventoAberto = false">×</button>
+          <button type="button" aria-label="Fechar" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">×</button>
         </header>
         <form class="event-form" @submit.prevent="guardarEvento">
           <label>
@@ -756,9 +764,14 @@ onMounted(carregarCalendario)
             </label>
           </fieldset>
           <p v-if="erro" class="form-error" role="alert">{{ erro }}</p>
-          <footer class="modal-actions">
+          <div v-if="confirmarEliminacaoEvento" class="inline-confirm" role="group" aria-label="Confirmar eliminação do evento">
+            <span>Eliminar o evento “{{ formulario.title }}”?</span>
+            <button class="delete-button" type="button" :disabled="guardandoEvento" @click="eliminarEvento">Confirmar eliminação</button>
+            <button class="cancel-button" type="button" :disabled="guardandoEvento" @click="confirmarEliminacaoEvento = false">Cancelar</button>
+          </div>
+          <footer class="form-panel-actions">
             <button
-              v-if="formulario.id"
+              v-if="formulario.id && !confirmarEliminacaoEvento"
               class="delete-button"
               type="button"
               :disabled="guardandoEvento"
@@ -766,14 +779,13 @@ onMounted(carregarCalendario)
             >
               Eliminar
             </button>
-            <button class="cancel-button" type="button" :disabled="guardandoEvento" @click="modalEventoAberto = false">Cancelar</button>
+            <button class="cancel-button" type="button" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">Cancelar</button>
             <button class="save-button" type="submit" :disabled="guardandoEvento">
               {{ guardandoEvento ? 'A guardar…' : formulario.id ? 'Guardar alterações' : 'Criar evento' }}
             </button>
           </footer>
         </form>
-      </section>
-    </div>
+    </section>
   </section>
 </template>
 
@@ -885,12 +897,12 @@ onMounted(carregarCalendario)
 .upcoming-empty { color: #73819d !important; }
 .all-events-button { min-height: 35px; padding: 0 13px; border-radius: 20px; font-size: 9px; }
 .calendar-loading { display: grid; min-height: 280px; place-items: center; color: #73819d; background: #fff; border: 1px solid #e0e7f4; border-radius: 12px; font-size: 12px; }
-.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 48%); }
-.event-modal { width: min(520px, 100%); max-height: min(90vh, 760px); overflow: auto; background: #fff; border: 1px solid #e4e9f3; border-radius: 16px; box-shadow: 0 25px 70px rgb(15 23 42 / 25%); }
-.modal-heading { display: flex; align-items: center; justify-content: space-between; padding: 19px 21px 14px; border-bottom: 1px solid #edf0f6; }
-.modal-eyebrow { color: #7987a2; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
-.modal-heading h2 { margin: 4px 0 0; color: #1f2e4d; font-size: 18px; }
-.modal-heading > button { width: 31px; height: 31px; color: #70809a; background: #f5f7fb; border: 0; border-radius: 8px; font-size: 21px; cursor: pointer; }
+.event-inline-panel { width: min(760px, 100%); padding: 18px; background: #fff; border: 1px solid #e4e9f3; border-radius: 12px; box-shadow: 0 3px 12px rgb(15 23 42 / 5%); }
+.inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 11px; }
+.form-panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; border-bottom: 1px solid #edf0f6; }
+.form-panel-eyebrow { color: #7987a2; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
+.form-panel-heading h2 { margin: 4px 0 0; color: #1f2e4d; font-size: 18px; }
+.form-panel-heading > button { width: 31px; height: 31px; color: #70809a; background: #f5f7fb; border: 0; border-radius: 8px; font-size: 21px; cursor: pointer; }
 .event-form { display: grid; gap: 13px; padding: 17px 21px 20px; }
 .event-form > label, .datetime-fields label { display: grid; gap: 6px; color: #4b5a75; font-size: 10px; font-weight: 700; }
 .event-form input[type="text"], .event-form input[type="datetime-local"], .event-form select, .event-form textarea { width: 100%; min-height: 38px; padding: 8px 10px; color: #293954; background: #fff; border: 1px solid #dfe5ef; border-radius: 8px; font: inherit; font-size: 11px; }
@@ -905,13 +917,13 @@ onMounted(carregarCalendario)
 .color-picker input:checked + span { box-shadow: 0 0 0 2px var(--event-color); }
 .color-picker input:focus-visible + span { outline: 3px solid #b8caff; outline-offset: 3px; }
 .form-error { padding: 8px 10px; margin: 0; color: #a33b45; background: #fff2f2; border: 1px solid #f5d6d8; border-radius: 7px; font-size: 10px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 13px; border-top: 1px solid #edf0f6; }
-.modal-actions .delete-button { margin-right: auto; color: #b43e4b; background: #fff3f4; border: 1px solid #f1cdd1; }
-.modal-actions .delete-button:hover { background: #ffe6e8; }
-.modal-actions button { min-height: 36px; padding: 0 13px; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.form-panel-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 13px; border-top: 1px solid #edf0f6; }
+.form-panel-actions .delete-button { margin-right: auto; color: #b43e4b; background: #fff3f4; border: 1px solid #f1cdd1; }
+.form-panel-actions .delete-button:hover { background: #ffe6e8; }
+.form-panel-actions button { min-height: 36px; padding: 0 13px; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
 .cancel-button { color: #61708a; background: #fff; border: 1px solid #dfe5ef; }
 .save-button { color: #fff; background: #326cf1; border: 1px solid #326cf1; }
-.modal-actions button:disabled { opacity: .6; cursor: wait; }
+.form-panel-actions button:disabled { opacity: .6; cursor: wait; }
 
 @media (max-width: 1100px) {
   .calendar-heading { flex-wrap: wrap; }

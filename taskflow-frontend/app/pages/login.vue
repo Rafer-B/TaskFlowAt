@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { homeForRole } from '~/utils/access'
+
 // Gere credenciais, feedback do formulário e destino após autenticação.
 const auth = useAuth()
 const route = useRoute()
+const aAdicionarConta = computed(() => route.query.switchAccount === '1')
 const email = ref('')
 const password = ref('')
 const erro = ref('')
@@ -27,9 +30,7 @@ async function entrar(): Promise<void> {
       : null
     const destino = urlRedirecionamento?.origin === window.location.origin
       ? `${urlRedirecionamento.pathname}${urlRedirecionamento.search}${urlRedirecionamento.hash}`
-      : user.role === 'admin'
-        ? '/'
-        : '/front-office'
+      : homeForRole(user.role)
 
     await navigateTo(destino)
   } catch (error) {
@@ -139,9 +140,9 @@ async function entrar(): Promise<void> {
         </div>
 
         <div class="form-intro">
-          <span class="login-kicker">BEM-VINDO/A DE VOLTA</span>
-          <h1 id="login-title">Entre na sua conta</h1>
-          <p>Continue de onde a sua equipa precisa de si.</p>
+          <span class="login-kicker">{{ aAdicionarConta ? 'ADICIONAR CONTA' : 'BEM-VINDO/A DE VOLTA' }}</span>
+          <h1 id="login-title">{{ aAdicionarConta ? 'Entre noutra conta' : 'Entre na sua conta' }}</h1>
+          <p>{{ aAdicionarConta ? 'A conta atual mantém-se disponível para alternar mais tarde.' : 'Continue de onde a sua equipa precisa de si.' }}</p>
         </div>
 
         <form class="login-form" @submit.prevent="entrar">

@@ -75,6 +75,7 @@ interface TarefaAPI {
   priority: 'low' | 'medium' | 'high'
   status: 'to_do' | 'in_progress' | 'completed' | 'blocked'
   assigned_to: number | null
+  assignee_ids: number[]
   created_by: number
   due_date: string | null
   created_at: string
@@ -172,11 +173,11 @@ export function useDashboardData(_today: Date): DashboardData & {
           project:
             nomesProjetos.get(tarefa.project_id) ??
             'Projeto desconhecido',
-          responsible:
-            tarefa.assigned_to == null
-              ? 'Por atribuir'
-              : nomesUtilizadores.get(tarefa.assigned_to) ??
-                'Utilizador desconhecido',
+          responsible: (tarefa.assignee_ids ?? (
+            tarefa.assigned_to === null ? [] : [tarefa.assigned_to]
+          ))
+            .map((userId) => nomesUtilizadores.get(userId) ?? 'Utilizador desconhecido')
+            .join(', ') || 'Por atribuir',
           dueDate: apenasData(tarefa.due_date),
           priority: prioridadeTarefa[tarefa.priority],
           status: estadoTarefa[tarefa.status],

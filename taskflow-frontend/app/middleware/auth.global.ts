@@ -1,3 +1,5 @@
+import { homeForRole, isBackOfficePath } from '~/utils/access'
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // A validação da sessão depende do armazenamento do navegador e só ocorre no cliente.
   if (import.meta.server) return
@@ -5,6 +7,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuth()
   const token = sessionStorage.getItem('taskflow-access-token')
   const isLoginPage = to.path === '/login'
+  const isAddingAccount = to.query.switchAccount === '1'
 
   if (!token) {
     auth.limparSessao()
@@ -20,22 +23,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   auth.guardarToken(token)
 
   try {
-    // Além de autenticar, carrega o papel usado abaixo para limitar rotas administrativas.
+    // Além de autenticar, carrega o papel usado abaixo para limitar rotas de back-office.
     const user = await auth.carregarUtilizador()
 
-    if (isLoginPage) {
-      return navigateTo(user.role === 'admin' ? '/' : '/front-office')
+    if (isLoginPage && !isAddingAccount) {
+      return navigateTo(homeForRole(user.role))
     }
 
-    const adminOnlyPaths = ['/', '/users', '/reports']
-    const isAdminOnly = adminOnlyPaths.some(
-      (path) =>
-        to.path === path ||
-        (path !== '/' && to.path.startsWith(`${path}/`)),
-    )
-
-    if (isAdminOnly && user.role !== 'admin') {
-      return navigateTo(to.path === '/' ? '/front-office' : '/projects')
+    if (isBackOfficePath(to.path) && user.role !== 'admin') {
+      return navigateTo(homeForRole(user.role))
     }
   } catch (error) {
     console.error('Não foi possível validar a sessão:', error)

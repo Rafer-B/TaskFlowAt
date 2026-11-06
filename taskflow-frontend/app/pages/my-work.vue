@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 
 // Área pessoal: mostra tarefas atribuídas e acompanha os registos de trabalho por tarefa.
 definePageMeta({
-  layout: 'member',
+  layout: 'admin',
 })
 
 type EstadoTarefaAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
@@ -26,6 +26,7 @@ interface TarefaAPI {
   status: EstadoTarefaAPI
   progress: number
   assigned_to: number | null
+  assignee_ids: number[]
   due_date: string | null
   completed_at: string | null
 }
@@ -142,35 +143,27 @@ const tarefasVisiveis = computed(() => {
     )
 })
 
-const utilizadorSelecionado = computed(() =>
-  auth.user.value,
-)
+const pesoPrioridade: Record<PrioridadeAPI, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+}
 
-const tarefasConcluidas = computed(
-  () => tarefas.value.filter((tarefa) => tarefa.status === 'completed').length,
-)
+// Destaca uma única ação concreta para reduzir a necessidade de interpretar toda a lista.
+const proximaTarefa = computed(() =>
+  tarefas.value
+    .filter((tarefa) =>
+      tarefa.status !== 'completed' && tarefa.projectStatus !== 'archived',
+    )
+    .slice()
+    .sort((a, b) => {
+      const prazoA = a.dueDate?.slice(0, 10) ?? '9999-12-31'
+      const prazoB = b.dueDate?.slice(0, 10) ?? '9999-12-31'
 
-const tarefasAbertas = computed(
-  () => tarefas.value.length - tarefasConcluidas.value,
-)
+      if (prazoA !== prazoB) return prazoA.localeCompare(prazoB)
 
-const tarefasAtrasadas = computed(
-  () =>
-    tarefas.value.filter(
-      (tarefa) =>
-        tarefa.status !== 'completed' &&
-        tarefa.dueDate !== null &&
-        tarefa.dueDate.slice(0, 10) < hojeISO(),
-    ).length,
-)
-
-const progresso = computed(() =>
-  tarefas.value.length
-    ? Math.round(
-        tarefas.value.reduce((total, tarefa) => total + tarefa.progress, 0) /
-          tarefas.value.length,
-      )
-    : 0,
+      return pesoPrioridade[a.priority] - pesoPrioridade[b.priority]
+    })[0] ?? null,
 )
 
 function hojeISO(): string {
@@ -203,6 +196,16 @@ function classePrazo(tarefa: Tarefa): string {
   if (tarefa.dueDate.slice(0, 10) === hojeISO()) return 'prazo-hoje'
 
   return 'prazo-normal'
+}
+
+function indicacaoProximaTarefa(tarefa: Tarefa): string {
+  if (!tarefa.dueDate) return 'Sem prazo definido — avance quando puder.'
+
+  const prazo = tarefa.dueDate.slice(0, 10)
+  if (prazo < hojeISO()) return `Prazo ultrapassado em ${formatarData(tarefa.dueDate)}.`
+  if (prazo === hojeISO()) return 'O prazo é hoje.'
+
+  return `Prazo: ${formatarData(tarefa.dueDate)}.`
 }
 
 function mensagemErro(error: unknown): string {
@@ -350,6 +353,32 @@ async function alterarEstado(
   } catch (error) {
     console.error('Erro ao atualizar o estado da tarefa:', error)
     elemento.value = tarefa.status
+    erro.value = mensagemErro(error)
+  } finally {
+    tarefa.saving = false
+  }
+}
+
+async function concluirTarefa(tarefa: Tarefa): Promise<void> {
+  if (tarefa.status === 'completed' || tarefa.projectStatus === 'archived') return
+
+  tarefa.saving = true
+  erro.value = ''
+  sucesso.value = ''
+
+  try {
+    // A API garante progresso de 100% e regista automaticamente a data de conclusão.
+    const atualizada = await api<TarefaAPI>(`/tasks/${tarefa.id}`, {
+      method: 'PATCH',
+      body: { status: 'completed' },
+    })
+
+    tarefa.status = atualizada.status
+    tarefa.progress = atualizada.progress
+    tarefa.completedAt = atualizada.completed_at
+    sucesso.value = `“${tarefa.title}” foi marcada como concluída.`
+  } catch (error) {
+    console.error('Erro ao concluir a tarefa:', error)
     erro.value = mensagemErro(error)
   } finally {
     tarefa.saving = false
@@ -521,14 +550,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="member-area">
-    <header class="member-hero">
-      <div class="hero-copy">
-        <span class="hero-label"><span></span> FRONT-OFFICE · ÁREA DE TRABALHO</span>
-        <h2>Olá, {{ utilizadorSelecionado?.name ?? 'bem-vindo/a' }}</h2>
-        <p>Organize o seu trabalho, acompanhe os prazos e avance tarefa a tarefa.</p>
-      </div>
-
-    </header>
+    <DashboardFrontOfficeOverview />
 
     <div v-if="erro" class="notice notice-error" role="alert">
       <span>{{ erro }}</span>
@@ -539,42 +561,41 @@ onBeforeUnmount(() => {
       <button type="button" aria-label="Fechar mensagem" @click="sucesso = ''">×</button>
     </div>
 
-    <section class="summary-grid" aria-label="Resumo das tarefas">
-      <article class="summary-card">
-        <span class="summary-icon icon-indigo">✓</span>
-        <div><span>Tarefas atribuídas</span><strong>{{ tarefas.length }}</strong></div>
-        <small>{{ tarefasAbertas }} por concluir</small>
-      </article>
-      <article class="summary-card">
-        <span class="summary-icon icon-green">↗</span>
-        <div><span>Concluídas</span><strong>{{ tarefasConcluidas }}</strong></div>
-        <small>{{ progresso }}% do trabalho</small>
-      </article>
-      <article class="summary-card">
-        <span class="summary-icon icon-red">!</span>
-        <div><span>Fora do prazo</span><strong>{{ tarefasAtrasadas }}</strong></div>
-        <small>{{ tarefasAtrasadas ? 'Requerem atenção' : 'Tudo em dia' }}</small>
-      </article>
-      <article class="progress-card">
-        <div class="progress-heading">
-          <div><span>Progresso geral</span><strong>{{ progresso }}%</strong></div>
-          <span>média das tarefas atribuídas</span>
-        </div>
-        <div
-          class="progress-track"
-          role="progressbar"
-          :aria-valuenow="progresso"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-label="Progresso das tarefas"
+    <section
+      v-if="proximaTarefa"
+      class="next-task-card"
+      aria-labelledby="next-task-heading"
+    >
+      <div class="next-task-icon" aria-hidden="true">→</div>
+      <div class="next-task-copy">
+        <span class="section-eyebrow">PRÓXIMA AÇÃO</span>
+        <h3 id="next-task-heading">{{ proximaTarefa.title }}</h3>
+        <p>
+          {{ proximaTarefa.projectName }} · {{ indicacaoProximaTarefa(proximaTarefa) }}
+          {{ proximaTarefa.progress }}% concluído.
+        </p>
+      </div>
+      <div class="next-task-actions">
+        <button
+          type="button"
+          class="next-task-secondary"
+          :aria-expanded="proximaTarefa.workPanelOpen"
+          @click="abrirRegisto(proximaTarefa)"
         >
-          <span :style="{ width: `${progresso}%` }"></span>
-        </div>
-        <small>Um passo de cada vez. Está a fazer um ótimo trabalho.</small>
-      </article>
+          {{ proximaTarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho' }}
+        </button>
+        <button
+          type="button"
+          class="next-task-complete"
+          :disabled="proximaTarefa.saving"
+          @click="concluirTarefa(proximaTarefa)"
+        >
+          {{ proximaTarefa.saving ? 'A concluir…' : 'Concluir tarefa' }}
+        </button>
+      </div>
     </section>
 
-    <section class="tasks-panel">
+    <section id="my-tasks" class="tasks-panel">
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">O SEU DIA</span>
@@ -687,6 +708,15 @@ onBeforeUnmount(() => {
                 @click="abrirRegisto(tarefa)"
               >
                 {{ tarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho' }}
+              </button>
+              <button
+                v-if="tarefa.status !== 'completed'"
+                type="button"
+                class="complete-task"
+                :disabled="tarefa.saving || tarefa.projectStatus === 'archived'"
+                @click="concluirTarefa(tarefa)"
+              >
+                {{ tarefa.saving ? 'A concluir…' : 'Concluir' }}
               </button>
             </div>
           </article>
@@ -846,73 +876,13 @@ onBeforeUnmount(() => {
   color: #172b4d;
 }
 
-.member-hero {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  min-height: 190px;
-  margin-bottom: 22px;
-  padding: 30px 34px;
-  overflow: hidden;
-  color: white;
-  background:
-    radial-gradient(ellipse at 75% 20%, rgb(101 117 255 / 35%), transparent 36%),
-    linear-gradient(120deg, #182a4b 0%, #253d70 58%, #3159a0 100%);
-  border-radius: 22px;
-  box-shadow: 0 16px 36px rgb(34 57 103 / 18%);
-}
-
-.member-hero::after {
-  position: absolute;
-  right: -80px;
-  bottom: -180px;
-  width: 380px;
-  height: 380px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 50%;
-  box-shadow: 0 0 0 38px rgb(255 255 255 / 4%), 0 0 0 80px rgb(255 255 255 / 3%);
-  content: '';
-  pointer-events: none;
-}
-
-.hero-copy {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-}
-
-.hero-label,
 .section-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #b7c8f4;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.13em;
-}
-
-.hero-label > span {
-  width: 7px;
-  height: 7px;
-  background: #64e1c0;
-  border-radius: 50%;
-  box-shadow: 0 0 12px rgb(100 225 192 / 75%);
-}
-
-.hero-copy h2 {
-  margin: 13px 0 8px;
-  font-size: clamp(26px, 3vw, 36px);
-  letter-spacing: -0.045em;
-}
-
-.hero-copy p {
-  max-width: 500px;
-  margin: 0;
-  color: #d3def5;
-  font-size: 14px;
-  line-height: 1.6;
 }
 
 .notice {
@@ -943,15 +913,6 @@ onBeforeUnmount(() => {
   border: 1px solid #bbf7d0;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(230px, 1.3fr);
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.summary-card,
-.progress-card,
 .tasks-panel {
   background: #fff;
   border: 1px solid #e6ebf3;
@@ -959,103 +920,105 @@ onBeforeUnmount(() => {
   box-shadow: 0 3px 12px rgb(34 57 103 / 4%);
 }
 
-.summary-card {
+.next-task-card {
   display: grid;
-  grid-template-columns: 39px 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 11px;
-  padding: 18px;
+  gap: 17px;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  background: linear-gradient(115deg, #eef2ff, #fff 64%);
+  border: 1px solid #dbe3ff;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgb(67 56 202 / 7%);
 }
 
-.summary-icon {
+.next-task-icon {
   display: grid;
-  grid-row: span 2;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   place-items: center;
-  border-radius: 11px;
-  font-size: 17px;
+  color: #4338ca;
+  background: #fff;
+  border: 1px solid #dbe3ff;
+  border-radius: 12px;
+  font-size: 21px;
   font-weight: 800;
 }
 
-.icon-indigo { color: #4f46e5; background: #eef2ff; }
-.icon-green { color: #15803d; background: #ecfdf5; }
-.icon-red { color: #dc2626; background: #fef2f2; }
+.next-task-copy { min-width: 0; }
 
-.summary-card > div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.next-task-copy h3 {
+  overflow: hidden;
+  margin: 5px 0 4px;
+  color: #263957;
+  font-size: 16px;
+  letter-spacing: -.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.summary-card > div span,
-.progress-heading > div span {
-  color: #7b8aa2;
+.next-task-copy p {
+  margin: 0;
+  color: #64748b;
   font-size: 11px;
-  font-weight: 600;
+  line-height: 1.5;
 }
 
-.summary-card > div strong {
-  color: #192a49;
-  font-size: 24px;
-  letter-spacing: -0.04em;
-}
-
-.summary-card > small {
-  grid-column: 2;
-  margin-top: 5px;
-  color: #9aa7ba;
-  font-size: 10px;
-}
-
-.progress-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 13px;
-  padding: 18px 20px;
-}
-
-.progress-heading,
-.progress-heading > div {
+.next-task-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.progress-heading > div {
-  align-items: baseline;
+.next-task-secondary,
+.next-task-complete,
+.complete-task {
+  display: inline-flex;
+  min-height: 37px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
-.progress-heading strong {
+.next-task-secondary {
   color: #4f46e5;
-  font-size: 22px;
+  background: #fff;
+  border: 1px solid #cdd7ff;
 }
 
-.progress-heading > span,
-.progress-card > small {
-  color: #94a3b8;
-  font-size: 10px;
+.next-task-complete,
+.complete-task {
+  color: #fff;
+  background: #15803d;
+  border: 1px solid #15803d;
 }
 
-.progress-track {
-  height: 8px;
-  overflow: hidden;
-  background: #eef2f8;
-  border-radius: 999px;
+.next-task-secondary:hover,
+.next-task-complete:hover:not(:disabled),
+.complete-task:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 12px rgb(22 101 52 / 16%);
 }
 
-.progress-track > span {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #6366f1, #38bdf8);
-  border-radius: inherit;
-  transition: width 0.35s ease;
+.next-task-secondary:focus-visible,
+.next-task-complete:focus-visible,
+.complete-task:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
 }
 
-.progress-card > small {
-  line-height: 1.4;
+.next-task-complete:disabled,
+.complete-task:disabled {
+  color: #d1fae5;
+  background: #86b99d;
+  border-color: #86b99d;
+  cursor: not-allowed;
 }
 
 .tasks-panel {
@@ -1676,24 +1639,11 @@ onBeforeUnmount(() => {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 1100px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 760px) {
   .member-area { padding: 2px 0 24px; }
-  .member-hero {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 17px;
-    padding: 24px 20px;
-    border-radius: 16px;
-  }
-  .summary-grid { gap: 9px; }
-  .summary-card { padding: 13px; }
-  .progress-card { grid-column: span 2; }
+  .next-task-card { grid-template-columns: auto minmax(0, 1fr); gap: 13px; padding: 16px; }
+  .next-task-actions { grid-column: 1 / -1; width: 100%; }
+  .next-task-actions > * { flex: 1; }
   .panel-heading { padding: 19px 16px 15px; }
   .task-filters { flex-wrap: wrap; padding: 0 16px 14px; }
   .search-field { flex-basis: 100%; }
@@ -1709,13 +1659,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 420px) {
-  .summary-grid { grid-template-columns: 1fr 1fr; }
-  .summary-card { grid-template-columns: 32px 1fr; column-gap: 8px; padding: 11px; }
-  .summary-icon { width: 32px; height: 32px; }
-  .summary-card > div span { font-size: 10px; }
-  .summary-card > div strong { font-size: 21px; }
-  .summary-card > small { font-size: 9px; }
-  .progress-heading { align-items: flex-start; flex-direction: column; }
+  .next-task-card { grid-template-columns: 1fr; }
+  .next-task-icon { display: none; }
+  .next-task-copy h3 { white-space: normal; }
+  .next-task-actions { flex-direction: column; }
   .panel-heading h3 { font-size: 18px; }
   .task-filters select { min-width: 0; }
   .task-actions { flex-direction: column; }
@@ -1726,6 +1673,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner { animation-duration: 2s; }
   .task-row, .progress-track > span, .task-progress-track > span,
-  .work-toggle, .submit-update { transition: none; }
+  .work-toggle, .submit-update, .next-task-secondary, .next-task-complete,
+  .complete-task { transition: none; }
 }
 </style>

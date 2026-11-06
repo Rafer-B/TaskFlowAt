@@ -4,6 +4,7 @@
 from app.models.user import User
 from app.models.project import Project
 from app.models.task import Task
+from app.models.task_assignee import TaskAssignee
 from app.models.project_member import ProjectMember
 from app.models.task_work_log import TaskWorkLog, TaskWorkLogAttachment
 from app.models.calendar_event import CalendarEvent
@@ -14,6 +15,7 @@ __all__ = [
     "User",
     "Project",
     "Task",
+    "TaskAssignee",
     "ProjectMember",
     "TaskWorkLog",
     "TaskWorkLogAttachment",

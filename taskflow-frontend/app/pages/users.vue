@@ -34,8 +34,6 @@ const submetendo = ref(false)
 
 const erro = ref('')
 const sucesso = ref('')
-const erroPerfil = ref('')
-const sucessoPerfil = ref('')
 
 const pesquisa = ref('')
 watch(
@@ -46,13 +44,6 @@ watch(
   { immediate: true },
 )
 const mostrarFormulario = ref(false)
-const utilizadorSelecionado = ref<Utilizador | null>(null)
-const editarPerfil = ref(false)
-const submetendoPerfil = ref(false)
-const perfilFormulario = reactive({
-  name: '',
-  email: '',
-})
 
 const utilizadorAAtualizar = ref<number | null>(null)
 const utilizadorAAtualizarPerfil = ref<number | null>(null)
@@ -221,10 +212,6 @@ async function carregarFotografia(
         ...resposta,
         avatar_url: resposta.avatar_url ?? utilizadores.value[indice].avatar_url,
       }
-      if (utilizadorSelecionado.value?.id === utilizador.id) {
-        utilizadorSelecionado.value = utilizadores.value[indice] ?? null
-      }
-
       fotografiasComErro.value = fotografiasComErro.value.filter(
         (id) => id !== utilizador.id,
       )
@@ -251,104 +238,6 @@ function fecharFormulario() {
   formulario.email = ''
   formulario.password = ''
   formulario.role = 'member'
-}
-
-function abrirPerfil(utilizador: Utilizador): void {
-  limparMensagens()
-  erroPerfil.value = ''
-  sucessoPerfil.value = ''
-  utilizadorSelecionado.value = utilizador
-  perfilFormulario.name = utilizador.name
-  perfilFormulario.email = utilizador.email
-  editarPerfil.value = false
-}
-
-watch(
-  [() => route.fullPath, utilizadores],
-  () => {
-    // Abre diretamente o perfil pedido na URL quando a lista já contém esse utilizador.
-    const userId = route.query.userId
-    const value = Array.isArray(userId) ? userId[0] : userId
-    if (!value || !/^\d+$/.test(value)) return
-
-    const utilizador = utilizadores.value.find(
-      (item) => item.id === Number(value),
-    )
-    if (utilizador) abrirPerfil(utilizador)
-  },
-  { immediate: true },
-)
-
-function fecharPerfil(): void {
-  if (submetendoPerfil.value) return
-  utilizadorSelecionado.value = null
-  editarPerfil.value = false
-  erroPerfil.value = ''
-  sucessoPerfil.value = ''
-}
-
-function cancelarEdicaoPerfil(): void {
-  if (!utilizadorSelecionado.value) return
-  perfilFormulario.name = utilizadorSelecionado.value.name
-  perfilFormulario.email = utilizadorSelecionado.value.email
-  editarPerfil.value = false
-  erroPerfil.value = ''
-  sucessoPerfil.value = ''
-}
-
-function iniciarEdicaoPerfil(): void {
-  erroPerfil.value = ''
-  sucessoPerfil.value = ''
-  editarPerfil.value = true
-}
-
-async function guardarPerfil(): Promise<void> {
-  const selecionado = utilizadorSelecionado.value
-  if (!selecionado) return
-
-  erroPerfil.value = ''
-  sucessoPerfil.value = ''
-  if (perfilFormulario.name.trim().length < 2) {
-    erroPerfil.value = 'O nome deve ter pelo menos 2 caracteres.'
-    return
-  }
-  if (!perfilFormulario.email.trim()) {
-    erroPerfil.value = 'Introduz um endereço de email.'
-    return
-  }
-
-  submetendoPerfil.value = true
-  try {
-    // Atualiza a lista e o modal com o mesmo objeto devolvido pelo backend.
-    const atualizado = await api<Utilizador>(
-      `/users/${selecionado.id}`,
-      {
-        method: 'PATCH',
-        body: {
-          name: perfilFormulario.name.trim(),
-          email: perfilFormulario.email.trim().toLowerCase(),
-        },
-      },
-    )
-    const indice = utilizadores.value.findIndex(
-      (utilizador) => utilizador.id === atualizado.id,
-    )
-    if (indice !== -1) {
-      utilizadores.value[indice] = atualizado
-      utilizadorSelecionado.value = atualizado
-    }
-    if (auth.user.value?.id === atualizado.id) {
-      auth.user.value.name = atualizado.name
-      auth.user.value.email = atualizado.email
-    }
-    editarPerfil.value = false
-    sucessoPerfil.value = 'Perfil atualizado com sucesso.'
-  } catch (error) {
-    console.error('Erro ao atualizar perfil do utilizador:', error)
-    erroPerfil.value = obterMensagemErro(error)
-  } finally {
-    submetendoPerfil.value = false
-  }
 }
 
 async function criarUtilizador() {
@@ -438,7 +327,7 @@ onMounted(carregarUtilizadores)
         <span class="eyebrow">GESTÃO DA PLATAFORMA</span>
         <h2>Utilizadores</h2>
         <p>
-          Consulte e registe os utilizadores da plataforma TaskFlow.
+          Consulte os perfis, tarefas e equipas; registe utilizadores da plataforma TaskFlow.
         </p>
       </div>
 
@@ -563,14 +452,13 @@ onMounted(carregarUtilizadores)
                   </div>
 
                   <div class="user-name">
-                    <button
-                      type="button"
+                    <NuxtLink
                       class="profile-open-button"
+                      :to="`/users/${utilizador.id}`"
                       :aria-label="`Abrir perfil de ${utilizador.name}`"
-                      @click="abrirPerfil(utilizador)"
                     >
                       {{ utilizador.name }}
-                    </button>
+                    </NuxtLink>
                     <span>ID #{{ utilizador.id }}</span>
 
                     <label
@@ -652,167 +540,16 @@ onMounted(carregarUtilizadores)
       </div>
     </section>
 
-    <!-- O perfil selecionado suporta consulta e edição sem sair da lista de utilizadores. -->
-    <div
-      v-if="utilizadorSelecionado"
-      class="modal-backdrop"
-      @click.self="fecharPerfil"
-    >
-      <section
-        class="user-modal profile-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="profile-title"
-      >
-        <div class="modal-heading">
-          <div>
-            <span class="eyebrow">PERFIL DO UTILIZADOR</span>
-            <h2 id="profile-title">{{ utilizadorSelecionado.name }}</h2>
-            <p>Informações da conta e estado de acesso.</p>
-          </div>
-          <button
-            type="button"
-            class="modal-close"
-            aria-label="Fechar perfil"
-            :disabled="submetendoPerfil"
-            @click="fecharPerfil"
-          >
-            ×
-          </button>
-        </div>
-
-        <div v-if="erroPerfil" class="message error-message profile-message" role="alert">
-          <span>!</span>
-          {{ erroPerfil }}
-        </div>
-        <div v-if="sucessoPerfil" class="message success-message profile-message" role="status">
-          <span>✓</span>
-          {{ sucessoPerfil }}
-        </div>
-
-        <div class="profile-identity">
-          <div class="user-avatar profile-avatar">
-            <img
-              v-if="utilizadorSelecionado.avatar_url && !fotografiasComErro.includes(utilizadorSelecionado.id)"
-              :src="obterUrlFotografia(utilizadorSelecionado.avatar_url)"
-              :alt="`Fotografia de ${utilizadorSelecionado.name}`"
-              @error="fotografiaFalhou(utilizadorSelecionado.id)"
-              @load="fotografiaCarregada(utilizadorSelecionado.id)"
-            />
-            <span v-else>{{ obterIniciais(utilizadorSelecionado.name) }}</span>
-          </div>
-          <div>
-            <strong>{{ utilizadorSelecionado.name }}</strong>
-            <span>ID #{{ utilizadorSelecionado.id }}</span>
-          </div>
-          <span
-            class="status-badge"
-            :class="utilizadorSelecionado.is_active ? 'status-active' : 'status-inactive'"
-          >
-            <span></span>
-            {{ utilizadorSelecionado.is_active ? 'Ativo' : 'Inativo' }}
-          </span>
-        </div>
-
-        <form v-if="editarPerfil" @submit.prevent="guardarPerfil">
-          <div class="form-group">
-            <label for="profile-name">Nome completo</label>
-            <input
-              id="profile-name"
-              v-model="perfilFormulario.name"
-              type="text"
-              minlength="2"
-              maxlength="100"
-              autocomplete="name"
-              required
-            />
-          </div>
-          <div class="form-group">
-            <label for="profile-email">Endereço de email</label>
-            <input
-              id="profile-email"
-              v-model="perfilFormulario.email"
-              type="email"
-              maxlength="254"
-              autocomplete="email"
-              required
-            />
-          </div>
-          <div class="modal-actions">
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="submetendoPerfil"
-              @click="cancelarEdicaoPerfil"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              class="primary-button"
-              :disabled="submetendoPerfil"
-            >
-              {{ submetendoPerfil ? 'A guardar...' : 'Guardar alterações' }}
-            </button>
-          </div>
-        </form>
-
-        <dl v-else class="profile-details">
-          <div>
-            <dt>Email</dt>
-            <dd>{{ utilizadorSelecionado.email }}</dd>
-          </div>
-          <div>
-            <dt>Perfil e acesso</dt>
-            <dd>
-              {{ utilizadorSelecionado.role === 'admin' ? 'Administrador' : 'Utilizador · front-office' }}
-            </dd>
-          </div>
-          <div>
-            <dt>Data de registo</dt>
-            <dd>{{ formatarData(utilizadorSelecionado.created_at) }}</dd>
-          </div>
-          <div>
-            <dt>Fotografia</dt>
-            <dd>{{ utilizadorSelecionado.avatar_url ? 'Configurada' : 'Sem fotografia' }}</dd>
-          </div>
-        </dl>
-
-        <div v-if="!editarPerfil" class="modal-actions">
-          <button type="button" class="secondary-button" @click="fecharPerfil">
-            Fechar
-          </button>
-          <button
-            type="button"
-            class="primary-button"
-            @click="iniciarEdicaoPerfil"
-          >
-            Editar perfil
-          </button>
-        </div>
-      </section>
-    </div>
-
-    <div
-      v-if="mostrarFormulario"
-      class="modal-backdrop"
-      @click.self="fecharFormulario"
-    >
-      <section
-        class="user-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-      >
-        <div class="modal-heading">
+    <section v-if="mostrarFormulario" class="user-form-panel" aria-labelledby="new-user-title">
+        <div class="form-panel-heading">
           <div>
             <span class="eyebrow">GESTÃO DE ACESSOS</span>
-            <h2 id="modal-title">Novo utilizador</h2>
+            <h2 id="new-user-title">Novo utilizador</h2>
             <p>Preenche os dados para registar um utilizador.</p>
           </div>
 
           <button
-            class="modal-close"
+            class="form-panel-close"
             aria-label="Fechar formulário"
             @click="fecharFormulario"
           >
@@ -869,7 +606,7 @@ onMounted(carregarUtilizadores)
             </select>
           </div>
 
-          <div class="modal-actions">
+          <div class="form-panel-actions">
             <button
               type="button"
               class="secondary-button"
@@ -888,8 +625,7 @@ onMounted(carregarUtilizadores)
             </button>
           </div>
         </form>
-      </section>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -1163,14 +899,16 @@ tbody tr:hover {
 }
 
 .profile-open-button {
+  display: block;
   width: fit-content;
   padding: 0;
   color: #263957;
   background: transparent;
+  border: 0;
   font-size: 12px;
   font-weight: 750;
   text-align: left;
-  cursor: pointer;
+  text-decoration: none;
 }
 
 .profile-open-button:hover {
@@ -1371,118 +1109,35 @@ tbody tr:hover {
   border: 1px solid #c8ebd7;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgb(13 27 49 / 55%);
-  backdrop-filter: blur(3px);
-  z-index: 200;
-}
-
-.user-modal {
-  width: min(100%, 480px);
-  max-height: calc(100vh - 36px);
-  overflow-y: auto;
+.user-form-panel {
+  width: min(100%, 680px);
   padding: 25px;
   background: #fff;
   border: 1px solid #e5ebf4;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgb(0 0 0 / 18%);
+  border-radius: 13px;
+  box-shadow: 0 3px 12px rgb(30 55 90 / 3%);
 }
 
-.profile-modal {
-  width: min(100%, 560px);
-}
-
-.profile-identity {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin-bottom: 22px;
-  padding: 15px;
-  background: #f7f9fc;
-  border: 1px solid #e8edf5;
-  border-radius: 12px;
-}
-
-.profile-avatar {
-  width: 54px;
-  height: 54px;
-  flex-basis: 54px;
-}
-
-.profile-identity > div:nth-child(2) {
-  display: grid;
-  flex: 1;
-  gap: 5px;
-  min-width: 0;
-}
-
-.profile-identity > div:nth-child(2) strong {
-  overflow: hidden;
-  color: #263957;
-  font-size: 13px;
-  text-overflow: ellipsis;
-}
-
-.profile-identity > div:nth-child(2) span {
-  color: #8795aa;
-  font-size: 10px;
-}
-
-.profile-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 0;
-}
-
-.profile-details > div {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.profile-details dt {
-  color: #8795aa;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.profile-details dd {
-  overflow-wrap: anywhere;
-  margin: 0;
-  color: #263957;
-  font-size: 12px;
-}
-
-.profile-message {
-  margin-bottom: 15px;
-}
-
-.modal-heading {
+.form-panel-heading {
   display: flex;
   justify-content: space-between;
   gap: 15px;
   margin-bottom: 25px;
 }
 
-.modal-heading h2 {
+.form-panel-heading h2 {
   margin: 7px 0;
   color: #172b4d;
   font-size: 22px;
 }
 
-.modal-heading p {
+.form-panel-heading p {
   margin: 0;
   color: #8795aa;
   font-size: 12px;
 }
 
-.modal-close {
+.form-panel-close {
   width: 32px;
   height: 32px;
   color: #728198;
@@ -1531,7 +1186,7 @@ tbody tr:hover {
   line-height: 1.5;
 }
 
-.modal-actions {
+.form-panel-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -1575,27 +1230,15 @@ tbody tr:hover {
     width: 100%;
   }
 
-  .user-modal {
+  .user-form-panel {
     padding: 19px;
   }
 
-  .profile-identity {
-    flex-wrap: wrap;
-  }
-
-  .profile-identity .status-badge {
-    margin-left: 67px;
-  }
-
-  .profile-details {
-    grid-template-columns: 1fr;
-  }
-
-  .modal-actions {
+  .form-panel-actions {
     flex-direction: column-reverse;
   }
 
-  .modal-actions button {
+  .form-panel-actions button {
     width: 100%;
   }
 

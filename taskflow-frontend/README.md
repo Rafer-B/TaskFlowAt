@@ -7,8 +7,10 @@ the backend environment; do not put them in Nuxt runtime configuration.
 
 ## Área de trabalho (front-office)
 
-O caminho `/my-work` apresenta a área operacional dos membros: tarefas
-atribuídas, prazos, progresso, pesquisa/filtros, registos de trabalho e anexos.
+O caminho `/my-work` reúne o painel do front-office e a área operacional:
+indicadores, prazos e riscos dos projetos acessíveis, além de tarefas
+atribuídas, pesquisa/filtros, registos de trabalho e anexos. `/front-office`
+redireciona para esta página unificada.
 As páginas `/projects` e `/tasks` disponibilizam também o espaço colaborativo
 para gerir projetos e tarefas conforme o papel de cada utilizador.
 
@@ -45,10 +47,34 @@ papéis por projeto são **Responsável** (gerir o projeto e a equipa),
 (consultar tarefas e histórico). Contas continuam a ser criadas por um
 administrador; este também pode gerir a plataforma.
 
-O login guarda o token apenas na sessão atual do navegador. O middleware
-redireciona cada perfil para a área permitida, mas a autorização efetiva é
-sempre validada pela API. A primeira conta de administrador é configurada no
-backend; consulte as instruções de autenticação no README do backend.
+O login guarda os tokens apenas na sessão atual do navegador. É possível
+adicionar outra conta e alternar entre as contas autenticadas no cabeçalho; a
+sessão atual mantém-se se o novo login falhar. **Terminar sessão** remove os
+tokens guardados nesta sessão do navegador. O middleware redireciona cada perfil
+para a área permitida, mas a autorização efetiva é sempre validada pela API. A
+primeira conta de administrador é configurada no backend; consulte as instruções
+de autenticação no README do backend.
+
+### Separação entre áreas e permissões
+
+O TaskFlow mantém **as mesmas páginas operacionais** para evitar duplicação de
+informação e fluxos diferentes. A apresentação e as ações disponíveis são
+adaptadas ao papel autenticado:
+
+| Área/página | Administrador (back-office) | Utilizador (front-office) |
+| --- | --- | --- |
+| `/` Dashboard, `/users`, `/reports` | Acesso total | Sem acesso; redirecionado para `/my-work` |
+| `/projects`, `/tasks`, `/calendar`, `/teams` | Acesso transversal e gestão global | Apenas projetos/equipas a que pertence; ações dependem do papel no projeto |
+| `/my-work`, `/settings` | Disponíveis no shell comum | Disponíveis no shell comum |
+
+Dentro de um projeto, o backend continua a aplicar as permissões em cada
+pedido: **Responsável** gere projeto, membros e tarefas; **Colaborador** cria,
+atualiza e documenta tarefas; **Observador** apenas consulta. Ocultar uma ação
+no frontend melhora a experiência, mas não substitui a validação da API.
+
+Na lista de **Utilizadores**, selecionar um nome abre a página `/users/:id`,
+com o perfil, as tarefas atribuídas e as equipas desse utilizador. O endereço
+direto do perfil também pode ser aberto ou partilhado por administradores.
 
 No código, `carregarArea` obtém membros e projetos, `carregarTarefas` pede as
 tarefas do utilizador autenticado e `alterarEstado` atualiza o estado via
@@ -62,6 +88,11 @@ por estado. Responsáveis e colaboradores podem criar e atualizar tarefas; só
 responsáveis podem eliminá-las. Observadores têm acesso de consulta. O clique
 num cartão abre os detalhes e as tarefas de projetos arquivados não podem ser
 alteradas.
+
+Cada tarefa tem um responsável, selecionado pelo administrador ou pelo
+responsável do projeto entre os membros ativos não observadores. As migrações
+`20261106_0008` e `20261106_0009` criam a associação, preservam o responsável
+principal existente e impõem o limite de um responsável por tarefa.
 
 Para persistir alterações, mantém o backend ativo no endereço configurado em
 `NUXT_PUBLIC_API_BASE`. A lista de responsáveis inclui apenas membros ativos
