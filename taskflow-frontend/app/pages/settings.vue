@@ -387,12 +387,7 @@ onMounted(() => {
           />
         </label>
 
-        <button
-          type="button"
-          class="account-details"
-          aria-label="Editar os dados do perfil"
-          @click="editarPerfil"
-        >
+        <div class="account-details">
           <h3>{{ utilizador?.name ?? 'Utilizador' }}</h3>
           <p>{{ utilizador?.email ?? 'Email indisponível' }}</p>
           <div class="account-tags">
@@ -401,7 +396,7 @@ onMounted(() => {
               {{ utilizador?.is_active ? 'Conta ativa' : 'Conta inativa' }}
             </span>
           </div>
-        </button>
+        </div>
 
         <div class="avatar-actions">
           <button
@@ -485,6 +480,10 @@ onMounted(() => {
         </form>
 
         <dl class="account-meta">
+          <div>
+            <dt>Identificador</dt>
+            <dd>{{ utilizador ? `#${utilizador.id}` : 'Indisponível' }}</dd>
+          </div>
           <div>
             <dt>Conta criada</dt>
             <dd>{{ formatarData(utilizador?.created_at) }}</dd>
@@ -739,16 +738,6 @@ onMounted(() => {
   background: transparent;
   border: 0;
   border-radius: 8px;
-  cursor: pointer;
-}
-
-.account-details:focus-visible {
-  outline: 2px solid var(--tf-primary);
-  outline-offset: 5px;
-}
-
-.account-details:hover h3 {
-  color: var(--tf-primary);
 }
 
 .account-details > p {

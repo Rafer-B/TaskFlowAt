@@ -332,7 +332,7 @@ onMounted(carregarUtilizadores)
         <span class="eyebrow">GESTÃO DA PLATAFORMA</span>
         <h2>Utilizadores</h2>
         <p>
-          Consulte os perfis, tarefas e equipas; registe utilizadores da plataforma TaskFlow.
+          Abra o nome para consultar os dados, tarefas e equipas; registe utilizadores da plataforma TaskFlow.
         </p>
       </div>
 

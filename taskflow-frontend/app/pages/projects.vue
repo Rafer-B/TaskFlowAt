@@ -58,6 +58,18 @@ interface EquipaProjetoAPI {
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 type FiltroEstado = 'Todos' | EstadoProjeto
 type AcaoProjeto = 'archive' | 'delete'
+type ChaveOrdenacaoProjetos = 'id' | 'name' | 'status' | 'createdAt' | 'currentUserRole'
+
+const colunasTabelaProjetos: Array<{
+  chave: ChaveOrdenacaoProjetos
+  rotulo: string
+}> = [
+  { chave: 'id', rotulo: 'ID' },
+  { chave: 'name', rotulo: 'Projeto' },
+  { chave: 'status', rotulo: 'Estado' },
+  { chave: 'currentUserRole', rotulo: 'O teu papel' },
+  { chave: 'createdAt', rotulo: 'Criado em' },
+]
 
 interface Projeto {
   id: number
@@ -85,6 +97,15 @@ const aEliminar = ref(false)
 // Pesquisa e filtros
 const pesquisa = ref('')
 const filtroEstado = ref<FiltroEstado>('Todos')
+const paginaProjetos = ref(1)
+const tamanhoPaginaProjetos = ref(10)
+const ordenacaoProjetos = ref<{
+  chave: ChaveOrdenacaoProjetos
+  ascendente: boolean
+}>({
+  chave: 'name',
+  ascendente: true,
+})
 
 watch(
   () => route.query.search,
@@ -267,6 +288,60 @@ const projetosFiltrados = computed(() => {
     return correspondePesquisa && correspondeEstado
   })
 })
+
+const projetosOrdenados = computed(() => {
+  const { chave, ascendente } = ordenacaoProjetos.value
+
+  return [...projetosFiltrados.value].sort((a, b) => {
+    const valorA = a[chave]
+    const valorB = b[chave]
+    const comparacao = typeof valorA === 'number' && typeof valorB === 'number'
+      ? valorA - valorB
+      : String(valorA).localeCompare(String(valorB), 'pt-PT', {
+          numeric: true,
+          sensitivity: 'base',
+        })
+
+    return ascendente ? comparacao : -comparacao
+  })
+})
+
+const totalPaginasProjetos = computed(() =>
+  Math.max(1, Math.ceil(projetosOrdenados.value.length / tamanhoPaginaProjetos.value)),
+)
+
+const projetosDaPagina = computed(() => {
+  const inicio = (paginaProjetos.value - 1) * tamanhoPaginaProjetos.value
+  return projetosOrdenados.value.slice(inicio, inicio + tamanhoPaginaProjetos.value)
+})
+
+const inicioProjetos = computed(() =>
+  projetosOrdenados.value.length
+    ? (paginaProjetos.value - 1) * tamanhoPaginaProjetos.value + 1
+    : 0,
+)
+
+const fimProjetos = computed(() =>
+  Math.min(
+    paginaProjetos.value * tamanhoPaginaProjetos.value,
+    projetosOrdenados.value.length,
+  ),
+)
+
+watch([pesquisa, filtroEstado, tamanhoPaginaProjetos], () => {
+  paginaProjetos.value = 1
+})
+
+watch(totalPaginasProjetos, (total) => {
+  if (paginaProjetos.value > total) paginaProjetos.value = total
+})
+
+function ordenarProjetos(chave: ChaveOrdenacaoProjetos): void {
+  ordenacaoProjetos.value = ordenacaoProjetos.value.chave === chave
+    ? { chave, ascendente: !ordenacaoProjetos.value.ascendente }
+    : { chave, ascendente: true }
+  paginaProjetos.value = 1
+}
 
 // --------------------------------------------------
 // CARREGAR PROJETOS
@@ -1215,8 +1290,8 @@ onMounted(carregarProjetos)
       <div class="section-heading">
         <div>
           <span class="eyebrow">ESPAÇO DE TRABALHO</span>
-          <h2>Os teus projetos</h2>
-          <p>Consulta os projetos de que fazes parte e acompanha as respetivas tarefas.</p>
+          <h2 id="projects-table-title">Os teus projetos</h2>
+          <p>Pesquisa e ordena a lista para encontrares rapidamente um projeto.</p>
         </div>
 
         <span class="results-count">
@@ -1232,6 +1307,7 @@ onMounted(carregarProjetos)
             v-model="pesquisa"
             type="search"
             placeholder="Pesquisar projetos..."
+            aria-label="Pesquisar projetos por nome ou descrição"
           />
         </div>
 
@@ -1279,139 +1355,159 @@ onMounted(carregarProjetos)
         </button>
       </div>
 
-      <div v-else class="projects-grid">
-        <article
-          v-for="projeto in projetosFiltrados"
-          :key="projeto.id"
-          class="project-card"
-        >
-          <div class="card-header">
-            <div class="project-symbol">▦</div>
+      <div v-else class="projects-table-scroll">
+        <table class="projects-table" aria-labelledby="projects-table-title">
+          <thead>
+            <tr>
+              <th
+                v-for="coluna in colunasTabelaProjetos"
+                :key="coluna.chave"
+                :aria-sort="
+                  ordenacaoProjetos.chave === coluna.chave
+                    ? ordenacaoProjetos.ascendente ? 'ascending' : 'descending'
+                    : 'none'
+                "
+              >
+                <button
+                  type="button"
+                  @click="ordenarProjetos(coluna.chave)"
+                >
+                  {{ coluna.rotulo }}
+                  <span aria-hidden="true">
+                    {{ ordenacaoProjetos.chave === coluna.chave
+                      ? ordenacaoProjetos.ascendente ? '↑' : '↓'
+                      : '↕'
+                    }}
+                  </span>
+                </button>
+              </th>
+              <th scope="col">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="projeto in projetosDaPagina" :key="projeto.id">
+              <td class="project-id-cell">#{{ projeto.id }}</td>
+              <td class="project-name-cell">
+                <strong>{{ projeto.name }}</strong>
+                <small>{{ projeto.description || 'Sem descrição' }}</small>
+              </td>
+              <td>
+                <span class="status-badge" :class="classeEstado(projeto.status)">
+                  <span class="status-dot" />
+                  {{ projeto.status }}
+                </span>
+                <small
+                  v-if="aAtualizarEstado === projeto.id"
+                  class="updating-label"
+                >
+                  A atualizar...
+                </small>
+              </td>
+              <td>{{ nomePapelProjeto(projeto.currentUserRole) }}</td>
+              <td>{{ formatarData(projeto.createdAt) }}</td>
+              <td class="project-actions-cell">
+                <div class="project-row-actions">
+                  <button
+                    v-if="podeGerirProjeto(projeto)"
+                    class="action-button"
+                    type="button"
+                    @click="abrirEdicao(projeto)"
+                  >
+                    Editar
+                  </button>
 
-            <span
-              class="status-badge"
-              :class="classeEstado(projeto.status)"
-            >
-              <span class="status-dot" />
-              {{ projeto.status }}
-            </span>
+                  <NuxtLink
+                    :to="`/tasks?project=${projeto.id}`"
+                    class="action-button"
+                  >
+                    {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
+                  </NuxtLink>
+
+                  <button
+                    class="action-button members-action"
+                    type="button"
+                    @click="abrirMembros(projeto)"
+                  >
+                    Membros
+                  </button>
+
+                  <button
+                    v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
+                    type="button"
+                    class="state-button complete-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="atualizarEstado(projeto, 'Concluído')"
+                  >
+                    Concluir
+                  </button>
+
+                  <button
+                    v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
+                    type="button"
+                    class="state-button archive-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="pedirConfirmacao(projeto, 'archive')"
+                  >
+                    Arquivar
+                  </button>
+
+                  <button
+                    v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
+                    type="button"
+                    class="state-button reactivate-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="atualizarEstado(projeto, 'Ativo')"
+                  >
+                    Reativar
+                  </button>
+
+                  <button
+                    v-if="auth.user.value?.role === 'admin'"
+                    type="button"
+                    class="delete-action"
+                    :disabled="aEliminar"
+                    :aria-label="`Eliminar projeto ${projeto.name}`"
+                    :title="`Eliminar projeto ${projeto.name}`"
+                    @click="pedirConfirmacao(projeto, 'delete')"
+                  >
+                    <span aria-hidden="true">⌫</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <footer class="projects-pagination">
+          <div class="projects-page-size">
+            <label for="projects-page-size">Projetos por página</label>
+            <select id="projects-page-size" v-model.number="tamanhoPaginaProjetos">
+              <option :value="10">10</option>
+              <option :value="25">25</option>
+              <option :value="50">50</option>
+            </select>
+            <span>{{ inicioProjetos }}–{{ fimProjetos }} de {{ projetosOrdenados.length }}</span>
           </div>
-
-          <span class="project-reference">
-            PROJETO #{{ projeto.id }}
-          </span>
-
-          <h3>{{ projeto.name }}</h3>
-
-          <p class="project-description">
-            {{ projeto.description || 'Este projeto ainda não tem descrição.' }}
-          </p>
-
-          <div class="project-meta">
-            <div>
-              <small>Criado em</small>
-              <strong>{{ formatarData(projeto.createdAt) }}</strong>
-            </div>
-
-            <div>
-              <small>Estado atual</small>
-              <strong>{{ projeto.status }}</strong>
-            </div>
-            <div>
-              <small>O teu papel</small>
-              <strong>{{ nomePapelProjeto(projeto.currentUserRole) }}</strong>
-            </div>
-          </div>
-
-          <div class="card-actions">
+          <div class="projects-page-controls" aria-label="Paginação dos projetos">
             <button
-              v-if="podeGerirProjeto(projeto)"
-              class="action-button edit-action"
               type="button"
-              @click="abrirEdicao(projeto)"
+              aria-label="Página anterior"
+              :disabled="paginaProjetos <= 1"
+              @click="paginaProjetos--"
             >
-              <span>✎</span>
-              Editar
+              Anterior
             </button>
-
-            <NuxtLink
-              v-if="podeCriarTarefas(projeto)"
-              :to="`/tasks?project=${projeto.id}`"
-              class="action-button tasks-action"
-            >
-              <span>▤</span>
-              Tarefas
-            </NuxtLink>
-            <NuxtLink
-              v-else
-              :to="`/tasks?project=${projeto.id}`"
-              class="action-button tasks-action"
-            >
-              <span>▤</span>
-              Ver tarefas
-            </NuxtLink>
-
+            <span>Página {{ paginaProjetos }} de {{ totalPaginasProjetos }}</span>
             <button
-              class="action-button members-action"
               type="button"
-              @click="abrirMembros(projeto)"
+              aria-label="Página seguinte"
+              :disabled="paginaProjetos >= totalPaginasProjetos"
+              @click="paginaProjetos++"
             >
-              <span>♙</span>
-              Membros
+              Seguinte
             </button>
           </div>
-
-          <div class="state-actions">
-            <button
-              v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
-              type="button"
-              class="state-button complete-action"
-              :disabled="aAtualizarEstado === projeto.id"
-              @click="atualizarEstado(projeto, 'Concluído')"
-            >
-              ✓ Concluir
-            </button>
-
-            <button
-              v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
-              type="button"
-              class="state-button archive-action"
-              :disabled="aAtualizarEstado === projeto.id"
-              @click="pedirConfirmacao(projeto, 'archive')"
-            >
-              Arquivar
-            </button>
-
-            <button
-              v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
-              type="button"
-              class="state-button reactivate-action"
-              :disabled="aAtualizarEstado === projeto.id"
-              @click="atualizarEstado(projeto, 'Ativo')"
-            >
-              ↻ Reativar
-            </button>
-
-            <button
-              v-if="auth.user.value?.role === 'admin'"
-              type="button"
-              class="delete-action"
-              :disabled="aEliminar"
-              aria-label="Eliminar projeto"
-              title="Eliminar projeto"
-              @click="pedirConfirmacao(projeto, 'delete')"
-            >
-              <span>⌫</span>
-            </button>
-          </div>
-
-          <div
-            v-if="aAtualizarEstado === projeto.id"
-            class="updating-label"
-          >
-            A atualizar estado...
-          </div>
-        </article>
+        </footer>
       </div>
     </section>
 
@@ -2353,51 +2449,120 @@ onMounted(carregarProjetos)
   cursor: pointer;
 }
 
-.projects-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.projects-table-scroll {
+  width: 100%;
+  max-height: 600px;
+  overflow: auto;
+  border: 1px solid #e8edf4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(23 37 84 / 2%);
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
 }
 
-.project-card {
-  position: relative;
+.projects-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.projects-table th,
+.projects-table td {
+  padding: 13px 15px;
+  border-bottom: 1px solid #eff2f7;
+  color: #475569;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.projects-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7f8fc;
+  color: #77839a;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.projects-table th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.projects-table th button:focus-visible,
+.project-row-actions button:focus-visible,
+.project-row-actions a:focus-visible,
+.projects-page-controls button:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
+}
+
+.projects-table th button:hover,
+.projects-table th[aria-sort="ascending"] button,
+.projects-table th[aria-sort="descending"] button {
+  color: #4f46e5;
+}
+
+.projects-table th button span {
+  color: #9ba6b7;
+  font-size: 12px;
+}
+
+.projects-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.projects-table tbody tr:hover {
+  background: #f8faff;
+}
+
+.projects-table .project-name-cell {
+  min-width: 240px;
+}
+
+.project-name-cell strong,
+.project-name-cell small {
+  display: block;
+}
+
+.projects-table .project-id-cell {
+  color: #8995a8;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.project-name-cell strong {
+  margin-bottom: 4px;
+  color: #26344c;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.project-name-cell small {
+  display: -webkit-box;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 19px;
-  border: 1px solid #e7ebf3;
-  border-radius: 16px;
-  background: linear-gradient(160deg, #fff 0%, #fff 70%, #fafbff 100%);
-  box-shadow: 0 4px 14px rgb(23 37 84 / 3%);
-  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-}
-
-.project-card:hover {
-  transform: translateY(-3px);
-  border-color: #ccd3f1;
-  box-shadow: 0 15px 26px -17px rgb(35 49 91 / 36%);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 17px;
-}
-
-.project-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 43px;
-  height: 43px;
-  border: 1px solid #e1e5ff;
-  border-radius: 13px;
-  background: linear-gradient(145deg, #f1f2ff, #e8eaff);
-  color: #4d55c2;
-  font-size: 20px;
+  max-width: 360px;
+  margin-bottom: 5px;
+  color: #8792a5;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .status-badge {
@@ -2421,83 +2586,19 @@ onMounted(carregarProjetos)
 .status-badge.completed { background: #eaf1ff; color: #376bc0; }
 .status-badge.archived { background: #eff1f5; color: #69768a; }
 
-.project-reference {
-  color: #9aa5b5;
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: 1px;
-}
-
-.project-card h3 {
-  margin: 9px 0 7px;
-  color: #253452;
-  font-size: 17px;
-  font-weight: 750;
-  line-height: 1.4;
-}
-
-.project-description {
-  display: -webkit-box;
-  overflow: hidden;
-  min-height: 55px;
-  margin: 0;
-  color: #7f8ba0;
-  font-size: 12px;
-  line-height: 1.65;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.project-meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 13px 12px;
-  border: 1px solid #edf0f5;
-  border-radius: 11px;
-  background: #f8faff;
-}
-
-.project-meta div {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.project-meta small {
-  color: #9ba5b4;
-  font-size: 9px;
-}
-
-.project-meta strong {
-  overflow: hidden;
-  color: #526078;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 13px;
-}
-
 .action-button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 37px;
+  min-height: 32px;
+  padding: 0 9px;
   border: 1px solid #e3e7f0;
-  border-radius: 9px;
+  border-radius: 7px;
   background: white;
   color: #5363a5;
   text-decoration: none;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 650;
   cursor: pointer;
   transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
@@ -2511,20 +2612,20 @@ onMounted(carregarProjetos)
 }
 
 .members-action {
-  grid-column: 1 / -1;
   background: #f5f6ff;
   color: #4858ad;
   border-color: #e1e5ff;
 }
 
-.state-actions {
+.project-actions-cell {
+  min-width: 370px;
+}
+
+.project-row-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #edf0f5;
+  gap: 6px;
 }
 
 .state-button {
@@ -2553,7 +2654,6 @@ onMounted(carregarProjetos)
   justify-content: center;
   width: 29px;
   height: 29px;
-  margin-left: auto;
   border: 1px solid #f2dada;
   border-radius: 6px;
   background: white;
@@ -2570,9 +2670,51 @@ onMounted(carregarProjetos)
 }
 
 .updating-label {
-  margin-top: 9px;
+  display: block;
+  margin-top: 5px;
   color: #71809a;
   font-size: 10px;
+}
+
+.projects-pagination,
+.projects-page-size,
+.projects-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.projects-pagination {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 3px 0;
+  color: #78859a;
+  font-size: 12px;
+}
+
+.projects-page-size select {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid #e1e6ef;
+  border-radius: 7px;
+  background: #fff;
+  color: #475569;
+}
+
+.projects-page-controls button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #e1e6ef;
+  border-radius: 7px;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.projects-page-controls button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 .empty-state {
@@ -3042,10 +3184,6 @@ onMounted(carregarProjetos)
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .projects-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 700px) {
@@ -3069,10 +3207,6 @@ onMounted(carregarProjetos)
     width: 100%;
   }
 
-  .projects-grid {
-    grid-template-columns: 1fr;
-  }
-
   .toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -3088,6 +3222,16 @@ onMounted(carregarProjetos)
 
   .filter-control select {
     flex: 1;
+  }
+
+  .projects-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .projects-page-size,
+  .projects-page-controls {
+    justify-content: space-between;
   }
 
   .form-card,
@@ -3146,10 +3290,6 @@ onMounted(carregarProjetos)
 
   .stat-card {
     min-height: 80px;
-  }
-
-  .project-meta {
-    grid-template-columns: 1fr;
   }
 
   .member-summary {

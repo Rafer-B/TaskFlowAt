@@ -544,14 +544,14 @@ async function carregarFotografia(event: Event): Promise<void> {
         </label>
 
         <NuxtLink
-          to="/settings?editProfile=1"
+          to="/settings"
           class="header-profile-link"
-          aria-label="Editar perfil"
-          title="Editar perfil"
+          aria-label="Ver perfil"
+          title="Ver perfil"
         >
           <div class="profile-copy">
-            <strong>{{ auth.user.value?.name ?? 'Administrador' }}</strong>
-            <span>Administrador</span>
+            <strong>{{ auth.user.value?.name ?? 'Utilizador' }}</strong>
+            <span>{{ auth.user.value?.role === 'admin' ? 'Administrador' : 'Utilizador' }}</span>
           </div>
         </NuxtLink>
         <span
