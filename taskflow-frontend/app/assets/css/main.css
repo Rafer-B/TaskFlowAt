@@ -6,10 +6,10 @@
 /* Tokens de cor e dimensão. */
 :root {
   --tf-font: 'DM Sans', Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
-  --tf-bg: #f3f4f0;
-  --tf-surface: #ffffff;
-  --tf-border: #e2e8f0;
-  --tf-border-soft: #f1f5f9;
+  --tf-bg: #e8ece6;
+  --tf-surface: #f4f5f1;
+  --tf-border: #d6ddd4;
+  --tf-border-soft: #e4e9e2;
   --tf-text: #0f172a;
   --tf-text-muted: #64748b;
   --tf-text-light: #94a3b8;
@@ -603,7 +603,7 @@ tr:last-child td {
   width: 258px;
   padding: 24px 16px 16px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--tf-surface);
   border-right: 1px solid var(--tf-border);
 }
 
@@ -665,7 +665,7 @@ tr:last-child td {
   margin-bottom: 27px;
   border: 1px solid var(--tf-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--tf-surface);
 }
 
 .workspace-avatar {

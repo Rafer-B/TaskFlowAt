@@ -262,7 +262,7 @@ watch(
 .sidebar-help small { color: #a9bad3; font-size: 9px; }
 .sidebar-version { padding: 13px 5px 0; color: #91a4c2; font-size: 8px; font-weight: 700; letter-spacing: .09em; }
 .front-main { display: flex; width: 0; min-width: 0; min-height: 100vh; flex: 1 1 0%; flex-direction: column; background: var(--tf-bg); }
-.front-topbar { position: sticky; z-index: 10; top: 0; display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 30px; background: rgb(255 255 255 / 96%); border-bottom: 1px solid #e8edf5; backdrop-filter: blur(12px); }
+.front-topbar { position: sticky; z-index: 10; top: 0; display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 30px; background: var(--tf-surface); border-bottom: 1px solid var(--tf-border); backdrop-filter: blur(12px); }
 .topbar-title { display: grid; gap: 5px; }
 .topbar-title > span { color: #94a0b3; font-size: 8px; font-weight: 750; letter-spacing: .12em; }
 .topbar-title > strong { color: #263650; font-size: 17px; font-weight: 700; letter-spacing: -.025em; }
@@ -293,7 +293,7 @@ watch(
 .logout-account-button { width: 100%; padding: 8px 11px; margin-top: 3px; color: #a53636; background: #fff; border: 1px solid #f0d7d5; border-radius: 8px; font-size: 10px; font-weight: 700; text-align: left; cursor: pointer; transition: background .18s ease, color .18s ease; }
 .logout-account-button:hover { color: #8d2929; background: #fff4f3; }
 .front-content { width: 100%; min-width: 0; flex: 1; padding: 24px; box-sizing: border-box; }
-.front-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 18px 28px; color: #7b8aa2; background: #fff; border-top: 1px solid #e2e9f5; font-size: 12px; }
+.front-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 18px 28px; color: #7b8aa2; background: var(--tf-surface); border-top: 1px solid var(--tf-border); font-size: 12px; }
 .menu-toggle, .sidebar-backdrop { display: none; }
 
 @media (max-width: 760px) {

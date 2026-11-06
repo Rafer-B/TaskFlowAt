@@ -3,46 +3,19 @@ import { scrollToPanel } from '~/composables/usePanelScroll'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import type { AuthUser } from '~/composables/useAuth'
+import {
+  INTERFACE_PREFERENCES_KEY,
+  aplicarAparencia,
+  isThemeId,
+  themes,
+  type InterfacePreferences,
+  type ThemeId,
+} from '~/utils/interfacePreferences'
 
 // Preferências locais e operações da conta usam fluxos separados e mensagens comuns.
 definePageMeta({
   layout: 'admin',
 })
-
-type ThemeId = 'calm' | 'cool' | 'warm'
-
-interface InterfacePreferences {
-  theme: ThemeId
-  reducedMotion: boolean
-}
-
-const STORAGE_KEY = 'taskflow-interface-preferences'
-
-const themes: Array<{
-  id: ThemeId
-  name: string
-  description: string
-  background: string
-}> = [
-  {
-    id: 'calm',
-    name: 'Verde suave',
-    description: 'Um tom natural e discreto, confortável para o uso diário.',
-    background: '#f3f4f0',
-  },
-  {
-    id: 'cool',
-    name: 'Cinza azulado',
-    description: 'Uma tonalidade fria e neutra para a área de trabalho.',
-    background: '#f1f4f8',
-  },
-  {
-    id: 'warm',
-    name: 'Areia clara',
-    description: 'Um tom ligeiramente quente, mantendo o fundo luminoso.',
-    background: '#f6f3ed',
-  },
-]
 
 const auth = useAuth()
 const route = useRoute()
@@ -107,19 +80,7 @@ const iniciais = computed(() =>
 )
 
 function aplicarPreferencias(): void {
-  // Aplica o tema e a preferência de movimento reduzido à interface, sem chamar a API.
-  const tema = themes.find((option) => option.id === preferences.value.theme)
-  if (tema) {
-    document.documentElement.style.setProperty('--tf-bg', tema.background)
-  }
-
-  document.documentElement.dataset.reducedMotion = String(
-    preferences.value.reducedMotion,
-  )
-}
-
-function isThemeId(value: unknown): value is ThemeId {
-  return themes.some((theme) => theme.id === value)
+  aplicarAparencia(preferences.value)
 }
 
 function guardarPreferencias(): void {
@@ -128,7 +89,10 @@ function guardarPreferencias(): void {
   aplicarPreferencias()
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences.value))
+    localStorage.setItem(
+      INTERFACE_PREFERENCES_KEY,
+      JSON.stringify(preferences.value),
+    )
     sucesso.value = 'Preferências guardadas neste navegador.'
   } catch (error) {
     console.error('Não foi possível guardar as preferências:', error)
@@ -139,7 +103,7 @@ function guardarPreferencias(): void {
 function carregarPreferencias(): void {
   try {
     // Valida cada campo persistido para ignorar valores antigos ou dados malformados.
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(INTERFACE_PREFERENCES_KEY)
     if (stored) {
       const parsed: unknown = JSON.parse(stored)
       if (typeof parsed === 'object' && parsed !== null) {
@@ -575,7 +539,7 @@ onMounted(() => {
         <fieldset class="theme-fieldset">
           <legend>Fundo do sistema</legend>
           <p class="settings-help">
-            Escolha um tom suave para o fundo das páginas.
+            Escolha um fundo suave e superfícies menos brancas para reduzir o brilho.
           </p>
 
           <div class="theme-options">
@@ -594,7 +558,10 @@ onMounted(() => {
               />
               <span
                 class="theme-preview"
-                :style="{ '--preview-color': theme.background }"
+                :style="{
+                  '--preview-color': theme.background,
+                  '--preview-surface': theme.surface,
+                }"
                 aria-hidden="true"
               >
                 <i></i><i></i><i></i>
@@ -1017,14 +984,13 @@ onMounted(() => {
 .theme-preview i {
   width: 24%;
   height: 100%;
-  background: #fff;
+  background: var(--preview-surface);
   border: 1px solid rgb(100 116 139 / 12%);
   border-radius: 4px;
 }
 
 .theme-preview i:first-child {
   width: 18%;
-  background: #e6e9f2;
 }
 
 .theme-preview i:last-child {

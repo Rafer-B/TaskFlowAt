@@ -587,8 +587,8 @@ async function carregarFotografia(event: Event): Promise<void> {
   gap: 20px;
   min-height: 82px;
   padding: 14px 28px;
-  background: #fff;
-  border-bottom: 1px solid #e2e9f5;
+  background: var(--tf-surface);
+  border-bottom: 1px solid var(--tf-border);
   z-index: 40;
 }
 
