@@ -14,23 +14,66 @@ from fastapi import (
     status,
 )
 from pwdlib import PasswordHash
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import exigir_administrador, get_db, obter_utilizador_atual
+from app.models.calendar_event import CalendarEvent
+from app.models.project_member import ProjectMember
+from app.models.task import Task
+from app.models.task_assignee import TaskAssignee
+from app.models.task_work_log import TaskWorkLog
+from app.models.team import Team
+from app.models.team_member import TeamMember
 from app.models.user import User
 from app.schemas.user import (
     UserCreate,
     UserPasswordUpdate,
     UserPublic,
     UserRoleUpdate,
+    UserStatusUpdate,
     UserUpdate,
 )
 
 
 router = APIRouter(prefix="/users", tags=["Utilizadores"])
 logger = logging.getLogger(__name__)
+
+
+def utilizador_tem_dados_associados(db: Session, user_id: int) -> bool:
+    """Impede remover a conta enquanto existir histórico ou uma associação."""
+    return (
+        db.query(Task.id)
+        .filter(or_(Task.created_by == user_id, Task.assigned_to == user_id))
+        .first()
+        is not None
+        or db.query(TaskWorkLog.id)
+        .filter(TaskWorkLog.author_id == user_id)
+        .first()
+        is not None
+        or db.query(CalendarEvent.id)
+        .filter(CalendarEvent.created_by == user_id)
+        .first()
+        is not None
+        or db.query(Team.id)
+        .filter(Team.created_by == user_id)
+        .first()
+        is not None
+        or db.query(ProjectMember.user_id)
+        .filter(ProjectMember.user_id == user_id)
+        .first()
+        is not None
+        or db.query(TeamMember.user_id)
+        .filter(TeamMember.user_id == user_id)
+        .first()
+        is not None
+        or db.query(TaskAssignee.user_id)
+        .filter(TaskAssignee.user_id == user_id)
+        .first()
+        is not None
+    )
+
 
 password_hash = PasswordHash.recommended()
 
@@ -273,6 +316,179 @@ def atualizar_perfil_utilizador(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.patch("/{user_id}/status", response_model=UserPublic)
+def atualizar_estado_utilizador(
+    user_id: int,
+    dados: UserStatusUpdate,
+    current_user: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilizador não encontrado.",
+        )
+
+    if user.id == current_user.id and not dados.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não pode desativar a sua própria conta.",
+        )
+
+    if user.is_active and not dados.is_active and user.role == "admin":
+        administradores_ativos = (
+            db.query(User)
+            .filter(
+                User.role == "admin",
+                User.is_active.is_(True),
+            )
+            .order_by(User.id)
+            .with_for_update()
+            .all()
+        )
+        if len(administradores_ativos) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A plataforma precisa de manter pelo menos um administrador ativo.",
+            )
+
+    user.is_active = dados.is_active
+    user.updated_at = func.now()
+    try:
+        db.commit()
+        db.refresh(user)
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Não foi possível atualizar o estado do utilizador.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível atualizar o estado do utilizador.",
+        )
+
+    return user
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def eliminar_utilizador(
+    user_id: int,
+    current_user: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+) -> None:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilizador não encontrado.",
+        )
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não pode eliminar a sua própria conta.",
+        )
+
+    if utilizador_tem_dados_associados(db, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta conta está associada a dados da plataforma e não pode "
+                "ser eliminada. Desative-a para impedir o acesso."
+            ),
+        )
+
+    if user.is_active and user.role == "admin":
+        administradores_ativos = (
+            db.query(User)
+            .filter(
+                User.role == "admin",
+                User.is_active.is_(True),
+            )
+            .order_by(User.id)
+            .with_for_update()
+            .all()
+        )
+        if len(administradores_ativos) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A plataforma precisa de manter pelo menos um administrador ativo.",
+            )
+
+    ficheiro_temporario: Path | None = None
+    avatar_url = user.avatar_url
+    if avatar_url and avatar_url.startswith("/uploads/avatars/"):
+        nome_ficheiro = Path(avatar_url).name
+        if nome_ficheiro and nome_ficheiro == avatar_url.rsplit("/", 1)[-1]:
+            caminho_avatar = (AVATAR_DIR / nome_ficheiro).resolve()
+            diretorio_avatars = AVATAR_DIR.resolve()
+            if caminho_avatar.parent == diretorio_avatars and caminho_avatar.is_file():
+                ficheiro_temporario = caminho_avatar.with_name(
+                    f".{caminho_avatar.name}.{uuid4().hex}.deleting",
+                )
+                try:
+                    caminho_avatar.replace(ficheiro_temporario)
+                except OSError:
+                    logger.exception(
+                        "Não foi possível preparar a remoção da fotografia do utilizador.",
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Não foi possível preparar a eliminação da conta.",
+                    )
+
+    try:
+        db.delete(user)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if ficheiro_temporario is not None and ficheiro_temporario.exists():
+            try:
+                ficheiro_temporario.replace(AVATAR_DIR / Path(avatar_url or "").name)
+            except OSError:
+                logger.exception(
+                    "Não foi possível restaurar a fotografia após a eliminação recusada.",
+                )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta conta está associada a dados da plataforma e não pode "
+                "ser eliminada. Desative-a para impedir o acesso."
+            ),
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        if ficheiro_temporario is not None and ficheiro_temporario.exists():
+            try:
+                ficheiro_temporario.replace(AVATAR_DIR / Path(avatar_url or "").name)
+            except OSError:
+                logger.exception(
+                    "Não foi possível restaurar a fotografia após falha na eliminação.",
+                )
+        logger.exception("Não foi possível eliminar o utilizador.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível eliminar o utilizador.",
+        )
+
+    if ficheiro_temporario is not None:
+        try:
+            ficheiro_temporario.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "A conta foi eliminada, mas a fotografia não pôde ser apagada.",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "A conta foi eliminada, mas não foi possível apagar a "
+                    "fotografia armazenada."
+                ),
+            )
 
 
 @router.delete("/me/avatar", response_model=UserPublic)

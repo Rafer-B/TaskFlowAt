@@ -24,6 +24,12 @@ class UserRoleUpdate(BaseModel):
     role: UserRole
 
 
+class UserStatusUpdate(BaseModel):
+    """Estado de acesso definido por um administrador."""
+
+    is_active: bool
+
+
 class UserUpdate(BaseModel):
     """Campos editáveis de perfil, com normalização do nome."""
 

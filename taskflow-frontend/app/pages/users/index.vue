@@ -51,6 +51,7 @@ const formularioRef = ref<HTMLElement | null>(null)
 
 const utilizadorAAtualizar = ref<number | null>(null)
 const utilizadorAAtualizarPerfil = ref<number | null>(null)
+const utilizadorAgerir = ref<number | null>(null)
 const fotografiasComErro = ref<number[]>([])
 
 const formulario = reactive<UtilizadorCreate>({
@@ -322,6 +323,73 @@ async function alterarPerfil(
   }
 }
 
+async function alterarEstado(utilizador: Utilizador): Promise<void> {
+  limparMensagens()
+  if (utilizador.id === auth.user.value?.id) {
+    erro.value = 'Não pode alterar o estado da sua própria conta.'
+    return
+  }
+
+  const novoEstado = !utilizador.is_active
+  const acao = novoEstado ? 'ativar' : 'desativar'
+  if (
+    !window.confirm(
+      `Tem a certeza de que pretende ${acao} a conta de ${utilizador.name}?`,
+    )
+  ) {
+    return
+  }
+
+  utilizadorAgerir.value = utilizador.id
+  try {
+    const atualizado = await api<Utilizador>(
+      `/users/${utilizador.id}/status`,
+      {
+        method: 'PATCH',
+        body: { is_active: novoEstado },
+      },
+    )
+    Object.assign(utilizador, atualizado)
+    sucesso.value = novoEstado
+      ? `A conta de ${utilizador.name} foi ativada.`
+      : `A conta de ${utilizador.name} foi desativada e já não pode iniciar sessão.`
+  } catch (error) {
+    console.error('Erro ao alterar o estado do utilizador:', error)
+    erro.value = obterMensagemErro(error)
+  } finally {
+    utilizadorAgerir.value = null
+  }
+}
+
+async function eliminarUtilizador(utilizador: Utilizador): Promise<void> {
+  limparMensagens()
+  if (utilizador.id === auth.user.value?.id) {
+    erro.value = 'Não pode eliminar a sua própria conta.'
+    return
+  }
+
+  const confirmado = window.confirm(
+    `Eliminar permanentemente a conta de ${utilizador.name}?\n\n` +
+      'A conta só pode ser eliminada se não tiver dados associados. ' +
+      'Se tiver histórico, desative-a em alternativa.',
+  )
+  if (!confirmado) return
+
+  utilizadorAgerir.value = utilizador.id
+  try {
+    await api<void>(`/users/${utilizador.id}`, { method: 'DELETE' })
+    utilizadores.value = utilizadores.value.filter(
+      (registo) => registo.id !== utilizador.id,
+    )
+    sucesso.value = `A conta de ${utilizador.name} foi eliminada.`
+  } catch (error) {
+    console.error('Erro ao eliminar utilizador:', error)
+    erro.value = obterMensagemErro(error)
+  } finally {
+    utilizadorAgerir.value = null
+  }
+}
+
 onMounted(carregarUtilizadores)
 </script>
 
@@ -432,6 +500,7 @@ onMounted(carregarUtilizadores)
               <th>PERFIL / ACESSO</th>
               <th>DATA DE REGISTO</th>
               <th>ESTADO</th>
+              <th>AÇÕES</th>
             </tr>
           </thead>
 
@@ -523,6 +592,48 @@ onMounted(carregarUtilizadores)
                   <span></span>
                   {{ utilizador.is_active ? 'Ativo' : 'Inativo' }}
                 </span>
+              </td>
+
+              <td>
+                <div class="user-actions">
+                  <button
+                    class="account-action-button"
+                    :class="utilizador.is_active ? 'deactivate-button' : 'activate-button'"
+                    :disabled="
+                      utilizador.id === auth.user.value?.id ||
+                      utilizadorAgerir === utilizador.id
+                    "
+                    :title="
+                      utilizador.id === auth.user.value?.id
+                        ? 'Não pode alterar a sua própria conta'
+                        : undefined
+                    "
+                    @click="alterarEstado(utilizador)"
+                  >
+                    {{
+                      utilizadorAgerir === utilizador.id
+                        ? 'A processar...'
+                        : utilizador.is_active
+                          ? 'Desativar'
+                          : 'Ativar'
+                    }}
+                  </button>
+                  <button
+                    class="account-action-button delete-button"
+                    :disabled="
+                      utilizador.id === auth.user.value?.id ||
+                      utilizadorAgerir === utilizador.id
+                    "
+                    :title="
+                      utilizador.id === auth.user.value?.id
+                        ? 'Não pode eliminar a sua própria conta'
+                        : 'Eliminar conta'
+                    "
+                    @click="eliminarUtilizador(utilizador)"
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1010,6 +1121,44 @@ tbody tr:hover {
 
 .status-inactive > span {
   background: #d89a36;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.account-action-button {
+  min-height: 31px;
+  padding: 0 9px;
+  color: #53657f;
+  background: #fff;
+  border: 1px solid #dce4ef;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-action-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.deactivate-button {
+  color: #9a5c14;
+  border-color: #f0d7b1;
+}
+
+.activate-button {
+  color: #16704c;
+  border-color: #c5e6d4;
+}
+
+.delete-button {
+  color: #b42318;
+  border-color: #f2cecb;
 }
 
 .panel-footer {
