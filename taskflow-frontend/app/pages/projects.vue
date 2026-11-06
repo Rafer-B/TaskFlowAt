@@ -1,6 +1,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { scrollToPanel } from '~/composables/usePanelScroll'
 
 // Centraliza catálogo, estado e associações; as capacidades do papel controlam ações disponíveis.
 definePageMeta({ layout: 'admin' })
@@ -95,6 +96,7 @@ watch(
 
 // Formulário de projeto
 const mostrarFormulario = ref(false)
+const formularioRef = ref<HTMLElement | null>(null)
 const modoEdicao = ref(false)
 const projetoEmEdicao = ref<number | null>(null)
 const equipasDisponiveis = ref<EquipaDisponivelAPI[]>([])
@@ -124,6 +126,7 @@ const sucesso = ref('')
 // --------------------------------------------------
 
 const mostrarPainelMembros = ref(false)
+const painelMembrosRef = ref<HTMLElement | null>(null)
 const membroPendenteRemocao = ref<number | null>(null)
 const projetoMembros = ref<Projeto | null>(null)
 const membros = ref<MembroAPI[]>([])
@@ -307,6 +310,7 @@ async function abrirCriacao() {
   }
 
   mostrarFormulario.value = true
+  await scrollToPanel(formularioRef)
   await carregarOpcoesCriacao()
 }
 
@@ -339,7 +343,7 @@ function removerTarefaInicial(index: number) {
   tarefasIniciais.value.splice(index, 1)
 }
 
-function abrirEdicao(projeto: Projeto) {
+async function abrirEdicao(projeto: Projeto) {
   erro.value = ''
   sucesso.value = ''
   modoEdicao.value = true
@@ -352,6 +356,7 @@ function abrirEdicao(projeto: Projeto) {
   }
 
   mostrarFormulario.value = true
+  await scrollToPanel(formularioRef)
 }
 
 function limparFormulario() {
@@ -603,6 +608,7 @@ async function eliminarProjeto(projeto: Projeto) {
 async function abrirMembros(projeto: Projeto) {
   projetoMembros.value = projeto
   mostrarPainelMembros.value = true
+  await scrollToPanel(painelMembrosRef)
   membroPendenteRemocao.value = null
 
   membros.value = []
@@ -983,7 +989,7 @@ onMounted(carregarProjetos)
 
     <!-- FORMULÁRIO DE PROJETO -->
     <Transition name="form">
-      <section v-if="mostrarFormulario" class="form-card">
+      <section v-if="mostrarFormulario" ref="formularioRef" class="form-card">
         <div class="form-heading">
           <div>
             <span class="eyebrow">
@@ -1411,6 +1417,7 @@ onMounted(carregarProjetos)
 
     <section
       v-if="mostrarPainelMembros && projetoMembros"
+      ref="painelMembrosRef"
       class="inline-members-panel"
     >
           <section
@@ -2001,6 +2008,11 @@ onMounted(carregarProjetos)
   border: 1px solid #e7ebf3;
   border-radius: 18px;
   box-shadow: 0 5px 18px rgb(23 37 84 / 3%);
+}
+
+.form-card,
+.inline-members-panel {
+  scroll-margin-top: 96px;
 }
 
 .form-heading,

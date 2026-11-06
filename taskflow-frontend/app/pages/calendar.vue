@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { scrollToPanel } from '~/composables/usePanelScroll'
+
 // Agrega prazos de tarefas e eventos numa grelha que suporta mês, semana e dia.
 definePageMeta({
   layout: 'admin',
@@ -89,6 +92,7 @@ const erro = ref('')
 const sucesso = ref('')
 const guardandoEvento = ref(false)
 const formularioEventoVisivel = ref(false)
+const formularioEventoRef = ref<HTMLElement | null>(null)
 const confirmarEliminacaoEvento = ref(false)
 const mostrarEventosAnteriores = ref(false)
 const modo = ref<ModoCalendario>('month')
@@ -372,7 +376,7 @@ function mudarModo(novoModo: ModoCalendario): void {
   }
 }
 
-function abrirNovoEvento(): void {
+async function abrirNovoEvento(): Promise<void> {
   formulario.value = novoFormularioEvento()
   const horaInicio = formulario.value.startAt.slice(11)
   formulario.value.startAt = `${diaSelecionado.value}T${horaInicio}`
@@ -385,9 +389,10 @@ function abrirNovoEvento(): void {
   erro.value = ''
   formularioEventoVisivel.value = true
   confirmarEliminacaoEvento.value = false
+  await scrollToPanel(formularioEventoRef)
 }
 
-function editarEvento(item: ItemCalendario): void {
+async function editarEvento(item: ItemCalendario): Promise<void> {
   const evento = eventos.value.find(candidato => candidato.id === item.eventoId)
   if (!evento) return
 
@@ -403,6 +408,7 @@ function editarEvento(item: ItemCalendario): void {
   erro.value = ''
   formularioEventoVisivel.value = true
   confirmarEliminacaoEvento.value = false
+  await scrollToPanel(formularioEventoRef)
 }
 
 function podeGerirEvento(item: ItemCalendario): boolean {
@@ -719,7 +725,7 @@ onMounted(carregarCalendario)
     </section>
 
     <!-- O mesmo formulário suporta criação e edição; a capacidade é verificada no script. -->
-    <section v-if="formularioEventoVisivel" class="event-inline-panel">
+    <section v-if="formularioEventoVisivel" ref="formularioEventoRef" class="event-inline-panel">
         <header class="form-panel-heading">
           <div>
             <span class="form-panel-eyebrow">CALENDÁRIO</span>
@@ -897,7 +903,7 @@ onMounted(carregarCalendario)
 .upcoming-empty { color: #73819d !important; }
 .all-events-button { min-height: 35px; padding: 0 13px; border-radius: 20px; font-size: 9px; }
 .calendar-loading { display: grid; min-height: 280px; place-items: center; color: #73819d; background: #fff; border: 1px solid #e0e7f4; border-radius: 12px; font-size: 12px; }
-.event-inline-panel { width: min(760px, 100%); padding: 18px; background: #fff; border: 1px solid #e4e9f3; border-radius: 12px; box-shadow: 0 3px 12px rgb(15 23 42 / 5%); }
+.event-inline-panel { width: min(760px, 100%); padding: 18px; background: #fff; border: 1px solid #e4e9f3; border-radius: 12px; box-shadow: 0 3px 12px rgb(15 23 42 / 5%); scroll-margin-top: 96px; }
 .inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 11px; }
 .form-panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; border-bottom: 1px solid #edf0f6; }
 .form-panel-eyebrow { color: #7987a2; font-size: 8px; font-weight: 800; letter-spacing: .13em; }

@@ -1,8 +1,9 @@
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { scrollToPanel } from '~/composables/usePanelScroll'
 
-// Gere tarefas em Kanban, sincronizando filtros, projetos, papéis e operações com a API.
+// Gere tarefas, sincronizando filtros, projetos, papéis e operações com a API.
 definePageMeta({
   layout: 'admin',
 })
@@ -180,6 +181,7 @@ const mostrarDetalhes = ref(false)
 const tarefaSelecionada = ref<Tarefa | null>(null)
 
 const formularioRef = ref<HTMLElement | null>(null)
+const detalhesRef = ref<HTMLElement | null>(null)
 
 const erro = ref('')
 const erroMembros = ref('')
@@ -189,8 +191,6 @@ const aGuardar = ref(false)
 const tarefaEmEliminacao = ref<number | null>(null)
 const tarefaPendenteEliminacao = ref<number | null>(null)
 const carregandoMembros = ref(false)
-const tarefaEmArrasto = ref<number | null>(null)
-const colunaEmDestaque = ref<EstadoTarefa | null>(null)
 const responsavelSeletorRef = ref<HTMLElement | null>(null)
 const responsavelAberto = ref(false)
 const pesquisaResponsavel = ref('')
@@ -390,12 +390,7 @@ function limparFormulario() {
 }
 
 async function deslocarAteFormulario() {
-  await nextTick()
-
-  formularioRef.value?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'start',
-  })
+  await scrollToPanel(formularioRef)
 }
 
 async function abrirFormularioCriar(estadoInicial: EstadoTarefa = 'Por fazer') {
@@ -612,16 +607,6 @@ function ordenarTabela(chave: ChaveOrdenacaoTabela) {
   paginaTabela.value = 1
 }
 
-// Mantém uma coluna Kanban por estado; cada coluna respeita os filtros ativos.
-const colunasKanban = computed(() =>
-  estados.map((estado) => ({
-    estado,
-    tarefas: tarefasFiltradas.value.filter(
-      (tarefa) => tarefa.status === estado,
-    ),
-  })),
-)
-
 // --------------------------------------------------
 // RESUMO
 // --------------------------------------------------
@@ -744,9 +729,10 @@ async function carregarDados() {
 // CONSULTAR DETALHES
 // --------------------------------------------------
 
-function consultarTarefa(tarefa: Tarefa) {
+async function consultarTarefa(tarefa: Tarefa) {
   tarefaSelecionada.value = tarefa
   mostrarDetalhes.value = true
+  await scrollToPanel(detalhesRef)
 }
 
 watch(
@@ -1056,64 +1042,6 @@ function obterMensagemErro(error: unknown): string {
   return 'Não foi possível atualizar o estado da tarefa.'
 }
 
-function iniciarArrasto(evento: DragEvent, tarefa: Tarefa): void {
-  // Bloqueia o arrasto de projetos arquivados ou de utilizadores sem permissão de edição.
-  if (
-    tarefa.projectStatus === 'archived' ||
-    !podeEditarTarefasDoProjeto(tarefa.projectId)
-  ) {
-    evento.preventDefault()
-    return
-  }
-
-  tarefaEmArrasto.value = tarefa.id
-  evento.dataTransfer?.setData('text/plain', String(tarefa.id))
-  if (evento.dataTransfer) evento.dataTransfer.effectAllowed = 'move'
-}
-
-function permitirLargada(evento: DragEvent, estado: EstadoTarefa): void {
-  evento.preventDefault()
-  colunaEmDestaque.value = estado
-  if (evento.dataTransfer) evento.dataTransfer.dropEffect = 'move'
-}
-
-function terminarLargada(): void {
-  colunaEmDestaque.value = null
-}
-
-function sairColuna(evento: DragEvent): void {
-  const coluna = evento.currentTarget
-  const proximoAlvo = evento.relatedTarget
-
-  if (
-    coluna instanceof HTMLElement &&
-    proximoAlvo instanceof Node &&
-    coluna.contains(proximoAlvo)
-  ) {
-    return
-  }
-
-  terminarLargada()
-}
-
-async function largarTarefa(
-  evento: DragEvent,
-  estado: EstadoTarefa,
-): Promise<void> {
-  evento.preventDefault()
-  const tarefaId = Number(
-    evento.dataTransfer?.getData('text/plain') ||
-      tarefaEmArrasto.value ||
-      '',
-  )
-  const tarefa = tarefas.value.find((item) => item.id === tarefaId)
-
-  terminarLargada()
-  tarefaEmArrasto.value = null
-
-  if (tarefa) await alterarEstado(tarefa, estado)
-}
-
 // --------------------------------------------------
 // ELIMINAR TAREFA
 // --------------------------------------------------
@@ -1274,7 +1202,7 @@ onBeforeUnmount(() => {
       <NuxtLink to="/tasks" class="board-tab">
         <span aria-hidden="true">▦</span> Tarefas
       </NuxtLink>
-      <span class="board-total">{{ resumo.total }} tarefas no quadro</span>
+      <span class="board-total">{{ resumo.total }} tarefas</span>
     </nav>
 
     <!-- FORMULÁRIO -->
@@ -1649,106 +1577,6 @@ onBeforeUnmount(() => {
 
       </div>
 
-      <div class="tasks-dual-view">
-        <section class="kanban-panel" aria-labelledby="kanban-title">
-          <header class="dual-panel-heading">
-            <div>
-              <span class="section-eyebrow">VISTA VISUAL</span>
-              <h2 id="kanban-title">Quadro Kanban</h2>
-              <p>Arraste as tarefas entre colunas para atualizar o estado.</p>
-            </div>
-            <span class="dual-panel-count">{{ tarefasFiltradas.length }}</span>
-          </header>
-
-          <div class="kanban-scroll">
-        <div v-if="carregando" class="board-loading">
-          <span class="board-spinner" aria-hidden="true"></span>
-          A carregar tarefas...
-        </div>
-
-        <!-- Cada coluna aceita largadas; a função de estado valida novamente as permissões. -->
-        <div v-else class="kanban-board">
-          <section
-            v-for="(coluna, indice) in colunasKanban"
-            :key="coluna.estado"
-            class="kanban-column"
-            :class="[
-              `column-${indice}`,
-              { 'column-drop-active': colunaEmDestaque === coluna.estado },
-            ]"
-            @dragenter.prevent="permitirLargada($event, coluna.estado)"
-            @dragover="permitirLargada($event, coluna.estado)"
-            @dragleave="sairColuna"
-            @drop="largarTarefa($event, coluna.estado)"
-          >
-            <header class="column-heading">
-              <span>{{ coluna.estado }}</span>
-              <span class="column-count">{{ coluna.tarefas.length }}</span>
-              <button
-                v-if="podeCriarTarefa"
-                type="button"
-                :aria-label="`Criar tarefa em ${coluna.estado}`"
-                title="Criar tarefa nesta coluna"
-                @click="abrirFormularioCriar(coluna.estado)"
-              >
-                +
-              </button>
-            </header>
-
-            <div class="column-cards">
-              <article
-                v-for="tarefa in coluna.tarefas"
-                :key="tarefa.id"
-                class="kanban-card"
-                role="button"
-                tabindex="0"
-                :aria-label="`Abrir detalhes da tarefa ${tarefa.title}`"
-                :class="[
-                  classeEstado(tarefa.status),
-                  {
-                    'card-dragging': tarefaEmArrasto === tarefa.id,
-                    'card-archived': tarefa.projectStatus === 'archived',
-                  },
-                ]"
-                :draggable="
-                  tarefa.projectStatus !== 'archived' &&
-                  podeEditarTarefasDoProjeto(tarefa.projectId)
-                "
-                @click="consultarTarefa(tarefa)"
-                @keydown.enter.prevent="consultarTarefa(tarefa)"
-                @keydown.space.prevent="consultarTarefa(tarefa)"
-                @dragstart="iniciarArrasto($event, tarefa)"
-                @dragend="tarefaEmArrasto = null; terminarLargada()"
-              >
-                <div class="card-topline">
-                  <span class="category">{{ tarefa.category }}</span>
-                  <span class="card-id">#{{ tarefa.id }}</span>
-                </div>
-
-                <h3 class="card-title">
-                  {{ tarefa.title }}
-                </h3>
-
-                <div class="card-meta">
-                  <span
-                    class="priority"
-                    :class="classePrioridade(tarefa.priority)"
-                  >
-                    {{ tarefa.priority }}
-                  </span>
-                </div>
-              </article>
-
-              <div v-if="!coluna.tarefas.length" class="column-empty">
-                <span aria-hidden="true">＋</span>
-                <span>Arraste uma tarefa para aqui</span>
-              </div>
-            </div>
-          </section>
-          </div>
-          </div>
-        </section>
-
       <section class="task-table-section" aria-labelledby="task-table-title">
         <header class="task-table-heading">
           <div>
@@ -1873,13 +1701,13 @@ onBeforeUnmount(() => {
           </div>
         </footer>
       </section>
-      </div>
 
     </section>
 
     <!-- JANELA DE DETALHES -->
     <section
       v-if="mostrarDetalhes && tarefaSelecionada"
+      ref="detalhesRef"
       class="inline-details-panel"
       aria-labelledby="details-title"
     >
@@ -2226,7 +2054,7 @@ onBeforeUnmount(() => {
   border-radius: 17px;
   background: white;
   box-shadow: 0 5px 18px rgb(23 37 84 / 3%);
-  scroll-margin-top: 24px;
+  scroll-margin-top: 96px;
 }
 
 .form-heading {
@@ -2723,14 +2551,6 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 
-.tasks-dual-view {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
-  align-items: start;
-  gap: 20px;
-}
-
-.kanban-panel,
 .task-table-section {
   min-width: 0;
   border: 1px solid #e6eaf2;
@@ -2739,275 +2559,6 @@ onBeforeUnmount(() => {
     radial-gradient(ellipse at 2% 0%, rgb(238 242 255 / 70%), transparent 36%),
     #fff;
   box-shadow: 0 8px 24px rgb(23 37 84 / 4%);
-}
-
-.kanban-panel {
-  overflow: hidden;
-  padding: 20px;
-}
-
-.dual-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.dual-panel-heading .section-eyebrow {
-  margin-bottom: 5px;
-}
-
-.dual-panel-heading h2 {
-  margin: 0 0 5px;
-  color: #243452;
-  font-size: 20px;
-  font-weight: 750;
-  letter-spacing: -.035em;
-}
-
-.dual-panel-heading p {
-  margin: 0;
-  color: #8792a5;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.dual-panel-count {
-  display: grid;
-  min-width: 32px;
-  min-height: 32px;
-  place-items: center;
-  color: #4f46e5;
-  background: #eef2ff;
-  border: 1px solid #dfe4ff;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.kanban-scroll {
-  width: 100%;
-  overflow-x: auto;
-  padding: 1px 2px 12px;
-  scrollbar-color: #cbd5e1 transparent;
-  scrollbar-width: thin;
-}
-
-.kanban-board {
-  display: grid;
-  min-width: 760px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-items: start;
-  gap: 16px;
-}
-
-.kanban-column {
-  min-height: 310px;
-  overflow: hidden;
-  background: #f5f7fb;
-  border: 1px solid #edf0f5;
-  border-radius: 9px;
-  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
-}
-
-.column-drop-active {
-  background: #eef4ff;
-  border-color: #93b4f8;
-  box-shadow: 0 0 0 3px rgb(79 145 248 / 12%);
-}
-
-.column-heading {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  gap: 9px;
-  padding: 0 12px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.column-0 .column-heading { background: #4b96f7; }
-.column-1 .column-heading { background: #f49b12; }
-.column-2 .column-heading { background: #08bf7b; }
-.column-3 .column-heading { background: #ff6257; }
-
-.column-count {
-  display: grid;
-  min-width: 21px;
-  height: 21px;
-  padding: 0 5px;
-  place-items: center;
-  color: rgb(255 255 255 / 90%);
-  background: rgb(255 255 255 / 20%);
-  border-radius: 999px;
-  font-size: 10px;
-}
-
-.column-heading button {
-  display: grid;
-  width: 25px;
-  height: 25px;
-  margin-left: auto;
-  place-items: center;
-  color: #fff;
-  background: rgb(255 255 255 / 15%);
-  border: 1px solid rgb(255 255 255 / 35%);
-  border-radius: 50%;
-  font-size: 19px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.column-heading button:hover {
-  background: rgb(255 255 255 / 30%);
-}
-
-.column-cards {
-  display: flex;
-  min-height: 265px;
-  flex-direction: column;
-  gap: 12px;
-  padding: 13px;
-}
-
-.kanban-card {
-  box-sizing: border-box;
-  min-width: 0;
-  padding: 13px 14px;
-  background: #fff;
-  border: 1px solid #e8ebf1;
-  border-left: 3px solid #cbd5e1;
-  border-radius: 9px;
-  box-shadow: 0 2px 6px rgb(24 39 75 / 10%);
-  cursor: pointer;
-  transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease;
-}
-
-.kanban-card.por-fazer { border-left-color: #7b8ba3; }
-.kanban-card.em-curso { border-left-color: #4b83ef; }
-.kanban-card.concluida { border-left-color: #19a974; }
-.kanban-card.bloqueada { border-left-color: #ed6a60; }
-
-.kanban-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgb(24 39 75 / 13%);
-}
-
-.kanban-card:active {
-  cursor: grabbing;
-}
-
-.kanban-card:focus-visible {
-  outline: 3px solid #a5b4fc;
-  outline-offset: 2px;
-}
-
-.kanban-card.card-dragging {
-  opacity: .4;
-  transform: rotate(1deg);
-}
-
-.kanban-card.card-archived {
-  cursor: default;
-}
-
-.card-topline,
-.card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.card-topline .category {
-  max-width: calc(100% - 45px);
-  overflow: hidden;
-  margin: 0;
-  padding: 3px 7px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 9px;
-}
-
-.card-id {
-  color: #9aa5b5;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-
-.card-title {
-  margin: 11px 0 0;
-  color: #29364d;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.card-meta {
-  justify-content: flex-start;
-  margin-top: 11px;
-}
-
-.card-meta .priority {
-  padding: 5px 9px;
-  font-size: 10px;
-}
-
-.column-empty {
-  display: flex;
-  min-height: 82px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: #a0a9b8;
-  border: 1px dashed #dfe4ed;
-  border-radius: 7px;
-  font-size: 9px;
-  text-align: center;
-}
-
-.column-empty > span:first-child {
-  font-size: 18px;
-}
-
-.board-loading {
-  display: flex;
-  min-height: 260px;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: #75839a;
-  font-size: 12px;
-}
-
-.board-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #dbe3f0;
-  border-top-color: #4f46e5;
-  border-radius: 50%;
-  animation: board-spin .8s linear infinite;
-}
-
-@keyframes board-spin {
-  to { transform: rotate(360deg); }
-}
-
-.category {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 8px;
-  padding: 4px 8px;
-  border: 1px solid #e9ebf5;
-  border-radius: 999px;
-  background: #f7f8fc;
-  color: #67748b;
-  font-size: 10px;
-  font-weight: 600;
 }
 
 .priority {
@@ -3452,6 +3003,7 @@ onBeforeUnmount(() => {
 .inline-details-panel {
   display: block;
   margin-top: 20px;
+  scroll-margin-top: 96px;
 }
 
 .details-panel-card {
@@ -3569,10 +3121,6 @@ onBeforeUnmount(() => {
     flex: 1 1 135px;
   }
 
-  .tasks-dual-view {
-    grid-template-columns: 1fr;
-  }
-
   .task-table-scroll {
     max-height: none;
   }
@@ -3616,13 +3164,11 @@ onBeforeUnmount(() => {
   }
 
   .task-table-heading,
-  .dual-panel-heading,
   .table-pagination {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .kanban-panel,
   .task-table-section {
     padding: 16px;
     border-radius: 13px;
@@ -3685,17 +3231,11 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kanban-card,
-  .column-drop-active,
   .primary-button,
   .secondary-button,
   .new-task-button,
   .assignee-trigger {
     transition: none;
-  }
-
-  .board-spinner {
-    animation-duration: 2s;
   }
 }
 </style>

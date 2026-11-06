@@ -1,5 +1,8 @@
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import { scrollToPanel } from '~/composables/usePanelScroll'
+
 // Administração de contas: pesquisa, criação e edição do perfil selecionado.
 definePageMeta({
   layout: 'admin',
@@ -44,6 +47,7 @@ watch(
   { immediate: true },
 )
 const mostrarFormulario = ref(false)
+const formularioRef = ref<HTMLElement | null>(null)
 
 const utilizadorAAtualizar = ref<number | null>(null)
 const utilizadorAAtualizarPerfil = ref<number | null>(null)
@@ -227,9 +231,10 @@ async function carregarFotografia(
   }
 }
 
-function abrirFormulario() {
+async function abrirFormulario(): Promise<void> {
   limparMensagens()
   mostrarFormulario.value = true
+  await scrollToPanel(formularioRef)
 }
 
 function fecharFormulario() {
@@ -540,7 +545,7 @@ onMounted(carregarUtilizadores)
       </div>
     </section>
 
-    <section v-if="mostrarFormulario" class="user-form-panel" aria-labelledby="new-user-title">
+    <section v-if="mostrarFormulario" ref="formularioRef" class="user-form-panel" aria-labelledby="new-user-title">
         <div class="form-panel-heading">
           <div>
             <span class="eyebrow">GESTÃO DE ACESSOS</span>
@@ -1116,6 +1121,7 @@ tbody tr:hover {
   border: 1px solid #e5ebf4;
   border-radius: 13px;
   box-shadow: 0 3px 12px rgb(30 55 90 / 3%);
+  scroll-margin-top: 96px;
 }
 
 .form-panel-heading {

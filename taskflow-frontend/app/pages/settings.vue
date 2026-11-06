@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { scrollToPanel } from '~/composables/usePanelScroll'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import type { AuthUser } from '~/composables/useAuth'
@@ -58,6 +59,14 @@ const perfilAAtualizar = ref(false)
 const mostrarEdicaoPerfil = ref(false)
 const palavraPasseAAtualizar = ref(false)
 const mostrarFormularioPalavraPasse = ref(false)
+const formularioPalavraPasseRef = ref<HTMLElement | null>(null)
+
+async function alternarFormularioPalavraPasse(): Promise<void> {
+  mostrarFormularioPalavraPasse.value = !mostrarFormularioPalavraPasse.value
+  if (mostrarFormularioPalavraPasse.value) {
+    await scrollToPanel(formularioPalavraPasseRef)
+  }
+}
 const erro = ref('')
 const sucesso = ref('')
 const confirmarRemocaoFotografia = ref(false)
@@ -495,7 +504,7 @@ onMounted(() => {
           class="btn btn-outline"
           :aria-expanded="mostrarFormularioPalavraPasse"
           aria-controls="password-form"
-          @click="mostrarFormularioPalavraPasse = !mostrarFormularioPalavraPasse"
+          @click="alternarFormularioPalavraPasse"
         >
           {{ mostrarFormularioPalavraPasse ? 'Cancelar' : 'Alterar palavra-passe' }}
         </button>
@@ -503,6 +512,7 @@ onMounted(() => {
 
       <form
         v-if="mostrarFormularioPalavraPasse"
+        ref="formularioPalavraPasseRef"
         id="password-form"
         class="content-card password-card"
         @submit.prevent="atualizarPalavraPasse"
@@ -898,6 +908,7 @@ onMounted(() => {
   align-items: start;
   gap: 16px;
   padding: 24px;
+  scroll-margin-top: 96px;
 }
 
 .password-section-heading {

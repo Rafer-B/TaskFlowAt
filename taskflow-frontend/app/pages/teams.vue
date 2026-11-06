@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { scrollToPanel } from '~/composables/usePanelScroll'
+
 definePageMeta({ layout: 'admin' })
 
 // Página de equipas: associa pessoas e projetos respeitando capacidades devolvidas pela API.
@@ -49,6 +52,8 @@ const sucesso = ref('')
 const pesquisa = ref('')
 const formularioVisivel = ref(false)
 const detalheVisivel = ref(false)
+const formularioRef = ref<HTMLElement | null>(null)
+const detalheRef = ref<HTMLElement | null>(null)
 const confirmarEliminacaoEquipa = ref(false)
 const membroPendenteRemocao = ref<number | null>(null)
 const equipaSelecionada = ref<EquipaAPI | null>(null)
@@ -113,10 +118,11 @@ async function carregarDados(): Promise<void> {
   }
 }
 
-function abrirCriacao(): void {
+async function abrirCriacao(): Promise<void> {
   formulario.value = { name: '', description: '' }
   erro.value = ''
   formularioVisivel.value = true
+  await scrollToPanel(formularioRef)
 }
 
 async function guardarEquipa(): Promise<void> {
@@ -162,6 +168,7 @@ async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
   detalheVisivel.value = true
   confirmarEliminacaoEquipa.value = false
   membroPendenteRemocao.value = null
+  await scrollToPanel(detalheRef)
   try {
     const [equipaAtualizada, membrosAPI] = await Promise.all([
       api<EquipaAPI>(`/teams/${equipa.id}`),
@@ -435,7 +442,7 @@ onMounted(carregarDados)
       </article>
     </div>
 
-    <section v-if="formularioVisivel" class="team-inline-panel create-panel" aria-labelledby="create-team-title">
+    <section v-if="formularioVisivel" ref="formularioRef" class="team-inline-panel create-panel" aria-labelledby="create-team-title">
         <header class="panel-heading">
           <div><span class="eyebrow">NOVA EQUIPA</span><h2 id="create-team-title">Criar equipa</h2></div>
           <button type="button" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">×</button>
@@ -451,7 +458,7 @@ onMounted(carregarDados)
         </form>
     </section>
 
-    <section v-if="detalheVisivel && equipaSelecionada" class="team-inline-panel detail-panel" aria-labelledby="team-detail-title">
+    <section v-if="detalheVisivel && equipaSelecionada" ref="detalheRef" class="team-inline-panel detail-panel" aria-labelledby="team-detail-title">
         <header class="panel-heading">
           <div>
             <span class="eyebrow">EQUIPA · {{ membros.length }} MEMBRO(S)</span>
@@ -614,7 +621,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .empty-state h2 { margin: 4px 0 0; color: #34445f; font-size: 15px; }
 .empty-state p { margin: 0 0 5px; }
 .empty-icon { color: #6471db; font-size: 27px; }
-.team-inline-panel { width: min(760px, 100%); max-height: none; overflow: visible; padding: 22px; background: #fff; border: 1px solid #e8ecf3; border-radius: 12px; box-shadow: 0 3px 12px rgb(17 28 48 / 5%); }
+.team-inline-panel { width: min(760px, 100%); max-height: none; overflow: visible; padding: 22px; background: #fff; border: 1px solid #e8ecf3; border-radius: 12px; box-shadow: 0 3px 12px rgb(17 28 48 / 5%); scroll-margin-top: 96px; }
 .create-panel { width: min(460px, 100%); }
 .detail-panel { width: 100%; }
 .inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 10px; }
