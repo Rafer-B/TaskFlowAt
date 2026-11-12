@@ -24,17 +24,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import exigir_administrador, get_db, obter_utilizador_atual
-<<<<<<< Updated upstream
 from app.models.calendar_event import CalendarEvent
+from app.models.password_reset_token import PasswordResetToken
 from app.models.project_member import ProjectMember
 from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
 from app.models.task_work_log import TaskWorkLog
 from app.models.team import Team
 from app.models.team_member import TeamMember
-=======
-from app.models.password_reset_token import PasswordResetToken
->>>>>>> Stashed changes
 from app.models.user import User
 from app.settings import settings
 from app.schemas.user import (

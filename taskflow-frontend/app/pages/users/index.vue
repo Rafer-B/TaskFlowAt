@@ -50,14 +50,9 @@ watch(
 const mostrarFormulario = ref(false)
 const formularioRef = ref<HTMLElement | null>(null)
 
-<<<<<<< Updated upstream
-const utilizadorAAtualizar = ref<number | null>(null)
-const utilizadorAAtualizarPerfil = ref<number | null>(null)
-const utilizadorAgerir = ref<number | null>(null)
-const fotografiasComErro = ref<number[]>([])
-=======
 const utilizadorAAtualizar = ref<string | null>(null)
 const utilizadorAAtualizarPerfil = ref<string | null>(null)
+const utilizadorAgerir = ref<string | null>(null)
 const fotografiasComErro = ref<string[]>([])
 const tokenRecuperacao = ref<{
   userName: string
@@ -65,7 +60,6 @@ const tokenRecuperacao = ref<{
   token: string
   expiresAt: string
 } | null>(null)
->>>>>>> Stashed changes
 
 const formulario = reactive<UtilizadorCreate>({
   name: '',
@@ -337,7 +331,6 @@ async function alterarPerfil(
   }
 }
 
-<<<<<<< Updated upstream
 async function alterarEstado(utilizador: Utilizador): Promise<void> {
   limparMensagens()
   if (utilizador.id === auth.user.value?.id) {
@@ -402,7 +395,9 @@ async function eliminarUtilizador(utilizador: Utilizador): Promise<void> {
     erro.value = obterMensagemErro(error)
   } finally {
     utilizadorAgerir.value = null
-=======
+  }
+}
+
 async function emitirTokenRecuperacao(utilizador: Utilizador): Promise<void> {
   erro.value = ''
   sucesso.value = ''
@@ -433,7 +428,6 @@ async function copiarTokenRecuperacao(): Promise<void> {
   } catch (error) {
     console.error('Não foi possível copiar o token de recuperação:', error)
     erro.value = 'Não foi possível copiar automaticamente. Selecione e copie o token apresentado.'
->>>>>>> Stashed changes
   }
 }
 
@@ -681,8 +675,6 @@ onMounted(carregarUtilizadores)
                   {{ utilizador.is_active ? 'Ativo' : 'Inativo' }}
                 </span>
               </td>
-<<<<<<< Updated upstream
-
               <td>
                 <div class="user-actions">
                   <button
@@ -722,20 +714,17 @@ onMounted(carregarUtilizadores)
                   >
                     Eliminar
                   </button>
+                  <button
+                    class="secondary-button recovery-action action-tooltip"
+                    aria-label="Repor palavra-passe"
+                    type="button"
+                    :disabled="!utilizador.is_active"
+                    @click="emitirTokenRecuperacao(utilizador)"
+                  >
+                    <ActionIcon name="undo" />
+                    Repor palavra-passe
+                  </button>
                 </div>
-=======
-              <td>
-                <button
-                  class="secondary-button recovery-action action-tooltip"
-                  aria-label="Repor palavra-passe"
-                  type="button"
-                  :disabled="!utilizador.is_active"
-                  @click="emitirTokenRecuperacao(utilizador)"
-                >
-                  <ActionIcon name="undo" />
-                  Repor palavra-passe
-                </button>
->>>>>>> Stashed changes
               </td>
             </tr>
           </tbody>
