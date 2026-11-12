@@ -547,11 +547,11 @@ onMounted(carregarCalendario)
       <div class="calendar-heading-actions">
         <div class="period-control" aria-label="Navegar no calendário">
           <button type="button" class="action-tooltip" aria-label="Período anterior" @click="alterarPeriodo(-1)">
-            <ActionIcon name="back" />
+            <ActionIcon name="back" /> Anterior
           </button>
           <strong>{{ tituloPeriodo }}</strong>
           <button type="button" class="action-tooltip" aria-label="Período seguinte" @click="alterarPeriodo(1)">
-            <ActionIcon name="forward" />
+            <ActionIcon name="forward" /> Seguinte
           </button>
         </div>
         <div class="view-switch" aria-label="Modo de visualização">
@@ -783,7 +783,7 @@ onMounted(carregarCalendario)
           <div v-if="confirmarEliminacaoEvento" class="inline-confirm" role="group" aria-label="Confirmar eliminação do evento">
             <span>Eliminar o evento “{{ formulario.title }}”?</span>
             <button class="delete-button action-tooltip" type="button" aria-label="Confirmar eliminação" :disabled="guardandoEvento" @click="eliminarEvento">
-              <ActionIcon name="delete" /> Confirmar eliminação
+              <ActionIcon name="delete" /> Eliminar
             </button>
             <button class="cancel-button action-tooltip" type="button" aria-label="Cancelar" :disabled="guardandoEvento" @click="confirmarEliminacaoEvento = false">
               <ActionIcon name="close" /> Cancelar
@@ -923,7 +923,9 @@ onMounted(carregarCalendario)
 .all-events-button { min-height: 35px; padding: 0 13px; border-radius: 20px; font-size: 9px; }
 .calendar-loading { display: grid; min-height: 280px; place-items: center; color: #73819d; background: #fff; border: 1px solid #e0e7f4; border-radius: 12px; font-size: 12px; }
 .event-inline-panel { width: min(760px, 100%); padding: 18px; background: #fff; border: 1px solid #e4e9f3; border-radius: 12px; box-shadow: 0 3px 12px rgb(15 23 42 / 5%); scroll-margin-top: 96px; }
-.inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 11px; }
+.inline-confirm { display: flex; min-width: 0; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 10px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 11px; }
+.inline-confirm > * { flex: 0 0 auto; }
+.inline-confirm > span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .form-panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; border-bottom: 1px solid #edf0f6; }
 .form-panel-eyebrow { color: #7987a2; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
 .form-panel-heading h2 { margin: 4px 0 0; color: #1f2e4d; font-size: 18px; }
@@ -942,10 +944,12 @@ onMounted(carregarCalendario)
 .color-picker input:checked + span { box-shadow: 0 0 0 2px var(--event-color); }
 .color-picker input:focus-visible + span { outline: 3px solid #b8caff; outline-offset: 3px; }
 .form-error { padding: 8px 10px; margin: 0; color: #a33b45; background: #fff2f2; border: 1px solid #f5d6d8; border-radius: 7px; font-size: 10px; }
-.form-panel-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 13px; border-top: 1px solid #edf0f6; }
+.form-panel-actions { display: flex; min-width: 0; justify-content: flex-end; flex-wrap: nowrap; gap: 8px; padding-top: 13px; border-top: 1px solid #edf0f6; }
+.form-panel-actions > button { flex: 0 0 auto; }
 .form-panel-actions .delete-button { margin-right: auto; color: #b43e4b; background: #fff3f4; border: 1px solid #f1cdd1; }
 .form-panel-actions .delete-button:hover { background: #ffe6e8; }
 .form-panel-actions button { min-height: 36px; padding: 0 13px; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.inline-confirm .delete-button, .inline-confirm .cancel-button { min-height: 36px; font-size: 10px; font-weight: 700; }
 .cancel-button { color: #61708a; background: #fff; border: 1px solid #dfe5ef; }
 .save-button { color: #fff; background: #326cf1; border: 1px solid #326cf1; }
 .form-panel-actions button:disabled { opacity: .6; cursor: wait; }
@@ -971,6 +975,7 @@ onMounted(carregarCalendario)
   .view-switch button { padding: 0 8px; font-size: 9px; }
   .today-button { min-height: 31px; padding: 0 8px; }
   .create-event-button { min-height: 33px; padding: 0 9px; font-size: 9px; }
+  .period-control .action-tooltip { min-width: auto; padding: 7px 8px; }
   .calendar-main { grid-template-columns: 1fr; }
   .calendar-sidebar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .filters-card { grid-template-columns: 1fr 1fr; align-content: start; gap: 8px; padding: 0 10px 0 0; border-right: 1px solid #edf0f7; border-bottom: 0; }

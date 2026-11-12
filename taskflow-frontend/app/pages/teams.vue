@@ -452,7 +452,7 @@ onMounted(carregarDados)
         <header class="panel-heading">
           <div><span class="eyebrow">NOVA EQUIPA</span><h2 id="create-team-title">Criar equipa</h2></div>
           <button type="button" class="action-tooltip" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">
-            <ActionIcon name="close" />
+            <ActionIcon name="close" /> Fechar
           </button>
         </header>
         <form class="team-form" @submit.prevent="guardarEquipa">
@@ -477,7 +477,7 @@ onMounted(carregarDados)
             <h2 id="team-detail-title">{{ equipaSelecionada.name }}</h2>
           </div>
           <button type="button" class="action-tooltip" aria-label="Fechar" @click="fecharDetalhe">
-            <ActionIcon name="close" />
+            <ActionIcon name="close" /> Fechar
           </button>
         </header>
 
@@ -605,7 +605,7 @@ onMounted(carregarDados)
             <span>Eliminar esta equipa? Os projetos associados serão mantidos.</span>
             <button class="danger-button action-tooltip" type="button" :aria-label="aGuardar ? 'A eliminar equipa' : 'Confirmar eliminação da equipa'" :disabled="aGuardar" @click="eliminarEquipa">
               <ActionIcon name="delete" />
-              {{ aGuardar ? 'A eliminar…' : 'Confirmar eliminação' }}
+              {{ aGuardar ? 'A eliminar…' : 'Eliminar' }}
             </button>
             <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" :disabled="aGuardar" @click="confirmarEliminacaoEquipa = false">
               <ActionIcon name="close" /> Cancelar
@@ -664,7 +664,9 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .team-inline-panel { width: min(760px, 100%); max-height: none; overflow: visible; padding: 22px; background: #fff; border: 1px solid #e8ecf3; border-radius: 12px; box-shadow: 0 3px 12px rgb(17 28 48 / 5%); scroll-margin-top: 96px; }
 .create-panel { width: min(460px, 100%); }
 .detail-panel { width: 100%; }
-.inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 10px; }
+.inline-confirm { display: flex; min-width: 0; align-items: center; flex-wrap: nowrap; gap: 7px; padding: 8px; color: #825b22; background: #fff8eb; border: 1px solid #f3dfb8; border-radius: 8px; font-size: 10px; }
+.inline-confirm > * { flex: 0 0 auto; }
+.inline-confirm > span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team-delete-confirm { margin-right: auto; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding-bottom: 15px; border-bottom: 1px solid #edf0f5; }
 .panel-heading h2 { margin: 5px 0 0; color: #23334f; font-size: 19px; letter-spacing: -.03em; }
@@ -674,7 +676,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .team-form input, .team-form textarea, .add-row select { width: 100%; box-sizing: border-box; padding: 10px 11px; color: #293951; background: #fff; border: 1px solid #dfe5ef; border-radius: 8px; outline: none; font: inherit; font-size: 11px; }
 .team-form textarea { resize: vertical; }
 .team-form input:focus, .team-form textarea:focus, .add-row select:focus { border-color: #8390ec; box-shadow: 0 0 0 3px rgb(99 112 224 / 12%); }
-.panel-actions, .detail-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+.panel-actions, .detail-footer { display: flex; min-width: 0; justify-content: flex-end; flex-wrap: nowrap; gap: 8px; padding-top: 6px; }
+.panel-actions > button, .detail-footer > button { flex: 0 0 auto; }
 .form-error { padding: 9px 10px; margin: 12px 0 0; border-radius: 7px; font-size: 10px; }
 .team-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 0; }
 .team-summary p { margin: 0; color: #6f7d93; font-size: 11px; line-height: 1.55; white-space: pre-line; }
@@ -704,7 +707,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .member-copy, .project-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
 .member-copy strong, .project-copy strong { overflow: hidden; color: #3a4a65; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .member-copy small, .project-copy small { overflow: hidden; color: #8b97a9; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.remove-button { padding: 6px 8px; color: #a6535d; background: #fff8f8; border: 1px solid #f0e0e1; border-radius: 7px; font: inherit; font-size: 9px; cursor: pointer; }
+.remove-button { min-height: 32px; padding: 6px 9px; color: #a6535d; background: #fff8f8; border: 1px solid #f0e0e1; border-radius: 7px; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
 .list-empty { color: #929daf; font-size: 10px; }
 .association-note { padding: 8px 9px; margin: 10px 0 0; color: #75839a; background: #f6f8fc; border-radius: 7px; font-size: 9px; line-height: 1.5; }
 .detail-footer { justify-content: space-between; padding-top: 14px; margin-top: 4px; border-top: 1px solid #edf0f5; }
@@ -717,6 +720,6 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .team-summary { flex-direction: column; }
   .team-inline-panel { padding: 16px; }
   .add-row { align-items: stretch; }
-  .remove-button { padding: 5px; }
+  .remove-button { padding: 5px 8px; }
 }
 </style>

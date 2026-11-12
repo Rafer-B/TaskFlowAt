@@ -889,7 +889,7 @@ onBeforeUnmount(() => {
                     aria-label="Atualizar histórico de trabalho"
                     @click="carregarRegistos(tarefa, true)"
                   >
-                    <ActionIcon name="refresh" />
+                    <ActionIcon name="refresh" /> Atualizar
                   </button>
                 </div>
 
@@ -1551,15 +1551,14 @@ onBeforeUnmount(() => {
 }
 
 .history-refresh {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
+  min-height: 32px;
+  padding: 0 9px;
   color: #5363bd;
   background: #eef2ff;
   border: 1px solid #e0e5ff;
   border-radius: 8px;
-  font-size: 18px;
+  font-size: 10px;
+  font-weight: 700;
   cursor: pointer;
 }
 

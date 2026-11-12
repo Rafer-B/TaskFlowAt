@@ -1251,7 +1251,7 @@ onMounted(carregarProjetos)
                   :aria-label="`Remover tarefa ${index + 1}`"
                   @click="removerTarefaInicial(index)"
                 >
-                  <ActionIcon name="delete" />
+                  <ActionIcon name="delete" /> Remover
                 </button>
               </div>
             </section>
@@ -1492,7 +1492,7 @@ onMounted(carregarProjetos)
                     :aria-label="`Eliminar projeto ${projeto.name}`"
                     @click="pedirConfirmacao(projeto, 'delete')"
                   >
-                    <ActionIcon name="delete" />
+                    <ActionIcon name="delete" /> Eliminar
                   </button>
                 </div>
               </td>
@@ -1668,7 +1668,7 @@ onMounted(carregarProjetos)
                       :aria-label="`Remover ${membro.name}`"
                       @click="removerMembro(membro)"
                     >
-                      <ActionIcon name="delete" />
+                      <ActionIcon name="delete" /> Remover
                     </button>
                   </div>
                   <div v-if="membroPendenteRemocao === membro.user_id" class="inline-member-confirm">
@@ -2370,13 +2370,14 @@ onMounted(carregarProjetos)
 }
 
 .remove-initial-task {
-  width: 34px;
-  height: 40px;
+  min-height: 40px;
+  padding: 0 10px;
   border: 1px solid #f1dada;
   border-radius: 7px;
   background: white;
   color: #c04444;
-  font-size: 20px;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -2660,14 +2661,19 @@ onMounted(carregarProjetos)
 }
 
 .project-actions-cell {
-  min-width: 370px;
+  min-width: 430px;
 }
 
 .project-row-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  padding: 2px;
+}
+
+.project-row-actions > button {
+  flex: 0 0 auto;
 }
 
 .state-button {
@@ -2691,16 +2697,14 @@ onMounted(carregarProjetos)
 .reactivate-action { background: #e8f7ef; color: #168653; border-color: #ccebd9; }
 
 .delete-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 29px;
-  height: 29px;
+  min-height: 29px;
+  padding: 0 9px;
   border: 1px solid #f2dada;
   border-radius: 6px;
   background: white;
   color: #c04444;
-  font-size: 17px;
+  font-size: 10px;
+  font-weight: 650;
   cursor: pointer;
   transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
@@ -2866,7 +2870,7 @@ onMounted(carregarProjetos)
 .inline-member-confirm {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   width: 100%;
   margin-top: 8px;
@@ -2876,6 +2880,18 @@ onMounted(carregarProjetos)
   border: 1px solid #f3dfb8;
   border-radius: 8px;
   font-size: 10px;
+}
+
+.inline-member-confirm > * {
+  flex: 0 0 auto;
+}
+
+.inline-member-confirm > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .danger-button {
@@ -3095,13 +3111,14 @@ onMounted(carregarProjetos)
 }
 
 .remove-member-button {
-  width: 31px;
-  height: 31px;
+  min-height: 31px;
+  padding: 0 9px;
   border: 1px solid #f1dada;
   border-radius: 7px;
   background: white;
   color: #c04444;
-  font-size: 19px;
+  font-size: 10px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -3286,7 +3303,7 @@ onMounted(carregarProjetos)
   }
 
   .initial-task-fields {
-    grid-template-columns: minmax(0, 1fr) 34px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .initial-task-fields .form-field:nth-child(2) {
