@@ -2,3 +2,6 @@
 __pycache__/
 .env
 *.py[cod]
+/backups/
+/uploads/
+/task_attachments/

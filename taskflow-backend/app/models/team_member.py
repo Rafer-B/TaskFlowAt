@@ -1,6 +1,8 @@
 """Associação de utilizadores a equipas, identificada por uma chave composta."""
 
-from sqlalchemy import BigInteger, ForeignKey
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -11,13 +13,13 @@ class TeamMember(Base):
 
     __tablename__ = "team_members"
 
-    team_id: Mapped[int] = mapped_column(
-        BigInteger,
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("teams.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger,
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )

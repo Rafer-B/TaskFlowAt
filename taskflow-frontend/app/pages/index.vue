@@ -463,16 +463,6 @@ const projectsWithProgress = computed(() =>
           <span>{{ card.hint }}</span>
         </div>
 
-        <div
-          v-if="'progress' in card && card.progress !== undefined"
-          class="kpi-progress"
-          role="progressbar"
-          :aria-valuenow="card.progress"
-          aria-valuemin="0"
-          aria-valuemax="100"
-        >
-          <span :style="{ width: `${card.progress}%` }"></span>
-        </div>
         </article>
       </NuxtLink>
     </section>

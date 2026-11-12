@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Administração de contas: pesquisa, criação e edição do perfil selecionado.
 definePageMeta({
@@ -9,7 +10,7 @@ definePageMeta({
 })
 
 interface Utilizador {
-  id: number
+  id: string
   name: string
   email: string
   role: 'admin' | 'member'
@@ -49,10 +50,22 @@ watch(
 const mostrarFormulario = ref(false)
 const formularioRef = ref<HTMLElement | null>(null)
 
+<<<<<<< Updated upstream
 const utilizadorAAtualizar = ref<number | null>(null)
 const utilizadorAAtualizarPerfil = ref<number | null>(null)
 const utilizadorAgerir = ref<number | null>(null)
 const fotografiasComErro = ref<number[]>([])
+=======
+const utilizadorAAtualizar = ref<string | null>(null)
+const utilizadorAAtualizarPerfil = ref<string | null>(null)
+const fotografiasComErro = ref<string[]>([])
+const tokenRecuperacao = ref<{
+  userName: string
+  email: string
+  token: string
+  expiresAt: string
+} | null>(null)
+>>>>>>> Stashed changes
 
 const formulario = reactive<UtilizadorCreate>({
   name: '',
@@ -84,13 +97,13 @@ function obterUrlFotografia(avatarUrl: string | null): string {
   return obterUrlAvatar(avatarUrl, apiBase)
 }
 
-function fotografiaFalhou(utilizadorId: number) {
+function fotografiaFalhou(utilizadorId: string) {
   if (!fotografiasComErro.value.includes(utilizadorId)) {
     fotografiasComErro.value.push(utilizadorId)
   }
 }
 
-function fotografiaCarregada(utilizadorId: number) {
+function fotografiaCarregada(utilizadorId: string) {
   fotografiasComErro.value = fotografiasComErro.value.filter(
     (id) => id !== utilizadorId,
   )
@@ -152,7 +165,7 @@ async function carregarUtilizadores() {
   erro.value = ''
 
   try {
-    utilizadores.value = await api<Utilizador[]>('/users/')
+    utilizadores.value = await fetchAllPages<Utilizador>('/users/')
 
     fotografiasComErro.value = []
   } catch (error) {
@@ -211,11 +224,12 @@ async function carregarFotografia(
       (u) => u.id === utilizador.id,
     )
 
-    if (indice !== -1) {
+    const utilizadorAtual = utilizadores.value[indice]
+    if (utilizadorAtual) {
       utilizadores.value[indice] = {
-        ...utilizadores.value[indice],
+        ...utilizadorAtual,
         ...resposta,
-        avatar_url: resposta.avatar_url ?? utilizadores.value[indice].avatar_url,
+        avatar_url: resposta.avatar_url ?? utilizadorAtual.avatar_url,
       }
       fotografiasComErro.value = fotografiasComErro.value.filter(
         (id) => id !== utilizador.id,
@@ -323,6 +337,7 @@ async function alterarPerfil(
   }
 }
 
+<<<<<<< Updated upstream
 async function alterarEstado(utilizador: Utilizador): Promise<void> {
   limparMensagens()
   if (utilizador.id === auth.user.value?.id) {
@@ -387,6 +402,38 @@ async function eliminarUtilizador(utilizador: Utilizador): Promise<void> {
     erro.value = obterMensagemErro(error)
   } finally {
     utilizadorAgerir.value = null
+=======
+async function emitirTokenRecuperacao(utilizador: Utilizador): Promise<void> {
+  erro.value = ''
+  sucesso.value = ''
+  tokenRecuperacao.value = null
+  try {
+    const resultado = await api<{ token: string; expires_at: string }>(
+      `/users/${utilizador.id}/password-reset-token`,
+      { method: 'POST' },
+    )
+    tokenRecuperacao.value = {
+      userName: utilizador.name,
+      email: utilizador.email,
+      token: resultado.token,
+      expiresAt: resultado.expires_at,
+    }
+    sucesso.value = `Token de recuperação emitido para ${utilizador.name}. Entregue-o por um canal externo seguro.`
+  } catch (error) {
+    console.error('Erro ao emitir token de recuperação:', error)
+    erro.value = obterMensagemErro(error)
+  }
+}
+
+async function copiarTokenRecuperacao(): Promise<void> {
+  if (!tokenRecuperacao.value) return
+  try {
+    await navigator.clipboard.writeText(tokenRecuperacao.value.token)
+    sucesso.value = 'Token copiado. Entregue-o por um canal externo seguro.'
+  } catch (error) {
+    console.error('Não foi possível copiar o token de recuperação:', error)
+    erro.value = 'Não foi possível copiar automaticamente. Selecione e copie o token apresentado.'
+>>>>>>> Stashed changes
   }
 }
 
@@ -404,8 +451,8 @@ onMounted(carregarUtilizadores)
         </p>
       </div>
 
-      <button class="primary-button" @click="abrirFormulario">
-        <span>＋</span>
+      <button class="primary-button" aria-label="Novo utilizador" @click="abrirFormulario">
+        <ActionIcon name="add" />
         Novo utilizador
       </button>
     </header>
@@ -447,6 +494,46 @@ onMounted(carregarUtilizadores)
       {{ sucesso }}
       <button @click="sucesso = ''" aria-label="Fechar mensagem">×</button>
     </div>
+
+    <section
+      v-if="tokenRecuperacao"
+      class="user-form-panel recovery-token-panel"
+      aria-labelledby="recovery-token-title"
+    >
+      <div class="form-panel-heading">
+        <div>
+          <span class="eyebrow">RECUPERAÇÃO DE ACESSO</span>
+          <h2 id="recovery-token-title">Token de {{ tokenRecuperacao.userName }}</h2>
+          <p>
+            Token de uso único. Expira às
+            {{ new Date(tokenRecuperacao.expiresAt).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) }}.
+          </p>
+        </div>
+        <button
+          class="form-panel-close"
+          aria-label="Fechar token de recuperação"
+          @click="tokenRecuperacao = null"
+        >
+          ×
+        </button>
+      </div>
+      <code class="recovery-token">{{ tokenRecuperacao.token }}</code>
+      <div class="form-panel-actions">
+        <button class="secondary-button" type="button" @click="copiarTokenRecuperacao">
+          Copiar token
+        </button>
+        <NuxtLink
+          class="primary-button reset-link"
+          :to="{
+            path: '/password-reset',
+            query: { email: tokenRecuperacao.email },
+          }"
+          target="_blank"
+        >
+          Abrir reposição
+        </NuxtLink>
+      </div>
+    </section>
 
     <section class="users-panel">
       <div class="panel-heading">
@@ -556,6 +643,7 @@ onMounted(carregarUtilizadores)
                     </label>
                   </div>
                 </div>
+
               </td>
 
               <td class="email-cell">{{ utilizador.email }}</td>
@@ -593,6 +681,7 @@ onMounted(carregarUtilizadores)
                   {{ utilizador.is_active ? 'Ativo' : 'Inativo' }}
                 </span>
               </td>
+<<<<<<< Updated upstream
 
               <td>
                 <div class="user-actions">
@@ -634,6 +723,19 @@ onMounted(carregarUtilizadores)
                     Eliminar
                   </button>
                 </div>
+=======
+              <td>
+                <button
+                  class="secondary-button recovery-action action-tooltip"
+                  aria-label="Repor palavra-passe"
+                  type="button"
+                  :disabled="!utilizador.is_active"
+                  @click="emitirTokenRecuperacao(utilizador)"
+                >
+                  <ActionIcon name="undo" />
+                  Repor palavra-passe
+                </button>
+>>>>>>> Stashed changes
               </td>
             </tr>
           </tbody>
@@ -647,11 +749,13 @@ onMounted(carregarUtilizadores)
         </span>
 
         <button
-          class="refresh-button"
+          class="refresh-button action-tooltip"
+          aria-label="Atualizar lista"
           :disabled="carregando"
           @click="carregarUtilizadores"
         >
-          ↻ Atualizar lista
+          <ActionIcon name="refresh" />
+          Atualizar lista
         </button>
       </div>
     </section>
@@ -725,18 +829,22 @@ onMounted(carregarUtilizadores)
           <div class="form-panel-actions">
             <button
               type="button"
-              class="secondary-button"
+              class="secondary-button action-tooltip"
+              aria-label="Cancelar"
               :disabled="submetendo"
               @click="fecharFormulario"
             >
+              <ActionIcon name="close" />
               Cancelar
             </button>
 
             <button
               type="submit"
               class="primary-button"
+              :aria-label="submetendo ? 'A criar utilizador' : 'Criar utilizador'"
               :disabled="submetendo"
             >
+              <ActionIcon name="add" />
               {{ submetendo ? 'A criar...' : 'Criar utilizador' }}
             </button>
           </div>
@@ -780,7 +888,7 @@ onMounted(carregarUtilizadores)
 .panel-heading p {
   margin: 0;
   color: #8795aa;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .primary-button,
@@ -1184,6 +1292,33 @@ tbody tr:hover {
 .refresh-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.recovery-action {
+  white-space: nowrap;
+}
+
+.recovery-token-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.recovery-token {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 14px;
+  color: #29345f;
+  background: #f5f6ff;
+  border: 1px solid #dfe3fb;
+  border-radius: 9px;
+  font-size: 13px;
+  user-select: all;
+}
+
+.reset-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .empty-state {

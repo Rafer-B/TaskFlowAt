@@ -1,5 +1,6 @@
 
 import { onMounted, reactive, ref } from 'vue'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Tipos do dashboard em português para separar o modelo visual do formato da API.
 export type TaskStatus =
@@ -13,7 +14,7 @@ export type TaskPriority = 'Baixa' | 'Média' | 'Alta'
 export type ProjectStatus = 'Ativo' | 'Concluído' | 'Arquivado'
 
 export interface DashboardProject {
-  id: number
+  id: string
   name: string
   status: ProjectStatus
   dueDate: string | null
@@ -22,15 +23,15 @@ export interface DashboardProject {
 }
 
 export interface DashboardUser {
-  id: number
+  id: string
   name: string
   email: string
   isActive: boolean
 }
 
 export interface DashboardTask {
-  id: number
-  projectId: number
+  id: string
+  projectId: string
   title: string
   project: string
   responsible: string
@@ -49,34 +50,34 @@ export interface DashboardData {
 }
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   description: string | null
   status: 'active' | 'completed' | 'archived'
-  created_by: number
+  created_by: string
   created_at: string
   updated_at: string | null
   archived_at: string | null
 }
 
 interface UtilizadorAPI {
-  id: number
+  id: string
   name: string
   email: string
   is_active: boolean
 }
 
 interface TarefaAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   description: string | null
   category: string
   priority: 'low' | 'medium' | 'high'
   status: 'to_do' | 'in_progress' | 'completed' | 'blocked'
-  assigned_to: number | null
-  assignee_ids: number[]
-  created_by: number
+  assigned_to: string | null
+  assignee_ids: string[]
+  created_by: string
   due_date: string | null
   created_at: string
   updated_at: string | null
@@ -113,8 +114,6 @@ export function useDashboardData(_today: Date): DashboardData & {
   atualizar: () => Promise<void>
 } {
   // Centraliza a carga e transformação dos dados consumidos pelos indicadores administrativos.
-  const api = useNuxtApp().$api
-
   const projects = reactive<DashboardProject[]>([])
   const tasks = reactive<DashboardTask[]>([])
   const users = reactive<DashboardUser[]>([])
@@ -129,9 +128,9 @@ export function useDashboardData(_today: Date): DashboardData & {
     try {
       // As listas são independentes, por isso são pedidas em paralelo antes de as relacionar.
       const [projetosAPI, tarefasAPI, utilizadoresAPI] = await Promise.all([
-        api<ProjetoAPI[]>('/projects/'),
-        api<TarefaAPI[]>('/tasks/'),
-        api<UtilizadorAPI[]>('/users/'),
+        fetchAllPages<ProjetoAPI>('/projects/'),
+        fetchAllPages<TarefaAPI>('/tasks/'),
+        fetchAllPages<UtilizadorAPI>('/users/'),
       ])
 
       const nomesProjetos = new Map(

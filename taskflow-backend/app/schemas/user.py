@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -61,7 +62,7 @@ class UserPublic(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     name: str
     email: EmailStr
     role: UserRole

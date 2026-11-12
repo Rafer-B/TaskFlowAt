@@ -1,17 +1,22 @@
 export default defineNuxtPlugin(() => {
-  // Centraliza a base da API para que páginas usem caminhos relativos.
   const config = useRuntimeConfig()
   const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
 
-  // Anexa o token apenas aos pedidos da API, sem o guardar em cookies partilhados.
   const api = $fetch.create({
     baseURL: apiBase,
+    credentials: 'include',
     onRequest({ options }) {
-      const token = sessionStorage.getItem('taskflow-access-token')
-      if (!token) return
+      const method = String(options.method ?? 'GET').toUpperCase()
+      if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return
+
+      const csrfCookie = document.cookie
+        .split('; ')
+        .find((cookie) => cookie.startsWith('taskflow_csrf='))
+        ?.slice('taskflow_csrf='.length)
+      if (!csrfCookie) return
 
       const headers = new Headers(options.headers)
-      headers.set('Authorization', `Bearer ${token}`)
+      headers.set('X-CSRF-Token', decodeURIComponent(csrfCookie))
       options.headers = headers
     },
   })

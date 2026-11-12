@@ -596,7 +596,7 @@ onMounted(() => {
           </label>
         </div>
         <p class="current-theme">
-          Fundo selecionado: <strong>{{ temaSelecionado.name }}</strong>
+          Fundo selecionado: <strong>{{ temaSelecionado?.name ?? 'Padrão' }}</strong>
         </p>
       </article>
     </section>

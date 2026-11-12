@@ -9,9 +9,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine
+from app.settings import settings
 from app.routers import project_members
 from app.routers.calendar_events import router as calendar_events_router
 from app.routers.teams import router as teams_router
+from app.routers.notifications import router as notifications_router
 from app.routers.auth import router as auth_router
 from app.routers.projects import router as projects_router
 from app.routers.tasks import router as tasks_router
@@ -29,8 +31,7 @@ app = FastAPI(
 # O diretório é criado na inicialização para que as rotas estáticas estejam prontas.
 # --------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-UPLOADS_DIR = BASE_DIR / "uploads"
+UPLOADS_DIR = settings.uploads_dir
 AVATARS_DIR = UPLOADS_DIR / "avatars"
 
 AVATARS_DIR.mkdir(
@@ -56,14 +57,10 @@ app.mount(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://192.168.104.186:3000"
-    ],
+    allow_origins=list(settings.cors_origins),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 
 
@@ -78,6 +75,7 @@ app.include_router(tasks_router)
 app.include_router(project_members.router)
 app.include_router(calendar_events_router)
 app.include_router(teams_router)
+app.include_router(notifications_router)
 
 
 # --------------------------------------------------

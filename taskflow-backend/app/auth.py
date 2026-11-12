@@ -1,11 +1,12 @@
 """Dependências de autenticação, sessão da base de dados e permissões."""
 
-import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Generator
+from uuid import UUID
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
@@ -13,9 +14,9 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.project_member import ProjectMember
 from app.models.user import User
+from app.settings import settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-TOKEN_LIFETIME_MINUTES = 60
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -29,7 +30,7 @@ def get_db() -> Generator[Session, None, None]:
 
 def _jwt_secret() -> str:
     """Obtém a chave JWT e impede o serviço de operar com uma chave fraca."""
-    secret = os.getenv("TASKFLOW_JWT_SECRET", "")
+    secret = settings.jwt_secret
     if len(secret) < 32:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -45,7 +46,8 @@ def criar_token_acesso(user: User) -> str:
         {
             "sub": str(user.id),
             "iat": agora,
-            "exp": agora + timedelta(minutes=TOKEN_LIFETIME_MINUTES),
+            "exp": agora + timedelta(minutes=settings.session_lifetime_minutes),
+            "ver": user.session_version,
         },
         _jwt_secret(),
         algorithm="HS256",
@@ -53,7 +55,8 @@ def criar_token_acesso(user: User) -> str:
 
 
 def obter_utilizador_atual(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    bearer_token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """Valida o token e exige que a conta correspondente continue ativa."""
@@ -63,6 +66,28 @@ def obter_utilizador_atual(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    cookie_token = request.cookies.get(settings.session_cookie_name)
+    token = bearer_token or cookie_token
+    if not token:
+        raise unauthorized
+
+    if cookie_token and bearer_token is None and request.method not in {
+        "GET",
+        "HEAD",
+        "OPTIONS",
+    }:
+        csrf_cookie = request.cookies.get(settings.csrf_cookie_name, "")
+        csrf_header = request.headers.get("x-csrf-token", "")
+        if (
+            not csrf_cookie
+            or not csrf_header
+            or not secrets.compare_digest(csrf_cookie, csrf_header)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Token CSRF inválido.",
+            )
+
     try:
         payload = jwt.decode(
             token,
@@ -70,12 +95,19 @@ def obter_utilizador_atual(
             algorithms=["HS256"],
             options={"require": ["sub", "exp"]},
         )
-        user_id = int(payload["sub"])
-    except (InvalidTokenError, TypeError, ValueError):
+        user_id = UUID(payload["sub"])
+        token_version = payload["ver"]
+        if not isinstance(token_version, int):
+            raise ValueError("Invalid token version")
+    except (InvalidTokenError, KeyError, TypeError, ValueError):
         raise unauthorized
 
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+        or user.session_version != token_version
+    ):
         raise unauthorized
 
     return user
@@ -95,7 +127,7 @@ def exigir_administrador(
 
 def obter_papel_projeto(
     db: Session,
-    project_id: int,
+    project_id: UUID,
     user: User,
 ) -> str | None:
     """Devolve o papel no projeto; administradores têm acesso transversal."""
@@ -108,7 +140,7 @@ def obter_papel_projeto(
 
 def exigir_papel_projeto(
     db: Session,
-    project_id: int,
+    project_id: UUID,
     user: User,
     papeis_permitidos: set[str] | None = None,
 ) -> str:

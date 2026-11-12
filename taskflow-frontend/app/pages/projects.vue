@@ -2,17 +2,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Centraliza catálogo, estado e associações; as capacidades do papel controlam ações disponíveis.
 definePageMeta({ layout: 'admin' })
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   description: string | null
   status: 'active' | 'completed' | 'archived'
-  team_id: number | null
-  created_by: number
+  team_id: string | null
+  created_by: string
   created_at: string
   updated_at: string
   archived_at: string | null
@@ -20,8 +21,8 @@ interface ProjetoAPI {
 }
 
 interface MembroAPI {
-  project_id: number
-  user_id: number
+  project_id: string
+  user_id: string
   name: string
   email: string
   is_active: boolean
@@ -30,27 +31,27 @@ interface MembroAPI {
 }
 
 interface UtilizadorDisponivelAPI {
-  id: number
+  id: string
   name: string
   email: string
   avatar_url: string | null
 }
 
 interface EquipaDisponivelAPI {
-  id: number
+  id: string
   name: string
   can_associate_projects: boolean
 }
 
 interface MembroEquipaAPI {
-  user_id: number
+  user_id: string
   name: string
   email: string
   avatar_url: string | null
 }
 
 interface EquipaProjetoAPI {
-  id: number
+  id: string
   name: string
   can_manage: boolean
 }
@@ -72,12 +73,12 @@ const colunasTabelaProjetos: Array<{
 ]
 
 interface Projeto {
-  id: number
+  id: string
   name: string
   description: string
   status: EstadoProjeto
   createdAt: string
-  teamId: number | null
+  teamId: string | null
   currentUserRole: ProjetoAPI['current_user_role']
 }
 
@@ -91,7 +92,7 @@ const route = useRoute()
 const projetos = ref<Projeto[]>([])
 const carregando = ref(false)
 const aGuardar = ref(false)
-const aAtualizarEstado = ref<number | null>(null)
+const aAtualizarEstado = ref<string | null>(null)
 const aEliminar = ref(false)
 
 // Pesquisa e filtros
@@ -119,10 +120,10 @@ watch(
 const mostrarFormulario = ref(false)
 const formularioRef = ref<HTMLElement | null>(null)
 const modoEdicao = ref(false)
-const projetoEmEdicao = ref<number | null>(null)
+const projetoEmEdicao = ref<string | null>(null)
 const equipasDisponiveis = ref<EquipaDisponivelAPI[]>([])
 const membrosCandidatos = ref<UtilizadorDisponivelAPI[]>([])
-const membrosSelecionados = ref<number[]>([])
+const membrosSelecionados = ref<string[]>([])
 const tarefasIniciais = ref<Array<{ title: string; description: string }>>([])
 const aCarregarOpcoesCriacao = ref(false)
 const opcoesCriacaoCarregadas = ref(false)
@@ -148,7 +149,7 @@ const sucesso = ref('')
 
 const mostrarPainelMembros = ref(false)
 const painelMembrosRef = ref<HTMLElement | null>(null)
-const membroPendenteRemocao = ref<number | null>(null)
+const membroPendenteRemocao = ref<string | null>(null)
 const projetoMembros = ref<Projeto | null>(null)
 const membros = ref<MembroAPI[]>([])
 const utilizadoresDisponiveis = ref<UtilizadorDisponivelAPI[]>([])
@@ -160,8 +161,8 @@ const carregandoMembros = ref(false)
 const carregandoUtilizadoresDisponiveis = ref(false)
 const aAdicionarMembro = ref(false)
 const aAdicionarMembroEquipa = ref(false)
-const membroEmAtualizacao = ref<number | null>(null)
-const membroEmRemocao = ref<number | null>(null)
+const membroEmAtualizacao = ref<string | null>(null)
+const membroEmRemocao = ref<string | null>(null)
 
 const erroMembros = ref('')
 const sucessoMembros = ref('')
@@ -352,7 +353,7 @@ async function carregarProjetos() {
   carregando.value = true
 
   try {
-    const resposta = await api<ProjetoAPI[]>('/projects/')
+    const resposta = await fetchAllPages<ProjetoAPI>('/projects/')
 
     projetos.value = resposta.map(converterProjeto)
   } catch (error) {
@@ -394,8 +395,8 @@ async function carregarOpcoesCriacao() {
   erro.value = ''
   try {
     const [equipas, candidatos] = await Promise.all([
-      api<EquipaDisponivelAPI[]>('/teams/'),
-      api<UtilizadorDisponivelAPI[]>('/projects/member-candidates'),
+      fetchAllPages<EquipaDisponivelAPI>('/teams/'),
+      fetchAllPages<UtilizadorDisponivelAPI>('/projects/member-candidates'),
     ])
     equipasDisponiveis.value = equipas.filter(
       equipa => equipa.can_associate_projects,
@@ -518,9 +519,7 @@ async function guardarProjeto() {
           body: {
             name,
             description: description || null,
-            team_id: formulario.value.team_id
-              ? Number(formulario.value.team_id)
-              : null,
+            team_id: formulario.value.team_id || null,
             member_ids: membrosSelecionados.value,
             tasks: tarefasIniciais.value.map(tarefa => ({
               title: tarefa.title.trim(),
@@ -742,9 +741,9 @@ async function carregarMembros() {
     const projeto = projetoMembros.value
     const podeGerir = podeGerirProjeto(projeto)
     const [membrosProjeto, utilizadoresProjeto] = await Promise.all([
-      api<MembroAPI[]>(`/projects/${projeto.id}/members`),
+      fetchAllPages<MembroAPI>(`/projects/${projeto.id}/members`),
       podeGerir
-        ? api<UtilizadorDisponivelAPI[]>(
+        ? fetchAllPages<UtilizadorDisponivelAPI>(
             `/projects/${projeto.id}/available-members`,
           )
         : Promise.resolve([]),
@@ -755,12 +754,12 @@ async function carregarMembros() {
     if (projeto.teamId !== null) {
       const [equipa, membrosDaEquipa] = await Promise.all([
         api<EquipaProjetoAPI>(`/teams/${projeto.teamId}`),
-        api<MembroEquipaAPI[]>(`/teams/${projeto.teamId}/members`),
+        fetchAllPages<MembroEquipaAPI>(`/teams/${projeto.teamId}/members`),
       ])
       equipaProjeto.value = equipa
       membrosEquipa.value = membrosDaEquipa
       utilizadoresDisponiveisEquipa.value = equipa.can_manage
-        ? await api<MembroEquipaAPI[]>(
+        ? await fetchAllPages<MembroEquipaAPI>(
             `/teams/${projeto.teamId}/available-members`,
           )
         : []
@@ -784,7 +783,7 @@ async function adicionarMembroEquipa() {
   aAdicionarMembroEquipa.value = true
 
   try {
-    const userId = Number(novoMembroEquipa.value)
+    const userId = novoMembroEquipa.value
     const novo = await api<MembroEquipaAPI>(
       `/teams/${equipaProjeto.value.id}/members`,
       {
@@ -841,7 +840,7 @@ async function adicionarMembro() {
   erroMembros.value = ''
   sucessoMembros.value = ''
 
-  const userId = Number(novoMembro.value.user_id)
+  const userId = novoMembro.value.user_id
   const utilizadorSelecionado = utilizadoresDisponiveis.value.find(
     utilizador => utilizador.id === userId,
   )
@@ -1000,8 +999,8 @@ onMounted(carregarProjetos)
         <p>Cria projetos, organiza equipas e acompanha o trabalho colaborativo.</p>
       </div>
 
-      <button class="primary-button" @click="abrirCriacao">
-        <span>+</span>
+      <button class="primary-button" aria-label="Novo projeto" @click="abrirCriacao">
+        <ActionIcon name="add" />
         Novo projeto
       </button>
     </header>
@@ -1129,10 +1128,12 @@ onMounted(carregarProjetos)
               <p>Não foi possível carregar as opções de associação.</p>
               <button
                 type="button"
-                class="secondary-button"
+                class="secondary-button action-tooltip"
+                aria-label="Tentar novamente"
                 :disabled="aCarregarOpcoesCriacao"
                 @click="carregarOpcoesCriacao"
               >
+                <ActionIcon name="refresh" />
                 Tentar novamente
               </button>
             </template>
@@ -1210,9 +1211,11 @@ onMounted(carregarProjetos)
                 <button
                   type="button"
                   class="secondary-button add-initial-task"
+                  aria-label="Adicionar tarefa inicial"
                   :disabled="tarefasIniciais.length >= 100"
                   @click="adicionarTarefaInicial"
                 >
+                  <ActionIcon name="add" />
                   {{ tarefasIniciais.length >= 100 ? 'Limite de 100 tarefas' : '+ Adicionar tarefa' }}
                 </button>
               </div>
@@ -1244,11 +1247,11 @@ onMounted(carregarProjetos)
                 </div>
                 <button
                   type="button"
-                  class="remove-initial-task"
+                  class="remove-initial-task action-tooltip"
                   :aria-label="`Remover tarefa ${index + 1}`"
                   @click="removerTarefaInicial(index)"
                 >
-                  ×
+                  <ActionIcon name="delete" />
                 </button>
               </div>
             </section>
@@ -1261,18 +1264,22 @@ onMounted(carregarProjetos)
           <div class="form-actions">
             <button
               type="button"
-              class="secondary-button"
+              class="secondary-button action-tooltip"
+              aria-label="Cancelar"
               :disabled="aGuardar || aCarregarOpcoesCriacao"
               @click="fecharFormulario"
             >
+              <ActionIcon name="close" />
               Cancelar
             </button>
 
             <button
               type="submit"
               class="primary-button"
+              :aria-label="aGuardar ? 'A guardar' : modoEdicao ? 'Guardar alterações' : 'Criar projeto'"
               :disabled="aGuardar || aCarregarOpcoesCriacao || (!modoEdicao && !opcoesCriacaoCarregadas)"
             >
+              <ActionIcon :name="modoEdicao ? 'save' : 'add'" />
               {{ aGuardar
                 ? 'A guardar...'
                 : modoEdicao
@@ -1330,7 +1337,8 @@ onMounted(carregarProjetos)
       <div v-else-if="erro && projetos.length === 0" class="empty-state">
         <h3>Não foi possível carregar os projetos</h3>
         <p>Verifica a ligação ao servidor.</p>
-        <button class="secondary-button" @click="carregarProjetos">
+        <button class="secondary-button action-tooltip" aria-label="Tentar novamente" @click="carregarProjetos">
+          <ActionIcon name="refresh" />
           Tentar novamente
         </button>
       </div>
@@ -1339,8 +1347,9 @@ onMounted(carregarProjetos)
         <div class="empty-icon">▦</div>
         <h3>Ainda não existem projetos</h3>
         <p>Começa por criar o teu primeiro projeto.</p>
-        <button class="primary-button" @click="abrirCriacao">
-          + Criar projeto
+        <button class="primary-button" aria-label="Criar projeto" @click="abrirCriacao">
+          <ActionIcon name="add" />
+          Criar projeto
         </button>
       </div>
 
@@ -1348,9 +1357,11 @@ onMounted(carregarProjetos)
         <h3>Nenhum projeto encontrado</h3>
         <p>Altera a pesquisa ou os filtros selecionados.</p>
         <button
-          class="secondary-button"
+          class="secondary-button action-tooltip"
+          aria-label="Limpar filtros"
           @click="pesquisa = ''; filtroEstado = 'Todos'"
         >
+          <ActionIcon name="close" />
           Limpar filtros
         </button>
       </div>
@@ -1409,68 +1420,79 @@ onMounted(carregarProjetos)
                 <div class="project-row-actions">
                   <button
                     v-if="podeGerirProjeto(projeto)"
-                    class="action-button"
+                    class="action-button action-tooltip"
+                    aria-label="Editar projeto"
                     type="button"
                     @click="abrirEdicao(projeto)"
                   >
+                    <ActionIcon name="edit" />
                     Editar
                   </button>
 
                   <NuxtLink
                     :to="`/tasks?project=${projeto.id}`"
-                    class="action-button"
+                    class="action-button action-tooltip"
+                    :aria-label="podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas'"
                   >
+                    <ActionIcon name="tasks" />
                     {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
                   </NuxtLink>
 
                   <button
-                    class="action-button members-action"
+                    class="action-button members-action action-tooltip"
+                    aria-label="Membros"
                     type="button"
                     @click="abrirMembros(projeto)"
                   >
+                    <ActionIcon name="team" />
                     Membros
                   </button>
 
                   <button
                     v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
                     type="button"
-                    class="state-button complete-action"
+                    class="state-button complete-action action-tooltip"
+                    aria-label="Concluir projeto"
                     :disabled="aAtualizarEstado === projeto.id"
                     @click="atualizarEstado(projeto, 'Concluído')"
                   >
+                    <ActionIcon name="check" />
                     Concluir
                   </button>
 
                   <button
                     v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
                     type="button"
-                    class="state-button archive-action"
+                    class="state-button archive-action action-tooltip"
+                    aria-label="Arquivar projeto"
                     :disabled="aAtualizarEstado === projeto.id"
                     @click="pedirConfirmacao(projeto, 'archive')"
                   >
+                    <ActionIcon name="archive" />
                     Arquivar
                   </button>
 
                   <button
                     v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
                     type="button"
-                    class="state-button reactivate-action"
+                    class="state-button reactivate-action action-tooltip"
+                    aria-label="Reativar projeto"
                     :disabled="aAtualizarEstado === projeto.id"
                     @click="atualizarEstado(projeto, 'Ativo')"
                   >
+                    <ActionIcon name="undo" />
                     Reativar
                   </button>
 
                   <button
                     v-if="auth.user.value?.role === 'admin'"
                     type="button"
-                    class="delete-action"
+                    class="delete-action action-tooltip"
                     :disabled="aEliminar"
                     :aria-label="`Eliminar projeto ${projeto.name}`"
-                    :title="`Eliminar projeto ${projeto.name}`"
                     @click="pedirConfirmacao(projeto, 'delete')"
                   >
-                    <span aria-hidden="true">⌫</span>
+                    <ActionIcon name="delete" />
                   </button>
                 </div>
               </td>
@@ -1491,19 +1513,23 @@ onMounted(carregarProjetos)
           <div class="projects-page-controls" aria-label="Paginação dos projetos">
             <button
               type="button"
+              class="action-tooltip"
               aria-label="Página anterior"
               :disabled="paginaProjetos <= 1"
               @click="paginaProjetos--"
             >
+              <ActionIcon name="back" />
               Anterior
             </button>
             <span>Página {{ paginaProjetos }} de {{ totalPaginasProjetos }}</span>
             <button
               type="button"
+              class="action-tooltip"
               aria-label="Página seguinte"
               :disabled="paginaProjetos >= totalPaginasProjetos"
               @click="paginaProjetos++"
             >
+              <ActionIcon name="forward" />
               Seguinte
             </button>
           </div>
@@ -1636,19 +1662,23 @@ onMounted(carregarProjetos)
                     <button
                       v-if="projetoMembros && podeGerirProjeto(projetoMembros) && membroPendenteRemocao !== membro.user_id"
                       type="button"
-                      class="remove-member-button"
+                      class="remove-member-button action-tooltip"
                       :disabled="membroEmRemocao === membro.user_id || membroEmAtualizacao === membro.user_id"
                       title="Remover membro"
                       :aria-label="`Remover ${membro.name}`"
                       @click="removerMembro(membro)"
                     >
-                      {{ membroEmRemocao === membro.user_id ? '...' : '×' }}
+                      <ActionIcon name="delete" />
                     </button>
                   </div>
                   <div v-if="membroPendenteRemocao === membro.user_id" class="inline-member-confirm">
                     <span>Remover {{ membro.name }} deste projeto?</span>
-                    <button type="button" class="secondary-button" @click="membroPendenteRemocao = null">Cancelar</button>
-                    <button type="button" class="danger-button" @click="removerMembro(membro)">Confirmar</button>
+                    <button type="button" class="secondary-button action-tooltip" aria-label="Cancelar" @click="membroPendenteRemocao = null">
+                      <ActionIcon name="close" /> Cancelar
+                    </button>
+                    <button type="button" class="danger-button action-tooltip" aria-label="Confirmar remoção" @click="removerMembro(membro)">
+                      <ActionIcon name="delete" /> Confirmar
+                    </button>
                   </div>
                 </article>
               </div>
@@ -1716,9 +1746,11 @@ onMounted(carregarProjetos)
                 <button
                   type="submit"
                   class="primary-button add-member-submit"
+                  aria-label="Adicionar membro"
                   :disabled="aAdicionarMembro || !novoMembro.user_id"
                 >
-                  {{ aAdicionarMembro ? 'A adicionar...' : '+ Adicionar membro' }}
+                  <ActionIcon name="add" />
+                  {{ aAdicionarMembro ? 'A adicionar...' : 'Adicionar membro' }}
                 </button>
               </form>
             </div>
@@ -1786,9 +1818,11 @@ onMounted(carregarProjetos)
                 <button
                   type="submit"
                   class="primary-button add-member-submit"
+                  aria-label="Adicionar à equipa"
                   :disabled="aAdicionarMembroEquipa || !novoMembroEquipa"
                 >
-                  {{ aAdicionarMembroEquipa ? 'A adicionar...' : '+ Adicionar à equipa' }}
+                  <ActionIcon name="add" />
+                  {{ aAdicionarMembroEquipa ? 'A adicionar...' : 'Adicionar à equipa' }}
                 </button>
                 <p
                   v-if="!carregandoUtilizadoresDisponiveis && !utilizadoresDisponiveisEquipa.length"
@@ -1804,11 +1838,13 @@ onMounted(carregarProjetos)
 
             <div class="members-footer">
               <button
-                class="secondary-button"
+                class="secondary-button action-tooltip"
                 type="button"
+                aria-label="Fechar"
                 @click="fecharMembros"
                 :disabled="carregandoMembros || aAdicionarMembro || aAdicionarMembroEquipa || membroEmAtualizacao !== null || membroEmRemocao !== null"
               >
+                <ActionIcon name="close" />
                 Fechar
               </button>
             </div>
@@ -1852,30 +1888,36 @@ onMounted(carregarProjetos)
 
             <div class="confirmation-actions">
               <button
-                class="secondary-button"
+                class="secondary-button action-tooltip"
                 type="button"
+                aria-label="Cancelar"
                 :disabled="aEliminar"
                 @click="fecharConfirmacao"
               >
+                <ActionIcon name="close" />
                 Cancelar
               </button>
 
               <button
                 v-if="acaoConfirmada === 'delete'"
-                class="danger-button"
+                class="danger-button action-tooltip"
                 type="button"
+                :aria-label="aEliminar ? 'A eliminar' : 'Eliminar projeto'"
                 :disabled="aEliminar"
                 @click="executarAcao"
               >
+                <ActionIcon :name="acaoConfirmada === 'delete' ? 'delete' : 'archive'" />
                 {{ aEliminar ? 'A eliminar...' : 'Eliminar projeto' }}
               </button>
 
               <button
                 v-else
-                class="primary-button"
+                class="primary-button action-tooltip"
                 type="button"
+                aria-label="Arquivar projeto"
                 @click="executarAcao"
               >
+                <ActionIcon name="archive" />
                 Arquivar projeto
               </button>
             </div>
@@ -1943,7 +1985,7 @@ onMounted(carregarProjetos)
 .section-heading p {
   margin: 0;
   color: #7d8aa1;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 

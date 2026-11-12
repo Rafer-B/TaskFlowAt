@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -37,8 +38,8 @@ class ProjectCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    team_id: int | None = Field(default=None, gt=0)
-    member_ids: list[int] = Field(default_factory=list, max_length=100)
+    team_id: UUID | None = None
+    member_ids: list[UUID] = Field(default_factory=list, max_length=100)
     tasks: list[ProjectTaskCreate] = Field(default_factory=list, max_length=100)
 
     @field_validator("name")
@@ -51,8 +52,6 @@ class ProjectCreate(BaseModel):
 
     @model_validator(mode="after")
     def validar_associacoes(self):
-        if any(user_id <= 0 for user_id in self.member_ids):
-            raise ValueError("Os IDs dos membros devem ser positivos.")
         if len(set(self.member_ids)) != len(self.member_ids):
             raise ValueError("A lista contém membros repetidos.")
         return self
@@ -71,15 +70,15 @@ class ProjectResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     name: str
     description: str | None
     status: str
-    created_by: int
+    created_by: UUID
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
-    team_id: int | None = None
+    team_id: UUID | None = None
     current_user_role: Literal[
         "admin",
         "owner",

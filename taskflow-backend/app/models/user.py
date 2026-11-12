@@ -1,12 +1,13 @@
 
 """Modelo de conta, credenciais, papel de acesso e fotografia de perfil."""
 
+from uuid import UUID, uuid4
+
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     DateTime,
-    Identity,
     String,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,9 +20,9 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(
-        BigInteger,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
@@ -49,6 +50,12 @@ class User(Base):
         String(20),
         nullable=False,
         server_default="member",
+    )
+
+    session_version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0,
+        server_default="0",
     )
 
     avatar_url: Mapped[str | None] = mapped_column(

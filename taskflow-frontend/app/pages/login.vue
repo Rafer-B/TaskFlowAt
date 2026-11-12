@@ -11,6 +11,14 @@ const erro = ref('')
 const aEntrar = ref(false)
 const mostrarPalavraPasse = ref(false)
 
+watch(
+  () => route.query.email,
+  (value) => {
+    if (typeof value === 'string') email.value = value
+  },
+  { immediate: true },
+)
+
 definePageMeta({
   layout: false,
 })
@@ -209,6 +217,10 @@ async function entrar(): Promise<void> {
           </button>
         </form>
 
+        <NuxtLink class="recovery-link" to="/password-reset">
+          Esqueceu-se da palavra-passe?
+        </NuxtLink>
+
         <div class="login-divider"><span></span><i>INFORMAÇÃO</i><span></span></div>
         <div class="account-note">
           <span class="note-icon" aria-hidden="true">
@@ -243,6 +255,21 @@ async function entrar(): Promise<void> {
     #f5f7fc;
   color: #172b4d;
   font-family: var(--tf-font, 'Segoe UI', sans-serif);
+}
+
+.recovery-link {
+  display: block;
+  width: fit-content;
+  margin: 16px auto 0;
+  color: #4e57d1;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.recovery-link:hover {
+  color: #3730a3;
+  text-decoration: underline;
 }
 
 .login-shell {

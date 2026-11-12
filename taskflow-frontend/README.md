@@ -1,7 +1,7 @@
 # Nuxt Minimal Starter
 
 The frontend communicates with the TaskFlow FastAPI backend. By default, it
-uses `http://127.0.0.1:8000` for local development; set `NUXT_PUBLIC_API_BASE`
+uses `http://localhost:8000` for local development; set `NUXT_PUBLIC_API_BASE`
 if the backend is at another address. PostgreSQL credentials belong only in
 the backend environment; do not put them in Nuxt runtime configuration.
 
@@ -34,9 +34,9 @@ de projetos podem gerir equipas. A associação não altera automaticamente os
 membros nem as permissões de cada projeto. Aplique a migração `20261102_0007`
 no backend antes de usar esta funcionalidade.
 
-Os IDs de utilizadores, projetos e tarefas são gerados pelo PostgreSQL
-(`Identity`). Projetos e tarefas ficam associados à conta autenticada que os
-criou; não existe um ID de criador fixo no frontend.
+Os IDs de utilizadores, projetos, tarefas e restantes entidades são UUIDs
+gerados pela aplicação/base de dados. Projetos e tarefas ficam associados à
+conta autenticada que os criou; não existe um ID de criador fixo no frontend.
 
 ## Perfis e início de sessão
 
@@ -47,13 +47,14 @@ papéis por projeto são **Responsável** (gerir o projeto e a equipa),
 (consultar tarefas e histórico). Contas continuam a ser criadas por um
 administrador; este também pode gerir a plataforma.
 
-O login guarda os tokens apenas na sessão atual do navegador. É possível
-adicionar outra conta e alternar entre as contas autenticadas no cabeçalho; a
-sessão atual mantém-se se o novo login falhar. **Terminar sessão** remove os
-tokens guardados nesta sessão do navegador. O middleware redireciona cada perfil
-para a área permitida, mas a autorização efetiva é sempre validada pela API. A
-primeira conta de administrador é configurada no backend; consulte as instruções
-de autenticação no README do backend.
+O login usa cookies `HttpOnly` e proteção CSRF; credenciais de sessão não são
+guardadas em `sessionStorage`. É possível selecionar uma conta previamente
+utilizada, mas é necessário autenticar novamente. A recuperação sem email é
+feita com um token de uso único entregue por um administrador por um canal
+externo. As notificações e o histórico de alterações são persistidos pela API.
+O middleware redireciona cada perfil para a área permitida, mas a autorização
+efetiva é sempre validada pela API. A primeira conta de administrador é
+configurada no backend; consulte o README do backend.
 
 ### Separação entre áreas e permissões
 

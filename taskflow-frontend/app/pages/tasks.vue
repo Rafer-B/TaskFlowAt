@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Gere tarefas, sincronizando filtros, projetos, papéis e operações com a API.
 definePageMeta({
@@ -48,11 +49,11 @@ type CategoriaAPI =
 type ModoFormulario = 'criar' | 'editar'
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   description: string | null
   status: 'active' | 'completed' | 'archived'
-  created_by: number
+  created_by: string
   created_at: string
   updated_at: string
   archived_at: string | null
@@ -60,7 +61,7 @@ interface ProjetoAPI {
 }
 
 interface UtilizadorAPI {
-  id: number
+  id: string
   name: string
   email: string
   is_active: boolean
@@ -68,8 +69,8 @@ interface UtilizadorAPI {
 }
 
 interface MembroAPI {
-  project_id: number
-  user_id: number
+  project_id: string
+  user_id: string
   name: string
   email: string
   is_active: boolean
@@ -78,16 +79,16 @@ interface MembroAPI {
 }
 
 interface TarefaAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   description: string | null
   category: CategoriaAPI
   priority: PrioridadeAPI
   status: EstadoAPI
-  assigned_to: number | null
-  assignee_ids: number[]
-  created_by: number
+  assigned_to: string | null
+  assignee_ids: string[]
+  created_by: string
   due_date: string | null
   created_at: string
   updated_at: string
@@ -95,29 +96,29 @@ interface TarefaAPI {
 }
 
 interface Tarefa {
-  id: number
-  projectId: number
+  id: string
+  projectId: string
   title: string
   description: string
   project: string
   projectStatus: ProjetoAPI['status']
   responsible: string
-  assignedTo: number[]
+  assignedTo: string
   dueDate: string
   priority: Prioridade
   status: EstadoTarefa
   category: Categoria
-  createdBy: number
+  createdBy: string
   createdAt: string
   updatedAt: string
   completedAt: string | null
 }
 
 interface ProjetoOpcao {
-  id: number
+  id: string
   name: string
   status: ProjetoAPI['status']
-  created_by: number
+  created_by: string
   current_user_role: ProjetoAPI['current_user_role']
 }
 
@@ -175,7 +176,7 @@ watch(
 
 const mostrarFormulario = ref(false)
 const modoFormulario = ref<ModoFormulario>('criar')
-const tarefaEmEdicao = ref<number | null>(null)
+const tarefaEmEdicao = ref<string | null>(null)
 
 const mostrarDetalhes = ref(false)
 const tarefaSelecionada = ref<Tarefa | null>(null)
@@ -188,8 +189,8 @@ const erroMembros = ref('')
 const sucesso = ref('')
 const carregando = ref(false)
 const aGuardar = ref(false)
-const tarefaEmEliminacao = ref<number | null>(null)
-const tarefaPendenteEliminacao = ref<number | null>(null)
+const tarefaEmEliminacao = ref<string | null>(null)
+const tarefaPendenteEliminacao = ref<string | null>(null)
 const carregandoMembros = ref(false)
 const responsavelSeletorRef = ref<HTMLElement | null>(null)
 const responsavelAberto = ref(false)
@@ -213,7 +214,7 @@ watch(
   ([projectId, status]) => {
     const projectValue = Array.isArray(projectId) ? projectId[0] : projectId
     const statusValue = Array.isArray(status) ? status[0] : status
-    filtroProjeto.value = projectValue && /^\d+$/.test(projectValue)
+    filtroProjeto.value = projectValue
       ? projectValue
       : ''
     filtroEstado.value = estados.includes(statusValue as EstadoTarefa)
@@ -311,13 +312,13 @@ const projetosAtivos = computed(() =>
 
 const podeCriarTarefa = computed(() => projetosAtivos.value.length > 0)
 
-function papelNoProjeto(projectId: number): ProjetoAPI['current_user_role'] | null {
+function papelNoProjeto(projectId: string): ProjetoAPI['current_user_role'] | null {
   return projetosDisponiveis.value.find(
     (project) => project.id === projectId,
   )?.current_user_role ?? null
 }
 
-function podeEditarTarefasDoProjeto(projectId: number): boolean {
+function podeEditarTarefasDoProjeto(projectId: string): boolean {
   // Observadores podem consultar, mas só admins, responsáveis e colaboradores alteram tarefas.
   return auth.user.value?.role === 'admin' ||
     ['owner', 'contributor'].includes(papelNoProjeto(projectId) ?? '')
@@ -329,7 +330,7 @@ function podeEliminarTarefa(tarefa: Tarefa): boolean {
     papelNoProjeto(tarefa.projectId) === 'owner'
 }
 
-function podeAtribuirTarefa(projectId: number): boolean {
+function podeAtribuirTarefa(projectId: string): boolean {
   return auth.user.value?.role === 'admin' ||
     papelNoProjeto(projectId) === 'owner'
 }
@@ -355,7 +356,7 @@ const membrosResponsavelFiltrados = computed(() => {
   )
 })
 
-function selecionarResponsavel(userId: number | null): void {
+function selecionarResponsavel(userId: string | null): void {
   novaTarefa.value.assignedTo = userId === null ? '' : String(userId)
   responsavelAberto.value = false
   pesquisaResponsavel.value = ''
@@ -408,9 +409,8 @@ async function abrirFormularioCriar(estadoInicial: EstadoTarefa = 'Por fazer') {
 
   if (
     projectId &&
-    /^\d+$/.test(projectId) &&
     projetosAtivos.value.some(
-      (projeto) => projeto.id === Number(projectId),
+      (projeto) => projeto.id === projectId,
     )
   ) {
     novaTarefa.value.projectId = projectId
@@ -420,7 +420,7 @@ async function abrirFormularioCriar(estadoInicial: EstadoTarefa = 'Por fazer') {
   mostrarFormulario.value = true
 
   if (novaTarefa.value.projectId) {
-    await carregarMembrosProjeto(Number(novaTarefa.value.projectId))
+    await carregarMembrosProjeto(novaTarefa.value.projectId)
   }
 
   await deslocarAteFormulario()
@@ -438,7 +438,7 @@ function fecharFormulario() {
 // CARREGAR MEMBROS DO PROJETO
 // --------------------------------------------------
 
-async function carregarMembrosProjeto(projectId: number) {
+async function carregarMembrosProjeto(projectId: string) {
   const pedidoAtual = ++pedidoMembros
 
   membrosProjeto.value = []
@@ -492,7 +492,7 @@ watch(
     responsavelAberto.value = false
     pesquisaResponsavel.value = ''
 
-    await carregarMembrosProjeto(Number(novoProjeto))
+    await carregarMembrosProjeto(novoProjeto)
   },
 )
 
@@ -525,7 +525,7 @@ const tarefasFiltradas = computed(() => {
 
     const correspondeProjeto =
       !filtroProjeto.value ||
-      tarefa.projectId === Number(filtroProjeto.value)
+      tarefa.projectId === filtroProjeto.value
 
     const correspondeCategoria =
       !filtroCategoria.value ||
@@ -679,8 +679,8 @@ async function carregarDados() {
 
   try {
     const [listaProjetos, listaTarefas] = await Promise.all([
-      api<ProjetoAPI[]>('/projects/'),
-      api<TarefaAPI[]>('/tasks/'),
+      fetchAllPages<ProjetoAPI>('/projects/'),
+      fetchAllPages<TarefaAPI>('/tasks/'),
     ])
 
     projetosDisponiveis.value = listaProjetos.map((projeto) => ({
@@ -693,10 +693,10 @@ async function carregarDados() {
 
     const membrosDosProjetos = await Promise.all(
       listaProjetos.map((projeto) =>
-        api<MembroAPI[]>(`/projects/${projeto.id}/members`),
+        fetchAllPages<MembroAPI>(`/projects/${projeto.id}/members`),
       ),
     )
-    const membrosUnicos = new Map<number, UtilizadorAPI>()
+    const membrosUnicos = new Map<string, UtilizadorAPI>()
     for (const membros of membrosDosProjetos) {
       for (const membro of membros) {
         if (membro.is_active) {
@@ -740,9 +740,9 @@ watch(
   () => {
     const taskId = route.query.taskId
     const value = Array.isArray(taskId) ? taskId[0] : taskId
-    if (!value || !/^\d+$/.test(value)) return
+    if (!value) return
 
-    const tarefa = tarefas.value.find((item) => item.id === Number(value))
+    const tarefa = tarefas.value.find((item) => item.id === value)
     if (tarefa) consultarTarefa(tarefa)
   },
   { immediate: true },
@@ -771,7 +771,7 @@ async function editarTarefa(tarefa: Tarefa) {
     title: tarefa.title,
     description: tarefa.description,
     projectId: String(tarefa.projectId),
-    assignedTo: tarefa.assignedTo.length ? String(tarefa.assignedTo[0]) : '',
+    assignedTo: tarefa.assignedTo,
     dueDate: tarefa.dueDate,
     priority: tarefa.priority,
     status: tarefa.status,
@@ -795,10 +795,10 @@ async function guardarTarefa() {
   const titulo = novaTarefa.value.title.trim()
   const descricao = novaTarefa.value.description.trim()
 
-  const projetoId = Number(novaTarefa.value.projectId)
+  const projetoId = novaTarefa.value.projectId
 
   const responsavelId = novaTarefa.value.assignedTo
-    ? Number(novaTarefa.value.assignedTo)
+    ? novaTarefa.value.assignedTo
     : null
 
   if (!titulo) {
@@ -1183,9 +1183,11 @@ onBeforeUnmount(() => {
         v-if="podeCriarTarefa"
         class="primary-button"
         type="button"
+        aria-label="Nova tarefa"
         @click="abrirFormularioCriar()"
       >
-        + Nova tarefa
+        <ActionIcon name="add" />
+        Nova tarefa
       </button>
     </header>
 
@@ -1292,7 +1294,7 @@ onBeforeUnmount(() => {
             </small>
           </div>
 
-          <div v-if="novaTarefa.projectId && podeAtribuirTarefa(Number(novaTarefa.projectId))" class="field">
+          <div v-if="novaTarefa.projectId && podeAtribuirTarefa(novaTarefa.projectId)" class="field">
             <label for="responsavel">Responsável pela tarefa</label>
 
             <div ref="responsavelSeletorRef" class="assignee-picker">
@@ -1389,7 +1391,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 :disabled="carregandoMembros"
-                @click="carregarMembrosProjeto(Number(novaTarefa.projectId))"
+                @click="carregarMembrosProjeto(novaTarefa.projectId)"
               >
                 Tentar novamente
               </button>
@@ -1469,18 +1471,22 @@ onBeforeUnmount(() => {
         <div class="form-actions">
           <button
             type="button"
-            class="secondary-button"
+            class="secondary-button action-tooltip"
+            aria-label="Cancelar"
             :disabled="aGuardar"
             @click="fecharFormulario"
           >
+            <ActionIcon name="close" />
             Cancelar
           </button>
 
           <button
             type="submit"
             class="primary-button"
+            :aria-label="aGuardar ? 'A guardar' : modoFormulario === 'criar' ? 'Criar tarefa' : 'Guardar alterações'"
             :disabled="aGuardar || (modoFormulario === 'criar' && projetosAtivos.length === 0)"
           >
+            <ActionIcon :name="modoFormulario === 'criar' ? 'add' : 'save'" />
             {{
               aGuardar
                 ? 'A guardar...'
@@ -1501,9 +1507,11 @@ onBeforeUnmount(() => {
           v-if="podeCriarTarefa"
           class="new-task-button"
           type="button"
+          aria-label="Nova tarefa"
           @click="abrirFormularioCriar()"
         >
-          <span aria-hidden="true">＋</span> Nova tarefa
+          <ActionIcon name="add" />
+          Nova tarefa
         </button>
 
         <label class="board-search">
@@ -1653,10 +1661,11 @@ onBeforeUnmount(() => {
                 <td>
                   <button
                     type="button"
-                    class="table-action"
+                    class="table-action action-tooltip"
                     :aria-label="`Ver detalhes de ${tarefa.title}`"
                     @click="consultarTarefa(tarefa)"
                   >
+                    <ActionIcon name="view" />
                     Detalhes
                   </button>
                 </td>
@@ -1683,19 +1692,23 @@ onBeforeUnmount(() => {
           <div class="table-page-controls" aria-label="Paginação da lista de tarefas">
             <button
               type="button"
+              class="action-tooltip"
               aria-label="Página anterior"
               :disabled="paginaTabela <= 1"
               @click="paginaTabela--"
             >
+              <ActionIcon name="back" />
               Anterior
             </button>
             <span>Página {{ paginaTabela }} de {{ totalPaginasTabela }}</span>
             <button
               type="button"
+              class="action-tooltip"
               aria-label="Página seguinte"
               :disabled="paginaTabela >= totalPaginasTabela"
               @click="paginaTabela++"
             >
+              <ActionIcon name="forward" />
               Seguinte
             </button>
           </div>
@@ -1826,34 +1839,43 @@ onBeforeUnmount(() => {
         <footer class="details-actions">
           <div v-if="tarefaPendenteEliminacao === tarefaSelecionada.id" class="inline-delete-confirm">
             <span>Eliminar esta tarefa? Esta ação não pode ser desfeita.</span>
-            <button type="button" class="secondary-button" @click="cancelarEliminacaoTarefa">Cancelar</button>
+            <button type="button" class="secondary-button action-tooltip" aria-label="Cancelar" @click="cancelarEliminacaoTarefa">
+              <ActionIcon name="close" />
+              Cancelar
+            </button>
             <button
               type="button"
-              class="delete-task-button"
+              class="delete-task-button action-tooltip"
+              :aria-label="tarefaEmEliminacao === tarefaSelecionada.id ? 'A eliminar' : 'Confirmar eliminação'"
               :disabled="tarefaEmEliminacao === tarefaSelecionada.id"
               @click="eliminarTarefa(tarefaSelecionada)"
             >
+              <ActionIcon name="delete" />
               {{ tarefaEmEliminacao === tarefaSelecionada.id ? 'A eliminar...' : 'Confirmar eliminação' }}
             </button>
           </div>
           <button
             v-else-if="podeEliminarTarefa(tarefaSelecionada)"
             type="button"
-            class="delete-task-button"
+            class="delete-task-button action-tooltip"
+            aria-label="Eliminar tarefa"
             :disabled="
               tarefaSelecionada.projectStatus === 'archived' ||
               tarefaEmEliminacao === tarefaSelecionada.id
             "
             @click="eliminarTarefa(tarefaSelecionada)"
           >
+            <ActionIcon name="delete" />
             {{ tarefaEmEliminacao === tarefaSelecionada.id ? 'A eliminar...' : 'Eliminar tarefa' }}
           </button>
 
           <button
             type="button"
-            class="secondary-button"
+            class="secondary-button action-tooltip"
+            aria-label="Fechar"
             @click="fecharDetalhes"
           >
+            <ActionIcon name="close" />
             Fechar
           </button>
 
@@ -1863,9 +1885,11 @@ onBeforeUnmount(() => {
               podeEditarTarefasDoProjeto(tarefaSelecionada.projectId)
             "
             type="button"
-            class="primary-button"
+            class="primary-button action-tooltip"
+            aria-label="Editar tarefa"
             @click="editarTarefa(tarefaSelecionada)"
           >
+            <ActionIcon name="edit" />
             Editar tarefa
           </button>
         </footer>
@@ -1928,7 +1952,7 @@ onBeforeUnmount(() => {
 .page-header p {
   margin: 0;
   color: #7d8aa1;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .primary-button,

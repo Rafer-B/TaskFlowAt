@@ -2,6 +2,8 @@
 
 from app.database import testar_ligacao
 
+__test__ = False
+
 try:
     # Mantém o diagnóstico utilizável na linha de comandos sem traceback longo.
     resultado = testar_ligacao()

@@ -57,9 +57,14 @@ interface Notificacao {
   id: string
   title: string
   description: string
-  kind: 'Bloqueio' | 'Atraso' | 'Inatividade'
+  kind: 'Bloqueio' | 'Atraso' | 'Inatividade' | 'Tarefa'
   to: string
+  persisted?: boolean
+  read_at?: string | null
 }
+
+const notificacoesPersistentes = ref<Notificacao[]>([])
+const notificacoesPersistentesNaoLidas = ref(0)
 
 const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
   // A pesquisa localiza entidades já carregadas e limita a lista para manter o painel compacto.
@@ -108,7 +113,7 @@ const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
   return resultados.slice(0, 8)
 })
 
-const notificacoes = computed<Notificacao[]>(() => {
+const notificacoesLocais = computed<Notificacao[]>(() => {
   // Os alertas cobrem apenas projetos ativos e priorizam bloqueios sobre atrasos e inatividade.
   const projectIds = new Set(
     dashboard.projects
@@ -177,20 +182,29 @@ const notificacoes = computed<Notificacao[]>(() => {
       Bloqueio: 0,
       Atraso: 1,
       Inatividade: 2,
+      Tarefa: 3,
     }
     return priority[a.kind] - priority[b.kind]
   })
 })
 
+const notificacoes = computed(() => [
+  ...notificacoesPersistentes.value,
+  ...notificacoesLocais.value,
+])
+
 const notificacoesNaoLidas = computed(() =>
-  notificacoes.value.filter((item) => !idsNotificacoesLidas.value.has(item.id)),
+  notificacoesPersistentesNaoLidas.value +
+  notificacoesLocais.value.filter(
+    (item) => !idsNotificacoesLidas.value.has(item.id),
+  ).length,
 )
 
 const totalNaoLidas = computed(() =>
-  estadoLeituraCarregado.value ? notificacoesNaoLidas.value.length : 0,
+  estadoLeituraCarregado.value ? notificacoesNaoLidas.value : 0,
 )
 
-function chaveLeituraNotificacoes(userId: number): string {
+function chaveLeituraNotificacoes(userId: string): string {
   return `taskflow-notificacoes-lidas:${userId}`
 }
 
@@ -201,6 +215,8 @@ watch(
 
     if (userId == null) {
       idsNotificacoesLidas.value = new Set()
+      notificacoesPersistentes.value = []
+      notificacoesPersistentesNaoLidas.value = 0
       estadoLeituraCarregado.value = true
       return
     }
@@ -220,6 +236,32 @@ watch(
     } finally {
       estadoLeituraCarregado.value = true
     }
+
+    void Promise.all([
+      api<{
+        id: string
+        title: string
+        message: string
+        target: string
+        read_at: string | null
+      }[]>('/notifications/?limit=30'),
+      api<{ count: number }>('/notifications/unread-count'),
+    ])
+      .then(([items, unread]) => {
+        notificacoesPersistentes.value = items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: item.message,
+          kind: 'Tarefa',
+          to: item.target,
+          persisted: true,
+          read_at: item.read_at,
+        }))
+        notificacoesPersistentesNaoLidas.value = unread.count
+      })
+      .catch((error: unknown) => {
+        console.error('Não foi possível carregar as notificações persistentes:', error)
+      })
   },
   { immediate: true },
 )
@@ -229,7 +271,32 @@ function fecharPainel(): void {
   mostrarNotificacoes.value = false
 }
 
-function marcarNotificacaoComoLida(item: Notificacao): void {
+function notificacaoLida(item: Notificacao): boolean {
+  return item.persisted
+    ? item.read_at != null
+    : idsNotificacoesLidas.value.has(item.id)
+}
+
+async function marcarNotificacaoComoLida(item: Notificacao): Promise<void> {
+  if (item.persisted) {
+    try {
+      const atualizada = await api<{ read_at: string | null }>(
+        `/notifications/${item.id}/read`,
+        { method: 'POST' },
+      )
+      if (item.read_at == null) {
+        notificacoesPersistentesNaoLidas.value = Math.max(
+          0,
+          notificacoesPersistentesNaoLidas.value - 1,
+        )
+      }
+      item.read_at = atualizada.read_at
+    } catch (error) {
+      console.error('Não foi possível marcar a notificação como lida:', error)
+    }
+    return
+  }
+
   idsNotificacoesLidas.value = new Set(idsNotificacoesLidas.value).add(item.id)
   const userId = auth.user.value?.id
   if (userId == null) return
@@ -257,7 +324,7 @@ async function abrirDestino(destino: string): Promise<void> {
 }
 
 async function abrirNotificacao(item: Notificacao): Promise<void> {
-  marcarNotificacaoComoLida(item)
+  await marcarNotificacaoComoLida(item)
   await abrirDestino(item.to)
 }
 
@@ -485,15 +552,15 @@ async function carregarFotografia(event: Event): Promise<void> {
               <button
                 type="button"
                 class="notification-item"
-                :class="{ 'is-read': idsNotificacoesLidas.has(item.id) }"
-                :aria-label="`Abrir notificação${idsNotificacoesLidas.has(item.id) ? ' lida' : ' não lida'}: ${item.title}`"
+                :class="{ 'is-read': notificacaoLida(item) }"
+                :aria-label="`Abrir notificação${notificacaoLida(item) ? ' lida' : ' não lida'}: ${item.title}`"
                 @click="abrirNotificacao(item)"
               >
                 <span
                   class="notification-marker"
                   :class="[
                     `marker-${item.kind.toLowerCase()}`,
-                    { 'marker-read': idsNotificacoesLidas.has(item.id) },
+                    { 'marker-read': notificacaoLida(item) },
                   ]"
                 ></span>
                 <span class="notification-copy">
@@ -502,15 +569,15 @@ async function carregarFotografia(event: Event): Promise<void> {
                 </span>
                 <span
                   class="notification-kind"
-                  :class="{ 'notification-read': idsNotificacoesLidas.has(item.id) }"
+                  :class="{ 'notification-read': notificacaoLida(item) }"
                 >
-                  {{ idsNotificacoesLidas.has(item.id) ? 'Lida' : item.kind }}
+                  {{ notificacaoLida(item) ? 'Lida' : item.kind }}
                 </span>
               </button>
             </li>
           </ul>
           <p v-else class="popover-state">
-            Não há atrasos, bloqueios ou projetos sem atividade.
+            Não há alertas ou notificações.
           </p>
         </section>
       </div>
@@ -924,6 +991,10 @@ async function carregarFotografia(event: Event): Promise<void> {
 
 .marker-inatividade {
   background: #6485ff;
+}
+
+.marker-tarefa {
+  background: #22a06b;
 }
 
 .marker-read {

@@ -70,6 +70,15 @@ As migrações atuais acrescentam:
 | `20261102_0007` | Equipas, membros de equipa e associação de projetos a equipas. |
 | `20261106_0008` | Associação normalizada de responsáveis por tarefa; preserva as atribuições existentes. |
 | `20261106_0009` | Limita cada tarefa a um responsável e preserva a atribuição principal. |
+| `20261112_0010` | Converte IDs e referências para UUID, preservando registos e associações. |
+| `20261112_0011` | Acrescenta sessões revogáveis, recuperação de palavra-passe, notificações e histórico de alterações. |
+
+A revisão `20261112_0010` atribui novos UUIDs aos registos existentes e atualiza
+as referências entre tabelas; os valores numéricos antigos não são mantidos.
+Faça uma cópia de segurança antes de a executar. Durante a atualização, pare a
+API e publique em conjunto as versões novas do backend e do frontend. Os
+utilizadores terão de iniciar sessão novamente, pois os tokens existentes
+contêm os IDs numéricos anteriores.
 
 ### Base de dados que já contém tabelas
 
@@ -113,8 +122,10 @@ documentação interativa dos endpoints encontra-se em
 
 ## Perfis e autenticação
 
-A API utiliza tokens **Bearer** para autenticar pedidos. Configure no `.env`
-uma chave JWT privada com, pelo menos, 32 caracteres:
+A API utiliza cookies `HttpOnly` para as sessões do navegador e continua a
+aceitar tokens **Bearer** para clientes de API. Os pedidos de alteração feitos
+com cookies também exigem o cookie e o cabeçalho CSRF correspondentes.
+Configure no `.env` uma chave JWT privada com, pelo menos, 32 caracteres:
 
 ```dotenv
 # Chave privada usada para assinar os tokens de acesso
@@ -216,13 +227,66 @@ membros e acrescenta a associação opcional de equipa aos projetos.
 ## Ligação ao frontend Nuxt 4
 
 O frontend deve apontar para o endereço onde a API está disponível. Em
-desenvolvimento local, o valor predefinido é `http://127.0.0.1:8000`. Configure
+desenvolvimento local, o valor predefinido é `http://localhost:8000`. Configure
 `NUXT_PUBLIC_API_BASE` no ambiente do frontend, se necessário:
 
 ```dotenv
-NUXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+NUXT_PUBLIC_API_BASE=http://localhost:8000
 ```
 
 As credenciais do PostgreSQL e a chave JWT pertencem apenas ao ambiente do
 backend. Não as inclua na configuração pública do Nuxt, pois os valores
 `NUXT_PUBLIC_*` podem ser expostos ao navegador.
+
+As listas principais da API aceitam `limit` (1–100) e `offset` (0 ou superior).
+O frontend pede páginas de 100 registos e combina-as mantendo o formato de
+array já utilizado pelas páginas existentes.
+
+## Sessões, recuperação e notificações
+
+A migração `20261112_0011` ativa a revogação de sessões, limitação persistente
+de tentativas de login, tokens de recuperação de uso único e histórico de
+alterações de tarefas. Alterações de palavra-passe invalidam sessões anteriores.
+Para recuperar acesso sem um serviço de email, um administrador emite um token
+em **Utilizadores → Repor palavra-passe** e entrega-o por um canal externo
+seguro. O token aparece uma única vez e expira após 30 minutos.
+
+As notificações são persistentes e privadas por utilizador. Atualmente, a
+atribuição de uma tarefa a outro utilizador gera uma notificação que pode ser
+consultada e marcada como lida no front-office. O histórico de alterações fica
+disponível no painel de trabalho da tarefa.
+
+Configure `TASKFLOW_CORS_ORIGINS` com as origens exatas do frontend. Em
+produção, use HTTPS e configure `TASKFLOW_COOKIE_DOMAIN` quando a aplicação e
+a API estiverem em subdomínios do mesmo domínio raiz. Nunca habilite origens
+CORS wildcard com credenciais.
+
+## Cópias de segurança
+
+Instale os utilitários de cliente do PostgreSQL (`pg_dump` e `pg_restore`) e
+execute a partir de `taskflow-backend`:
+
+```bash
+python scripts/backup.py
+python scripts/restore.py backups/taskflow-backup-20261112T120000Z.tar.gz \
+  --confirm-database taskflowdb_at --restore-uploads
+```
+
+Os backups incluem a base de dados, uploads e anexos, ficam em `backups/` com
+permissões restritas e são retidos pelo número de dias definido em
+`TASKFLOW_BACKUP_RETENTION_DAYS` (predefinição: 14). A restauração substitui a
+base configurada e exige a confirmação exata do nome; teste o processo numa
+base isolada antes de utilizar em produção.
+
+## Testes e integração contínua
+
+Instale as dependências de desenvolvimento e execute os testes do backend:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-dev.txt
+pytest -q
+```
+
+O workflow `.github/workflows/ci.yml` aplica as migrações numa instância
+PostgreSQL temporária, executa os testes backend e valida tipos e build do
+frontend.

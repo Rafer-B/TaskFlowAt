@@ -1,8 +1,9 @@
 """Contratos e regras de identificação para membros de projetos."""
 
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, model_validator
 
 
 ProjectRole = Literal["owner", "contributor", "viewer"]
@@ -11,7 +12,7 @@ ProjectRole = Literal["owner", "contributor", "viewer"]
 class ProjectMemberCreate(BaseModel):
     """Entrada que identifica um único utilizador por ID ou email."""
 
-    user_id: int | None = Field(default=None, gt=0)
+    user_id: UUID | None = None
     email: EmailStr | None = None
     role: ProjectRole = "contributor"
 
@@ -38,8 +39,8 @@ class ProjectMemberRoleUpdate(BaseModel):
 class ProjectMemberResponse(BaseModel):
     """Dados de membro devolvidos ao cliente."""
 
-    project_id: int
-    user_id: int
+    project_id: UUID
+    user_id: UUID
     name: str
     email: str
     is_active: bool
@@ -50,7 +51,7 @@ class ProjectMemberResponse(BaseModel):
 class ProjectMemberCandidate(BaseModel):
     """Conta elegível apresentada para ser adicionada ao projeto."""
 
-    id: int
+    id: UUID
     name: str
     email: EmailStr
     avatar_url: str | None = None

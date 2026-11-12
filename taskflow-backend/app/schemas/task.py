@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -37,7 +38,7 @@ TaskStatus = Literal[
 class TaskCreate(BaseModel):
     """Dados de criação com valores de estado e prioridade predefinidos."""
 
-    project_id: int = Field(gt=0)
+    project_id: UUID
 
     title: str = Field(
         min_length=1,
@@ -55,12 +56,9 @@ class TaskCreate(BaseModel):
 
     status: TaskStatus = "to_do"
 
-    assigned_to: int | None = Field(
-        default=None,
-        gt=0,
-    )
+    assigned_to: UUID | None = None
 
-    assignee_ids: list[int] | None = None
+    assignee_ids: list[UUID] | None = None
 
     due_date: datetime | None = None
 
@@ -93,13 +91,11 @@ class TaskCreate(BaseModel):
     @classmethod
     def validar_assignees(
         cls,
-        valor: list[int] | None,
-    ) -> list[int] | None:
-        """Exige IDs positivos e distintos para os membros atribuídos."""
+        valor: list[UUID] | None,
+    ) -> list[UUID] | None:
+        """Exige IDs distintos para os membros atribuídos."""
         if valor is None:
             return None
-        if any(user_id <= 0 for user_id in valor):
-            raise ValueError("Os IDs dos membros devem ser positivos.")
         if len(valor) != len(set(valor)):
             raise ValueError("Não é possível repetir um membro na tarefa.")
         if len(valor) > 1:
@@ -133,12 +129,9 @@ class TaskUpdate(BaseModel):
         le=100,
     )
 
-    assigned_to: int | None = Field(
-        default=None,
-        gt=0,
-    )
+    assigned_to: UUID | None = None
 
-    assignee_ids: list[int] | None = None
+    assignee_ids: list[UUID] | None = None
 
     due_date: datetime | None = None
 
@@ -177,13 +170,11 @@ class TaskUpdate(BaseModel):
     @classmethod
     def validar_assignees(
         cls,
-        valor: list[int] | None,
-    ) -> list[int] | None:
-        """Exige IDs positivos e distintos para os membros atribuídos."""
+        valor: list[UUID] | None,
+    ) -> list[UUID] | None:
+        """Exige IDs distintos para os membros atribuídos."""
         if valor is None:
             return None
-        if any(user_id <= 0 for user_id in valor):
-            raise ValueError("Os IDs dos membros devem ser positivos.")
         if len(valor) != len(set(valor)):
             raise ValueError("Não é possível repetir um membro na tarefa.")
         if len(valor) > 1:
@@ -196,17 +187,17 @@ class TaskResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    project_id: int
+    id: UUID
+    project_id: UUID
     title: str
     description: str | None
     category: TaskCategory
     priority: TaskPriority
     status: TaskStatus
     progress: int
-    assigned_to: int | None
-    assignee_ids: list[int]
-    created_by: int
+    assigned_to: UUID | None
+    assignee_ids: list[UUID]
+    created_by: UUID
     due_date: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -218,7 +209,7 @@ class TaskWorkLogAttachmentResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     original_name: str
     content_type: str
     size: int
@@ -227,9 +218,9 @@ class TaskWorkLogAttachmentResponse(BaseModel):
 class TaskWorkLogResponse(BaseModel):
     """Atualização de trabalho com autor e anexos apresentados."""
 
-    id: int
-    task_id: int
-    author_id: int
+    id: UUID
+    task_id: UUID
+    author_id: UUID
     author_name: str
     note: str
     progress: int

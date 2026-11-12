@@ -1,6 +1,8 @@
 """Associação entre utilizadores e projetos com papéis de acesso limitados."""
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String
+from uuid import UUID
+
+from sqlalchemy import CheckConstraint, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -17,14 +19,14 @@ class ProjectMember(Base):
         ),
     )
 
-    project_id: Mapped[int] = mapped_column(
-        BigInteger,
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
         primary_key=True
     )
 
-    user_id: Mapped[int] = mapped_column(
-        BigInteger,
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True
     )

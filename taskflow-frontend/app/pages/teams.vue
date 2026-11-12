@@ -1,29 +1,30 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 definePageMeta({ layout: 'admin' })
 
 // Página de equipas: associa pessoas e projetos respeitando capacidades devolvidas pela API.
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   status: 'active' | 'completed' | 'archived'
-  team_id: number | null
+  team_id: string | null
   current_user_role: 'admin' | 'owner' | 'contributor' | 'viewer'
 }
 
 interface ProjetoEquipa {
-  id: number
+  id: string
   name: string
   status: string
 }
 
 interface EquipaAPI {
-  id: number
+  id: string
   name: string
   description: string | null
-  created_by: number
+  created_by: string
   created_at: string
   updated_at: string
   member_count: number
@@ -33,7 +34,7 @@ interface EquipaAPI {
 }
 
 interface MembroEquipa {
-  user_id: number
+  user_id: string
   name: string
   email: string
   avatar_url: string | null
@@ -55,14 +56,14 @@ const detalheVisivel = ref(false)
 const formularioRef = ref<HTMLElement | null>(null)
 const detalheRef = ref<HTMLElement | null>(null)
 const confirmarEliminacaoEquipa = ref(false)
-const membroPendenteRemocao = ref<number | null>(null)
+const membroPendenteRemocao = ref<string | null>(null)
 const equipaSelecionada = ref<EquipaAPI | null>(null)
 const editarEquipa = ref(false)
 const aGuardar = ref(false)
 const aAdicionarMembro = ref(false)
-const membroEmRemocao = ref<number | null>(null)
-const projetoEmAtualizacao = ref<number | null>(null)
-const utilizadoresSelecionados = ref<number[]>([])
+const membroEmRemocao = ref<string | null>(null)
+const projetoEmAtualizacao = ref<string | null>(null)
+const utilizadoresSelecionados = ref<string[]>([])
 const pesquisarUtilizadores = ref('')
 const projetoSelecionado = ref('')
 const formulario = ref({ name: '', description: '' })
@@ -105,8 +106,8 @@ async function carregarDados(): Promise<void> {
   try {
     // As listas iniciais são carregadas em paralelo para alimentar pesquisa e seleção.
     const [equipasAPI, projetosAPI] = await Promise.all([
-      api<EquipaAPI[]>('/teams/'),
-      api<ProjetoAPI[]>('/projects/'),
+      fetchAllPages<EquipaAPI>('/teams/'),
+      fetchAllPages<ProjetoAPI>('/projects/'),
     ])
     equipas.value = equipasAPI
     projetos.value = projetosAPI
@@ -172,14 +173,14 @@ async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
   try {
     const [equipaAtualizada, membrosAPI] = await Promise.all([
       api<EquipaAPI>(`/teams/${equipa.id}`),
-      api<MembroEquipa[]>(`/teams/${equipa.id}/members`),
+      fetchAllPages<MembroEquipa>(`/teams/${equipa.id}/members`),
     ])
     atualizarEquipaLocal(equipaAtualizada)
     equipaSelecionada.value = equipaAtualizada
     membros.value = membrosAPI
     if (equipaAtualizada.can_manage) {
       // Só pede pessoas disponíveis quando a API confirma permissão de gestão.
-      utilizadoresDisponiveis.value = await api<MembroEquipa[]>(
+      utilizadoresDisponiveis.value = await fetchAllPages<MembroEquipa>(
         `/teams/${equipa.id}/available-members`,
       )
     }
@@ -350,7 +351,7 @@ async function associarProjetoSelecionado(): Promise<void> {
   if (project) await atualizarAssociacaoProjeto(project, true)
 }
 
-async function desassociarProjeto(projectId: number): Promise<void> {
+async function desassociarProjeto(projectId: string): Promise<void> {
   const project = projetos.value.find(item => item.id === projectId)
   if (project) await atualizarAssociacaoProjeto(project, false)
 }
@@ -392,8 +393,9 @@ onMounted(carregarDados)
         <h1>Equipas</h1>
         <p>Organize pessoas e associe projetos a equipas de trabalho.</p>
       </div>
-      <button v-if="podeCriarEquipa" class="primary-button" type="button" @click="abrirCriacao">
-        <span aria-hidden="true">＋</span> Criar equipa
+      <button v-if="podeCriarEquipa" class="primary-button" type="button" aria-label="Criar equipa" @click="abrirCriacao">
+        <ActionIcon name="add" />
+        Criar equipa
       </button>
     </header>
 
@@ -414,7 +416,10 @@ onMounted(carregarDados)
       <h2>Ainda não existem equipas visíveis</h2>
       <p v-if="podeCriarEquipa">Crie uma equipa para reunir membros e organizar projetos.</p>
       <p v-else>As equipas a que pertence ou que estão associadas aos seus projetos aparecerão aqui.</p>
-      <button v-if="podeCriarEquipa" class="primary-button" type="button" @click="abrirCriacao">Criar primeira equipa</button>
+      <button v-if="podeCriarEquipa" class="primary-button" type="button" aria-label="Criar primeira equipa" @click="abrirCriacao">
+        <ActionIcon name="add" />
+        Criar primeira equipa
+      </button>
     </div>
     <div v-else-if="!equipasFiltradas.length" class="empty-state">
       Não foram encontradas equipas para esta pesquisa.
@@ -436,8 +441,9 @@ onMounted(carregarDados)
           <span v-if="equipa.projects.length > 3" class="more-tag">+{{ equipa.projects.length - 3 }}</span>
           <span v-if="!equipa.projects.length" class="muted-tag">Sem projetos associados</span>
         </div>
-        <button class="card-action" type="button" @click="abrirDetalhe(equipa)">
-          Ver equipa <span aria-hidden="true">→</span>
+        <button class="card-action action-tooltip" type="button" aria-label="Ver equipa" @click="abrirDetalhe(equipa)">
+          <ActionIcon name="view" />
+          Ver equipa
         </button>
       </article>
     </div>
@@ -445,15 +451,21 @@ onMounted(carregarDados)
     <section v-if="formularioVisivel" ref="formularioRef" class="team-inline-panel create-panel" aria-labelledby="create-team-title">
         <header class="panel-heading">
           <div><span class="eyebrow">NOVA EQUIPA</span><h2 id="create-team-title">Criar equipa</h2></div>
-          <button type="button" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">×</button>
+          <button type="button" class="action-tooltip" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">
+            <ActionIcon name="close" />
+          </button>
         </header>
         <form class="team-form" @submit.prevent="guardarEquipa">
           <label>Nome da equipa<input v-model="formulario.name" maxlength="255" required placeholder="Ex.: Desenvolvimento"></label>
           <label>Descrição<textarea v-model="formulario.description" rows="3" maxlength="5000" placeholder="Objetivos e área de atuação"></textarea></label>
           <p v-if="erro" class="form-error" role="alert">{{ erro }}</p>
           <footer class="panel-actions">
-            <button class="secondary-button" type="button" :disabled="aGuardar" @click="formularioVisivel = false">Cancelar</button>
-            <button class="primary-button" type="submit" :disabled="aGuardar">{{ aGuardar ? 'A criar…' : 'Criar equipa' }}</button>
+            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" :disabled="aGuardar" @click="formularioVisivel = false">
+              <ActionIcon name="close" /> Cancelar
+            </button>
+            <button class="primary-button" type="submit" :aria-label="aGuardar ? 'A criar equipa' : 'Criar equipa'" :disabled="aGuardar">
+              <ActionIcon name="add" /> {{ aGuardar ? 'A criar…' : 'Criar equipa' }}
+            </button>
           </footer>
         </form>
     </section>
@@ -464,7 +476,9 @@ onMounted(carregarDados)
             <span class="eyebrow">EQUIPA · {{ membros.length }} MEMBRO(S)</span>
             <h2 id="team-detail-title">{{ equipaSelecionada.name }}</h2>
           </div>
-          <button type="button" aria-label="Fechar" @click="fecharDetalhe">×</button>
+          <button type="button" class="action-tooltip" aria-label="Fechar" @click="fecharDetalhe">
+            <ActionIcon name="close" />
+          </button>
         </header>
 
         <p v-if="erroDetalhe" class="form-error" role="alert">{{ erroDetalhe }}</p>
@@ -474,13 +488,19 @@ onMounted(carregarDados)
           <label>Nome da equipa<input v-model="equipaSelecionada.name" maxlength="255" required></label>
           <label>Descrição<textarea v-model="equipaSelecionada.description" rows="3" maxlength="5000"></textarea></label>
           <div class="inline-actions">
-            <button class="secondary-button" type="button" @click="editarEquipa = false">Cancelar</button>
-            <button class="primary-button" type="submit" :disabled="aGuardar">{{ aGuardar ? 'A guardar…' : 'Guardar alterações' }}</button>
+            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" @click="editarEquipa = false">
+              <ActionIcon name="close" /> Cancelar
+            </button>
+            <button class="primary-button action-tooltip" type="submit" :aria-label="aGuardar ? 'A guardar' : 'Guardar alterações'" :disabled="aGuardar">
+              <ActionIcon name="save" /> {{ aGuardar ? 'A guardar…' : 'Guardar alterações' }}
+            </button>
           </div>
         </form>
         <div v-else class="team-summary">
           <p>{{ equipaSelecionada.description || 'Sem descrição.' }}</p>
-          <button v-if="equipaSelecionada.can_manage" class="text-button" type="button" @click="editarEquipa = true">Editar dados da equipa</button>
+          <button v-if="equipaSelecionada.can_manage" class="text-button action-tooltip" type="button" aria-label="Editar dados da equipa" @click="editarEquipa = true">
+            <ActionIcon name="edit" /> Editar dados da equipa
+          </button>
         </div>
 
         <section class="detail-section">
@@ -494,8 +514,12 @@ onMounted(carregarDados)
             </label>
             <div class="selection-toolbar">
               <span>{{ utilizadoresSelecionados.length }} selecionado(s)</span>
-              <button type="button" @click="selecionarTodosUtilizadores(true)">Selecionar visíveis</button>
-              <button type="button" @click="selecionarTodosUtilizadores(false)">Limpar seleção</button>
+              <button type="button" class="action-tooltip" aria-label="Selecionar utilizadores visíveis" @click="selecionarTodosUtilizadores(true)">
+                <ActionIcon name="check" /> Selecionar visíveis
+              </button>
+              <button type="button" class="action-tooltip" aria-label="Limpar seleção" @click="selecionarTodosUtilizadores(false)">
+                <ActionIcon name="close" /> Limpar seleção
+              </button>
             </div>
             <div class="available-members" role="group" aria-label="Utilizadores disponíveis para a equipa">
               <label v-for="user in utilizadoresFiltrados" :key="user.user_id" class="available-member">
@@ -507,7 +531,8 @@ onMounted(carregarDados)
                 {{ utilizadoresDisponiveis.length ? 'Nenhum utilizador corresponde à pesquisa.' : 'Não há mais utilizadores ativos disponíveis.' }}
               </p>
             </div>
-            <button class="primary-button compact-button" type="submit" :disabled="!utilizadoresSelecionados.length || aAdicionarMembro">
+            <button class="primary-button compact-button" type="submit" :aria-label="`Adicionar ${utilizadoresSelecionados.length} membro(s)`" :disabled="!utilizadoresSelecionados.length || aAdicionarMembro">
+              <ActionIcon name="add" />
               {{ aAdicionarMembro ? 'A adicionar…' : `Adicionar ${utilizadoresSelecionados.length || ''} membro(s)` }}
             </button>
           </form>
@@ -517,18 +542,23 @@ onMounted(carregarDados)
               <span class="member-copy"><strong>{{ membro.name }}</strong><small>{{ membro.email }}</small></span>
               <button
                 v-if="equipaSelecionada.can_manage && membroPendenteRemocao !== membro.user_id"
-                class="remove-button"
+                class="remove-button action-tooltip"
                 type="button"
                 :aria-label="`Remover ${membro.name}`"
                 :disabled="membroEmRemocao === membro.user_id"
                 @click="removerMembro(membro)"
               >
+                <ActionIcon name="delete" />
                 {{ membroEmRemocao === membro.user_id ? '…' : 'Remover' }}
               </button>
               <div v-if="membroPendenteRemocao === membro.user_id" class="inline-confirm">
                 <span>Remover {{ membro.name }} desta equipa?</span>
-                <button type="button" class="danger-button" @click="removerMembro(membro)">Confirmar</button>
-                <button type="button" class="secondary-button" @click="membroPendenteRemocao = null">Cancelar</button>
+                <button type="button" class="danger-button action-tooltip" aria-label="Confirmar remoção" @click="removerMembro(membro)">
+                  <ActionIcon name="delete" /> Confirmar
+                </button>
+                <button type="button" class="secondary-button action-tooltip" aria-label="Cancelar" @click="membroPendenteRemocao = null">
+                  <ActionIcon name="close" /> Cancelar
+                </button>
               </div>
             </li>
             <li v-if="!membros.length" class="list-empty">Ainda não foram adicionados membros.</li>
@@ -546,7 +576,9 @@ onMounted(carregarDados)
                 {{ project.name }}
               </option>
             </select>
-            <button class="primary-button compact-button" type="submit" :disabled="!projetoSelecionado || projetoEmAtualizacao !== null">Associar</button>
+            <button class="primary-button compact-button" type="submit" aria-label="Associar projeto" :disabled="!projetoSelecionado || projetoEmAtualizacao !== null">
+              <ActionIcon name="add" /> Associar
+            </button>
           </form>
           <ul class="project-list">
             <li v-for="project in equipaSelecionada.projects" :key="project.id">
@@ -554,11 +586,12 @@ onMounted(carregarDados)
               <span class="project-copy"><strong>{{ project.name }}</strong><small>{{ project.status === 'active' ? 'Ativo' : project.status === 'completed' ? 'Concluído' : 'Arquivado' }}</small></span>
               <button
                 v-if="projetos.some(item => item.id === project.id && (item.current_user_role === 'admin' || item.current_user_role === 'owner'))"
-                class="remove-button"
+                class="remove-button action-tooltip"
                 type="button"
                 :disabled="projetoEmAtualizacao === project.id"
                 @click="desassociarProjeto(project.id)"
               >
+                <ActionIcon name="close" />
                 {{ projetoEmAtualizacao === project.id ? '…' : 'Desassociar' }}
               </button>
             </li>
@@ -570,13 +603,20 @@ onMounted(carregarDados)
         <footer v-if="equipaSelecionada.can_manage" class="detail-footer">
           <div v-if="confirmarEliminacaoEquipa" class="inline-confirm team-delete-confirm">
             <span>Eliminar esta equipa? Os projetos associados serão mantidos.</span>
-            <button class="danger-button" type="button" :disabled="aGuardar" @click="eliminarEquipa">
+            <button class="danger-button action-tooltip" type="button" :aria-label="aGuardar ? 'A eliminar equipa' : 'Confirmar eliminação da equipa'" :disabled="aGuardar" @click="eliminarEquipa">
+              <ActionIcon name="delete" />
               {{ aGuardar ? 'A eliminar…' : 'Confirmar eliminação' }}
             </button>
-            <button class="secondary-button" type="button" :disabled="aGuardar" @click="confirmarEliminacaoEquipa = false">Cancelar</button>
+            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" :disabled="aGuardar" @click="confirmarEliminacaoEquipa = false">
+              <ActionIcon name="close" /> Cancelar
+            </button>
           </div>
-          <button v-else class="danger-button" type="button" :disabled="aGuardar" @click="eliminarEquipa">Eliminar equipa</button>
-          <button class="secondary-button" type="button" @click="fecharDetalhe">Fechar</button>
+          <button v-else class="danger-button action-tooltip" type="button" aria-label="Eliminar equipa" :disabled="aGuardar" @click="eliminarEquipa">
+            <ActionIcon name="delete" /> Eliminar equipa
+          </button>
+          <button class="secondary-button action-tooltip" type="button" aria-label="Fechar" @click="fecharDetalhe">
+            <ActionIcon name="close" /> Fechar
+          </button>
         </footer>
       </section>
     </section>
@@ -587,7 +627,7 @@ onMounted(carregarDados)
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .eyebrow { color: #8d99ad; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .page-heading h1 { margin: 5px 0; color: #1c2a43; font-size: clamp(25px, 3vw, 32px); letter-spacing: -.045em; }
-.page-heading p { margin: 0; color: #78869d; font-size: 12px; }
+.page-heading p { margin: 0; color: #78869d; font-size: 14px; }
 .primary-button, .secondary-button, .danger-button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border-radius: 9px; font-size: 11px; font-weight: 700; cursor: pointer; transition: .18s ease; }
 .primary-button { color: #fff; background: linear-gradient(110deg, #5675ed, #4856ce); border: 0; box-shadow: 0 5px 12px rgb(75 91 211 / 18%); }
 .primary-button:hover:not(:disabled) { background: #3948c1; }

@@ -1,15 +1,15 @@
 """Modelo de eventos de calendário globais ou associados a projetos."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Identity,
     String,
     Text,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -32,14 +32,14 @@ class CalendarEvent(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
-    project_id: Mapped[int | None] = mapped_column(
-        BigInteger,
+    project_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
@@ -72,8 +72,8 @@ class CalendarEvent(Base):
         server_default="purple",
     )
 
-    created_by: Mapped[int] = mapped_column(
-        BigInteger,
+    created_by: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
         index=True,

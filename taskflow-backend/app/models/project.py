@@ -2,14 +2,14 @@
 """Modelo de projeto e respetivo estado de arquivo e associação a equipa."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    BigInteger,
     DateTime,
     ForeignKey,
-    Identity,
     String,
     Text,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,9 +22,9 @@ class Project(Base):
 
     __tablename__ = "projects"
 
-    id: Mapped[int] = mapped_column(
-        BigInteger,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
@@ -44,8 +44,9 @@ class Project(Base):
         server_default="active",
     )
 
-    created_by: Mapped[int] = mapped_column(
-        BigInteger,
+    created_by: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=False,
     )
 
@@ -67,8 +68,8 @@ class Project(Base):
         nullable=True,
     )
 
-    team_id: Mapped[int | None] = mapped_column(
-        BigInteger,
+    team_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("teams.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

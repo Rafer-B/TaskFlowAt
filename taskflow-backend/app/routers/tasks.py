@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -17,7 +17,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -30,6 +30,8 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
+from app.models.notification import Notification
+from app.models.task_history import TaskHistory
 from app.models.task_work_log import TaskWorkLog, TaskWorkLogAttachment
 from app.models.user import User
 from app.schemas.task import (
@@ -41,6 +43,8 @@ from app.schemas.task import (
     TaskUpdate,
     TaskWorkLogResponse,
 )
+from app.schemas.activity import TaskHistoryResponse
+from app.settings import settings
 
 
 router = APIRouter(
@@ -49,8 +53,21 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-TASK_ATTACHMENTS_DIR = BACKEND_DIR / "task_attachments"
+
+def _json_value(value: object) -> object:
+    if isinstance(value, (UUID, datetime)):
+        return str(value) if isinstance(value, UUID) else value.isoformat()
+    return value
+
+
+def _changes_for(values: dict[str, object]) -> dict[str, dict[str, object]]:
+    return {
+        key: {"new": _json_value(value)}
+        for key, value in values.items()
+    }
+
+
+TASK_ATTACHMENTS_DIR = settings.task_attachments_dir
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 MAX_UPDATE_SIZE = 25 * 1024 * 1024
 MAX_ATTACHMENTS_PER_UPDATE = 5
@@ -80,7 +97,7 @@ ALLOWED_ATTACHMENT_TYPES = {
 
 def obter_projeto(
     db: Session,
-    project_id: int,
+    project_id: UUID,
     permitir_arquivado: bool = False,
 ) -> Project:
     """Obtém o projeto e, por omissão, bloqueia alterações após arquivo."""
@@ -114,7 +131,7 @@ def obter_projeto(
 
 def obter_utilizador_ativo(
     db: Session,
-    user_id: int,
+    user_id: UUID,
     mensagem: str = "Utilizador não encontrado.",
 ) -> User:
 
@@ -141,8 +158,8 @@ def obter_utilizador_ativo(
 
 def validar_membro_projeto(
     db: Session,
-    project_id: int,
-    user_id: int,
+    project_id: UUID,
+    user_id: UUID,
 ) -> User:
     """Garante que o membro escolhido pertence ao projeto e não é observador."""
 
@@ -176,8 +193,8 @@ def validar_membro_projeto(
 
 def validar_membros_projeto(
     db: Session,
-    project_id: int,
-    user_ids: list[int],
+    project_id: UUID,
+    user_ids: list[UUID],
 ) -> None:
     """Garante que todos os membros atribuídos são elegíveis para a tarefa."""
     for user_id in user_ids:
@@ -186,7 +203,7 @@ def validar_membros_projeto(
 
 def obter_tarefa_acessivel(
     db: Session,
-    task_id: int,
+    task_id: UUID,
     current_user: User,
     papeis_permitidos: set[str] | None = None,
 ) -> Task:
@@ -272,6 +289,33 @@ def criar_tarefa(
 
     try:
         db.add(tarefa)
+        db.flush()
+        db.add(
+            TaskHistory(
+                task_id=tarefa.id,
+                actor_id=current_user.id,
+                action="created",
+                changes=_changes_for(
+                    {
+                        "title": tarefa.title,
+                        "status": tarefa.status,
+                        "priority": tarefa.priority,
+                        "assigned_to": tarefa.assigned_to,
+                    }
+                ),
+            )
+        )
+        if tarefa.assigned_to is not None and tarefa.assigned_to != current_user.id:
+            db.add(
+                Notification(
+                    recipient_id=tarefa.assigned_to,
+                    task_id=tarefa.id,
+                    kind="task_assigned",
+                    title="Nova tarefa atribuída",
+                    message=f"Foste designado para «{tarefa.title}».",
+                    target=f"/tasks?taskId={tarefa.id}",
+                )
+            )
         db.commit()
         db.refresh(tarefa)
 
@@ -298,13 +342,13 @@ def criar_tarefa(
     response_model=list[TaskResponse],
 )
 def listar_tarefas(
-    project_id: int | None = Query(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    project_id: UUID | None = Query(
         default=None,
-        gt=0,
     ),
-    assigned_to: int | None = Query(
+    assigned_to: UUID | None = Query(
         default=None,
-        gt=0,
     ),
     task_status: TaskStatus | None = Query(
         default=None,
@@ -360,6 +404,8 @@ def listar_tarefas(
             Task.created_at.desc(),
             Task.id.desc(),
         )
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -373,7 +419,7 @@ def listar_tarefas(
     response_model=TaskResponse,
 )
 def obter_tarefa(
-    task_id: int,
+    task_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -399,7 +445,7 @@ def obter_tarefa(
     response_model=TaskResponse,
 )
 def atualizar_tarefa(
-    task_id: int,
+    task_id: UUID,
     dados: TaskUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -413,6 +459,15 @@ def atualizar_tarefa(
     )
 
     alteracoes = dados.model_dump(exclude_unset=True)
+    alteracoes_hist = {
+        campo: {
+            "old": _json_value(getattr(tarefa, campo)),
+            "new": _json_value(valor),
+        }
+        for campo, valor in alteracoes.items()
+        if getattr(tarefa, campo) != valor
+    }
+    responsavel_anterior = tarefa.assigned_to
 
     obter_projeto(
         db,
@@ -467,6 +522,31 @@ def atualizar_tarefa(
         tarefa.completed_at = None
 
     try:
+        if alteracoes_hist:
+            db.add(
+                TaskHistory(
+                    task_id=tarefa.id,
+                    actor_id=current_user.id,
+                    action="updated",
+                    changes=alteracoes_hist,
+                )
+            )
+        novo_responsavel = tarefa.assigned_to
+        if (
+            novo_responsavel is not None
+            and novo_responsavel != responsavel_anterior
+            and novo_responsavel != current_user.id
+        ):
+            db.add(
+                Notification(
+                    recipient_id=novo_responsavel,
+                    task_id=tarefa.id,
+                    kind="task_assigned",
+                    title="Tarefa atribuída a ti",
+                    message=f"Foste designado para «{tarefa.title}».",
+                    target=f"/tasks?taskId={tarefa.id}",
+                )
+            )
         db.commit()
         db.refresh(tarefa)
 
@@ -484,6 +564,40 @@ def atualizar_tarefa(
     return tarefa
 
 
+@router.get(
+    "/{task_id}/history",
+    response_model=list[TaskHistoryResponse],
+)
+def listar_historico_tarefa(
+    task_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    tarefa = obter_tarefa_acessivel(db, task_id, current_user)
+    rows = db.execute(
+        select(TaskHistory, User.name)
+        .join(User, User.id == TaskHistory.actor_id)
+        .where(TaskHistory.task_id == tarefa.id)
+        .order_by(TaskHistory.created_at.desc(), TaskHistory.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "id": history.id,
+            "task_id": history.task_id,
+            "actor_id": history.actor_id,
+            "actor_name": actor_name,
+            "action": history.action,
+            "changes": history.changes,
+            "created_at": history.created_at,
+        }
+        for history, actor_name in rows
+    ]
+
+
 # --------------------------------------------------
 # REGISTO DE TRABALHO E ANEXOS
 # --------------------------------------------------
@@ -493,7 +607,9 @@ def atualizar_tarefa(
     response_model=list[TaskWorkLogResponse],
 )
 def listar_registos_trabalho(
-    task_id: int,
+    task_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -507,6 +623,8 @@ def listar_registos_trabalho(
         )
         .filter(TaskWorkLog.task_id == task_id)
         .order_by(TaskWorkLog.created_at.desc(), TaskWorkLog.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -531,7 +649,7 @@ def listar_registos_trabalho(
     status_code=status.HTTP_201_CREATED,
 )
 async def registar_trabalho(
-    task_id: int,
+    task_id: UUID,
     note: str = Form(min_length=1, max_length=5000),
     progress: int = Form(ge=0, le=100),
     files: list[UploadFile] | None = File(default=None),
@@ -671,9 +789,9 @@ async def registar_trabalho(
     "/{task_id}/work-logs/{work_log_id}/attachments/{attachment_id}",
 )
 def descarregar_anexo_registo(
-    task_id: int,
-    work_log_id: int,
-    attachment_id: int,
+    task_id: UUID,
+    work_log_id: UUID,
+    attachment_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -720,7 +838,7 @@ def descarregar_anexo_registo(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def eliminar_tarefa(
-    task_id: int,
+    task_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):

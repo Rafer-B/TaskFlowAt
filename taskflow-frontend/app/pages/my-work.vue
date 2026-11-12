@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Área pessoal: mostra tarefas atribuídas e acompanha os registos de trabalho por tarefa.
 definePageMeta({
@@ -11,37 +12,37 @@ type PrioridadeAPI = 'low' | 'medium' | 'high'
 type EstadoProjetoAPI = 'active' | 'completed' | 'archived'
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   status: EstadoProjetoAPI
 }
 
 interface TarefaAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   description: string | null
   category: string
   priority: PrioridadeAPI
   status: EstadoTarefaAPI
   progress: number
-  assigned_to: number | null
-  assignee_ids: number[]
+  assigned_to: string | null
+  assignee_ids: string[]
   due_date: string | null
   completed_at: string | null
 }
 
 interface AnexoRegistoAPI {
-  id: number
+  id: string
   original_name: string
   content_type: string
   size: number
 }
 
 interface RegistoTrabalhoAPI {
-  id: number
-  task_id: number
-  author_id: number
+  id: string
+  task_id: string
+  author_id: string
   author_name: string
   note: string
   progress: number
@@ -49,9 +50,19 @@ interface RegistoTrabalhoAPI {
   attachments: AnexoRegistoAPI[]
 }
 
+interface HistoricoTarefaAPI {
+  id: string
+  task_id: string
+  actor_id: string
+  actor_name: string
+  action: string
+  changes: Record<string, { old: unknown; new: unknown }>
+  created_at: string
+}
+
 interface Tarefa {
-  id: number
-  projectId: number
+  id: string
+  projectId: string
   projectName: string
   projectStatus: EstadoProjetoAPI
   title: string
@@ -65,6 +76,8 @@ interface Tarefa {
   saving: boolean
   updates: RegistoTrabalhoAPI[]
   updatesLoaded: boolean
+  activity: HistoricoTarefaAPI[]
+  activityLoaded: boolean
   loadingUpdates: boolean
   workPanelOpen: boolean
   savingUpdate: boolean
@@ -132,7 +145,7 @@ const tarefasVisiveis = computed(() => {
         !filtroEstado.value || tarefa.status === filtroEstado.value
       const correspondeProjeto =
         !filtroProjeto.value ||
-        tarefa.projectId === Number(filtroProjeto.value)
+        tarefa.projectId === filtroProjeto.value
 
       return correspondeTexto && correspondeEstado && correspondeProjeto
     })
@@ -226,7 +239,7 @@ function mensagemErro(error: unknown): string {
 
 function converterTarefa(
   tarefa: TarefaAPI,
-  projetosPorId: Map<number, ProjetoAPI>,
+  projetosPorId: Map<string, ProjetoAPI>,
 ): Tarefa {
   // Mantém a resposta da API num formato próprio da página e junta o nome do projeto.
   const projeto = projetosPorId.get(tarefa.project_id)
@@ -247,6 +260,8 @@ function converterTarefa(
     saving: false,
     updates: [],
     updatesLoaded: false,
+    activity: [],
+    activityLoaded: false,
     loadingUpdates: false,
     workPanelOpen: false,
     savingUpdate: false,
@@ -272,7 +287,7 @@ async function carregarTarefas(silenciosa = false): Promise<void> {
 
   try {
     // O contador descarta respostas antigas se uma nova carga começar antes desta terminar.
-    const tarefasAPI = await api<TarefaAPI[]>(
+    const tarefasAPI = await fetchAllPages<TarefaAPI>(
       `/tasks/?assigned_to=${encodeURIComponent(id)}`,
     )
     if (pedidoAtual !== pedidoTarefas) return
@@ -304,7 +319,7 @@ async function carregarArea(silenciosa = false): Promise<void> {
   erro.value = ''
 
   try {
-    const projetosAPI = await api<ProjetoAPI[]>('/projects/')
+    const projetosAPI = await fetchAllPages<ProjetoAPI>('/projects/')
     projetos.value = projetosAPI
 
     await carregarTarefas(silenciosa)
@@ -392,27 +407,65 @@ async function abrirRegisto(tarefa: Tarefa): Promise<void> {
   tarefa.updateProgress = tarefa.progress
   erro.value = ''
 
-  if (!tarefa.updatesLoaded) {
+  if (!tarefa.updatesLoaded || !tarefa.activityLoaded) {
     await carregarRegistos(tarefa)
   }
 }
 
-async function carregarRegistos(tarefa: Tarefa): Promise<void> {
+async function carregarRegistos(tarefa: Tarefa, force = false): Promise<void> {
   tarefa.loadingUpdates = true
   erro.value = ''
 
   try {
-    // O histórico só é carregado ao abrir o painel e fica em cache na tarefa.
-    tarefa.updates = await api<RegistoTrabalhoAPI[]>(
-      `/tasks/${tarefa.id}/work-logs`,
-    )
+    const [updates, activity] = await Promise.all([
+      !force && tarefa.updatesLoaded
+        ? Promise.resolve(tarefa.updates)
+        : fetchAllPages<RegistoTrabalhoAPI>(`/tasks/${tarefa.id}/work-logs`),
+      !force && tarefa.activityLoaded
+        ? Promise.resolve(tarefa.activity)
+        : fetchAllPages<HistoricoTarefaAPI>(`/tasks/${tarefa.id}/history`),
+    ])
+    tarefa.updates = updates
+    tarefa.activity = activity
     tarefa.updatesLoaded = true
+    tarefa.activityLoaded = true
   } catch (error) {
     console.error('Erro ao carregar o histórico de trabalho:', error)
     erro.value = mensagemErro(error)
   } finally {
     tarefa.loadingUpdates = false
   }
+}
+
+function rotuloCampoHistorico(campo: string): string {
+  const rotulos: Record<string, string> = {
+    title: 'Título',
+    description: 'Descrição',
+    status: 'Estado',
+    priority: 'Prioridade',
+    assigned_to: 'Responsável',
+    progress: 'Progresso',
+    due_date: 'Prazo',
+    category: 'Categoria',
+  }
+  return rotulos[campo] ?? campo
+}
+
+function valorHistorico(valor: unknown): string {
+  if (valor === null || valor === undefined || valor === '') return '—'
+  if (typeof valor === 'string') {
+    const rotulos: Record<string, string> = {
+      to_do: 'Por fazer',
+      in_progress: 'Em curso',
+      completed: 'Concluída',
+      blocked: 'Bloqueada',
+      low: 'Baixa',
+      medium: 'Média',
+      high: 'Alta',
+    }
+    return rotulos[valor] ?? valor
+  }
+  return String(valor)
 }
 
 function selecionarFicheiros(tarefa: Tarefa, evento: Event): void {
@@ -578,18 +631,22 @@ onBeforeUnmount(() => {
       <div class="next-task-actions">
         <button
           type="button"
-          class="next-task-secondary"
+          class="next-task-secondary action-tooltip"
+          :aria-label="proximaTarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho'"
           :aria-expanded="proximaTarefa.workPanelOpen"
           @click="abrirRegisto(proximaTarefa)"
         >
+          <ActionIcon :name="proximaTarefa.workPanelOpen ? 'close' : 'edit'" />
           {{ proximaTarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho' }}
         </button>
         <button
           type="button"
-          class="next-task-complete"
+          class="next-task-complete action-tooltip"
+          :aria-label="proximaTarefa.saving ? 'A concluir tarefa' : 'Concluir tarefa'"
           :disabled="proximaTarefa.saving"
           @click="concluirTarefa(proximaTarefa)"
         >
+          <ActionIcon name="check" />
           {{ proximaTarefa.saving ? 'A concluir…' : 'Concluir tarefa' }}
         </button>
       </div>
@@ -703,19 +760,23 @@ onBeforeUnmount(() => {
 
               <button
                 type="button"
-                class="work-toggle"
+                class="work-toggle action-tooltip"
+                :aria-label="tarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho'"
                 :aria-expanded="tarefa.workPanelOpen"
                 @click="abrirRegisto(tarefa)"
               >
+                <ActionIcon :name="tarefa.workPanelOpen ? 'close' : 'edit'" />
                 {{ tarefa.workPanelOpen ? 'Fechar registo' : 'Registar trabalho' }}
               </button>
               <button
                 v-if="tarefa.status !== 'completed'"
                 type="button"
-                class="complete-task"
+                class="complete-task action-tooltip"
+                :aria-label="tarefa.saving ? 'A concluir tarefa' : 'Concluir tarefa'"
                 :disabled="tarefa.saving || tarefa.projectStatus === 'archived'"
                 @click="concluirTarefa(tarefa)"
               >
+                <ActionIcon name="check" />
                 {{ tarefa.saving ? 'A concluir…' : 'Concluir' }}
               </button>
             </div>
@@ -785,24 +846,28 @@ onBeforeUnmount(() => {
                       <span>{{ ficheiro.name }} · {{ formatarTamanho(ficheiro.size) }}</span>
                       <button
                         type="button"
+                        class="action-tooltip"
                         :aria-label="`Remover ${ficheiro.name}`"
                         :disabled="tarefa.savingUpdate"
                         @click="removerFicheiro(tarefa, indice)"
                       >
+                        <ActionIcon name="close" />
                         ×
                       </button>
                     </li>
                   </ul>
 
                   <button
-                    class="submit-update"
+                    class="submit-update action-tooltip"
                     type="submit"
+                    :aria-label="tarefa.savingUpdate ? 'A guardar atualização' : 'Guardar atualização'"
                     :disabled="
                       tarefa.savingUpdate ||
                       tarefa.projectStatus === 'archived' ||
                       !tarefa.updateNote.trim()
                     "
                   >
+                    <ActionIcon name="save" />
                     {{ tarefa.savingUpdate ? 'A guardar atualização…' : 'Guardar atualização' }}
                   </button>
                   <small v-if="tarefa.projectStatus === 'archived'" class="archived-hint">
@@ -818,13 +883,13 @@ onBeforeUnmount(() => {
                     <h5>Trabalho registado</h5>
                   </div>
                   <button
-                    class="history-refresh"
+                    class="history-refresh action-tooltip"
                     type="button"
                     :disabled="tarefa.loadingUpdates"
                     aria-label="Atualizar histórico de trabalho"
-                    @click="carregarRegistos(tarefa)"
+                    @click="carregarRegistos(tarefa, true)"
                   >
-                    ↻
+                    <ActionIcon name="refresh" />
                   </button>
                 </div>
 
@@ -849,9 +914,11 @@ onBeforeUnmount(() => {
                       <li v-for="anexo in registo.attachments" :key="anexo.id">
                         <button
                           type="button"
+                          class="action-tooltip"
+                          :aria-label="`Descarregar ${anexo.original_name}`"
                           @click="descarregarAnexo(tarefa, registo, anexo)"
                         >
-                          <span aria-hidden="true">↧</span>
+                          <ActionIcon name="forward" />
                           {{ anexo.original_name }}
                           <small>{{ formatarTamanho(anexo.size) }}</small>
                         </button>
@@ -859,6 +926,29 @@ onBeforeUnmount(() => {
                     </ul>
                   </li>
                 </ol>
+
+                <section v-if="tarefa.activity.length" class="audit-history">
+                  <h6>Alterações à tarefa</h6>
+                  <ol>
+                    <li v-for="evento in tarefa.activity" :key="evento.id">
+                      <div class="audit-event-heading">
+                        <strong>{{ evento.actor_name }}</strong>
+                        <time :datetime="evento.created_at">
+                          {{ formatarDataHora(evento.created_at) }}
+                        </time>
+                      </div>
+                      <p>
+                        {{ evento.action === 'created' ? 'Criou a tarefa' : 'Atualizou a tarefa' }}
+                      </p>
+                      <ul v-if="Object.keys(evento.changes).length">
+                        <li v-for="(mudanca, campo) in evento.changes" :key="campo">
+                          <strong>{{ rotuloCampoHistorico(campo) }}:</strong>
+                          {{ valorHistorico(mudanca.old) }} → {{ valorHistorico(mudanca.new) }}
+                        </li>
+                      </ul>
+                    </li>
+                  </ol>
+                </section>
               </div>
             </div>
           </section>
@@ -961,7 +1051,7 @@ onBeforeUnmount(() => {
 .next-task-copy p {
   margin: 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1531,6 +1621,73 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.audit-history {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e8edf4;
+}
+
+.audit-history h6 {
+  margin: 0 0 10px;
+  color: #53627a;
+  font-size: 11px;
+}
+
+.audit-history > ol {
+  display: grid;
+  gap: 9px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.audit-history > ol > li {
+  padding: 11px 12px;
+  background: #f8f9fc;
+  border: 1px solid #e8edf4;
+  border-radius: 9px;
+}
+
+.audit-event-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 10px;
+}
+
+.audit-event-heading strong {
+  color: #344158;
+  font-size: 10px;
+}
+
+.audit-event-heading time {
+  color: #94a3b8;
+  font-size: 9px;
+}
+
+.audit-history p,
+.audit-history li li {
+  color: #66748a;
+  font-size: 10px;
+}
+
+.audit-history p {
+  margin: 6px 0;
+}
+
+.audit-history ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 15px;
+  margin: 0;
+}
+
+.audit-history li li strong {
+  color: #475569;
 }
 
 .worklog-progress {

@@ -1,6 +1,8 @@
 """Rotas de consulta e manutenção de membros associados a um projeto."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,7 +26,9 @@ router = APIRouter(
 
 @router.get("/", response_model=list[ProjectMemberResponse])
 def list_project_members(
-    project_id: int,
+    project_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):
@@ -42,6 +46,8 @@ def list_project_members(
         .join(User, User.id == ProjectMember.user_id)
         .where(ProjectMember.project_id == project_id)
         .order_by(User.name)
+        .offset(offset)
+        .limit(limit)
     )
 
     results = db.execute(statement).all()
@@ -65,7 +71,7 @@ def list_project_members(
     status_code=status.HTTP_201_CREATED
 )
 def add_project_member(
-    project_id: int,
+    project_id: UUID,
     data: ProjectMemberCreate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
@@ -150,8 +156,8 @@ def add_project_member(
 
 @router.patch("/{user_id}", response_model=ProjectMemberResponse)
 def update_project_member_role(
-    project_id: int,
-    user_id: int,
+    project_id: UUID,
+    user_id: UUID,
     data: ProjectMemberRoleUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
@@ -206,8 +212,8 @@ def update_project_member_role(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_project_member(
-    project_id: int,
-    user_id: int,
+    project_id: UUID,
+    user_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db)
 ):

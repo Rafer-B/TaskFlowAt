@@ -1,8 +1,9 @@
 """Operações de projetos e gestão dos seus membros e respetivos papéis."""
 
 from datetime import datetime, timezone
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -171,6 +172,8 @@ def criar_projeto(
     response_model=list[ProjectMemberCandidate],
 )
 def listar_candidatos_a_membro(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -182,6 +185,8 @@ def listar_candidatos_a_membro(
             User.id != current_user.id,
         )
         .order_by(User.name, User.id)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [
@@ -197,17 +202,24 @@ def listar_candidatos_a_membro(
 
 @router.get("/", response_model=list[ProjectResponse])
 def listar_projetos(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
     consulta = db.query(Project)
-    memberships: dict[int, str] = {}
+    memberships: dict[UUID, str] = {}
     if current_user.role != "admin":
         consulta = consulta.join(
             ProjectMember,
             ProjectMember.project_id == Project.id,
         ).filter(ProjectMember.user_id == current_user.id)
-    projects = consulta.order_by(Project.id.desc()).all()
+    projects = (
+        consulta.order_by(Project.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     if projects and current_user.role != "admin":
         memberships = {
             membership.project_id: membership.role
@@ -243,7 +255,7 @@ def listar_projetos(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def obter_projeto(
-    project_id: int,
+    project_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -272,7 +284,7 @@ def obter_projeto(
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 def atualizar_projeto(
-    project_id: int,
+    project_id: UUID,
     dados: ProjectUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -348,7 +360,7 @@ def atualizar_projeto(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def eliminar_projeto(
-    project_id: int,
+    project_id: UUID,
     _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
@@ -384,7 +396,9 @@ def eliminar_projeto(
     response_model=list[ProjectMemberResponse],
 )
 def listar_membros(
-    project_id: int,
+    project_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -402,6 +416,8 @@ def listar_membros(
         .join(User, User.id == ProjectMember.user_id)
         .filter(ProjectMember.project_id == project_id)
         .order_by(ProjectMember.role, User.name)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -424,7 +440,9 @@ def listar_membros(
     response_model=list[ProjectMemberCandidate],
 )
 def listar_utilizadores_disponiveis(
-    project_id: int,
+    project_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -444,6 +462,8 @@ def listar_utilizadores_disponiveis(
             ~User.id.in_(membros_atuais),
         )
         .order_by(User.name, User.id)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [
@@ -463,7 +483,7 @@ def listar_utilizadores_disponiveis(
     status_code=status.HTTP_201_CREATED,
 )
 def adicionar_membro(
-    project_id: int,
+    project_id: UUID,
     dados: ProjectMemberCreate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -551,8 +571,8 @@ def adicionar_membro(
     response_model=ProjectMemberResponse,
 )
 def atualizar_responsabilidade(
-    project_id: int,
-    user_id: int,
+    project_id: UUID,
+    user_id: UUID,
     dados: ProjectMemberUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -631,8 +651,8 @@ def atualizar_responsabilidade(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remover_membro(
-    project_id: int,
-    user_id: int,
+    project_id: UUID,
+    user_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):

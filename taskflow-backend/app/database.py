@@ -1,28 +1,18 @@
 
 """Configuração do motor PostgreSQL e da fábrica de sessões SQLAlchemy."""
 
-import os
-
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import URL, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-load_dotenv()
+from app.settings import settings
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "taskflowdb_at")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-
-if not DB_USER or not DB_PASSWORD:
-    raise RuntimeError(
-        "Configura DB_USER e DB_PASSWORD no ficheiro .env"
-    )
-
-DATABASE_URL = (
-    f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = URL.create(
+    "postgresql+psycopg",
+    username=settings.db_user,
+    password=settings.db_password,
+    host=settings.db_host,
+    port=settings.db_port,
+    database=settings.db_name,
 )
 
 engine = create_engine(

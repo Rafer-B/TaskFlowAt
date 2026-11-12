@@ -1,6 +1,8 @@
 """Rotas de equipas, membros e associação de projetos."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -58,7 +60,7 @@ def pode_associar_projetos(db: Session, team: Team, user: User) -> bool:
     )
 
 
-def obter_equipa_visivel(db: Session, team_id: int, user: User) -> Team:
+def obter_equipa_visivel(db: Session, team_id: UUID, user: User) -> Team:
     """Oculta equipas sem relação com o utilizador, respondendo como não encontradas."""
     team = db.get(Team, team_id)
     if team is None:
@@ -149,6 +151,8 @@ def resposta_membro(utilizador: User) -> dict:
 
 @router.get("/", response_model=list[TeamResponse])
 def listar_equipas(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -180,7 +184,12 @@ def listar_equipas(
 
     return [
         resposta_equipa(db, team, current_user)
-        for team in consulta.order_by(Team.name, Team.id).all()
+        for team in (
+            consulta.order_by(Team.name, Team.id)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
     ]
 
 
@@ -232,7 +241,7 @@ def criar_equipa(
 
 @router.get("/{team_id}", response_model=TeamResponse)
 def obter_equipa(
-    team_id: int,
+    team_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -242,7 +251,7 @@ def obter_equipa(
 
 @router.patch("/{team_id}", response_model=TeamResponse)
 def atualizar_equipa(
-    team_id: int,
+    team_id: UUID,
     dados: TeamUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -265,7 +274,7 @@ def atualizar_equipa(
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_equipa(
-    team_id: int,
+    team_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -281,7 +290,9 @@ def eliminar_equipa(
     response_model=list[TeamMemberResponse],
 )
 def listar_membros(
-    team_id: int,
+    team_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -291,6 +302,8 @@ def listar_membros(
         .join(TeamMember, TeamMember.user_id == User.id)
         .filter(TeamMember.team_id == team.id)
         .order_by(User.name, User.id)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [resposta_membro(user) for user in members]
@@ -301,7 +314,9 @@ def listar_membros(
     response_model=list[TeamMemberCandidate],
 )
 def listar_utilizadores_disponiveis(
-    team_id: int,
+    team_id: UUID,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -319,6 +334,8 @@ def listar_utilizadores_disponiveis(
                 ~User.id.in_(ids_membros),
             )
             .order_by(User.name, User.id)
+            .offset(offset)
+            .limit(limit)
             .all()
         )
     ]
@@ -330,7 +347,7 @@ def listar_utilizadores_disponiveis(
     status_code=status.HTTP_201_CREATED,
 )
 def adicionar_membros(
-    team_id: int,
+    team_id: UUID,
     dados: TeamMembersCreate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -393,7 +410,7 @@ def adicionar_membros(
     status_code=status.HTTP_201_CREATED,
 )
 def adicionar_membro(
-    team_id: int,
+    team_id: UUID,
     dados: TeamMemberCreate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -433,8 +450,8 @@ def adicionar_membro(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remover_membro(
-    team_id: int,
-    user_id: int,
+    team_id: UUID,
+    user_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -456,8 +473,8 @@ def remover_membro(
     response_model=TeamResponse,
 )
 def associar_projeto(
-    team_id: int,
-    project_id: int,
+    team_id: UUID,
+    project_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -491,8 +508,8 @@ def associar_projeto(
     response_model=TeamResponse,
 )
 def desassociar_projeto(
-    team_id: int,
-    project_id: int,
+    team_id: UUID,
+    project_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Agrega prazos de tarefas e eventos numa grelha que suporta mês, semana e dia.
 definePageMeta({
@@ -13,31 +14,31 @@ type CorEvento = 'blue' | 'purple' | 'green' | 'red'
 type ModoCalendario = 'month' | 'week' | 'day'
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   current_user_role: 'admin' | 'owner' | 'contributor' | 'viewer'
 }
 
 interface TarefaAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   status: EstadoTarefa
   priority: PrioridadeTarefa
   progress: number
   due_date: string | null
-  assigned_to: number | null
+  assigned_to: string | null
 }
 
 interface EventoAPI {
-  id: number
-  project_id: number | null
+  id: string
+  project_id: string | null
   title: string
   description: string | null
   start_at: string
   end_at: string
   color: CorEvento
-  created_by: number
+  created_by: string
 }
 
 interface ItemCalendario {
@@ -45,15 +46,15 @@ interface ItemCalendario {
   tipo: 'task' | 'event'
   titulo: string
   projeto: string
-  projectId: number | null
+  projectId: string | null
   data: string
   hora: string | null
   cor: string
   estado?: EstadoTarefa
   prioridade?: PrioridadeTarefa
   progresso?: number
-  eventoId?: number
-  criadorId?: number
+  eventoId?: string
+  criadorId?: string
   descricao?: string
 }
 
@@ -73,7 +74,7 @@ interface CabecalhoDia {
 }
 
 interface FormularioEvento {
-  id: number | null
+  id: string | null
   projectId: string
   title: string
   description: string
@@ -174,7 +175,7 @@ const todosItens = computed<ItemCalendario[]>(() => {
 
 const itensVisiveis = computed(() =>
   todosItens.value.filter(item => {
-    if (projetoSelecionado.value !== 'all' && item.projectId !== Number(projetoSelecionado.value)) {
+    if (projetoSelecionado.value !== 'all' && item.projectId !== projetoSelecionado.value) {
       return false
     }
 
@@ -236,7 +237,7 @@ const cabecalhosDia = computed<CabecalhoDia[]>(() => {
 
   return diasCalendario.value.map(dia => ({
     key: dia.iso,
-    nome: nomesDiasSemana[(fromIsoDate(dia.iso).getDay() + 6) % 7],
+    nome: nomesDiasSemana[(fromIsoDate(dia.iso).getDay() + 6) % 7] ?? '',
     numero: dia.numero,
     hoje: dia.hoje,
   }))
@@ -326,7 +327,7 @@ function toIsoDate(data: Date): string {
 }
 
 function fromIsoDate(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number)
+  const [year = 0, month = 1, day = 1] = iso.split('-').map(Number)
   return new Date(year, month - 1, day)
 }
 
@@ -439,7 +440,7 @@ async function guardarEvento(): Promise<void> {
   sucesso.value = ''
 
   const payload = {
-    project_id: dados.projectId ? Number(dados.projectId) : null,
+    project_id: dados.projectId || null,
     title: dados.title.trim(),
     description: dados.description.trim() || null,
     start_at: new Date(dados.startAt).toISOString(),
@@ -511,9 +512,9 @@ async function carregarCalendario(): Promise<void> {
   try {
     // Carrega em paralelo projetos, tarefas e eventos para compor o calendário inicial.
     const [projetosAPI, tarefasAPI, eventosAPI] = await Promise.all([
-      api<ProjetoAPI[]>('/projects/'),
-      api<TarefaAPI[]>('/tasks/'),
-      api<EventoAPI[]>('/calendar/events/'),
+      fetchAllPages<ProjetoAPI>('/projects/'),
+      fetchAllPages<TarefaAPI>('/tasks/'),
+      fetchAllPages<EventoAPI>('/calendar/events/'),
     ])
     projetos.value = projetosAPI
     tarefas.value = tarefasAPI
@@ -545,9 +546,13 @@ onMounted(carregarCalendario)
       </div>
       <div class="calendar-heading-actions">
         <div class="period-control" aria-label="Navegar no calendário">
-          <button type="button" aria-label="Período anterior" @click="alterarPeriodo(-1)">‹</button>
+          <button type="button" class="action-tooltip" aria-label="Período anterior" @click="alterarPeriodo(-1)">
+            <ActionIcon name="back" />
+          </button>
           <strong>{{ tituloPeriodo }}</strong>
-          <button type="button" aria-label="Período seguinte" @click="alterarPeriodo(1)">›</button>
+          <button type="button" class="action-tooltip" aria-label="Período seguinte" @click="alterarPeriodo(1)">
+            <ActionIcon name="forward" />
+          </button>
         </div>
         <div class="view-switch" aria-label="Modo de visualização">
           <button
@@ -561,16 +566,20 @@ onMounted(carregarCalendario)
             {{ opcao.label }}
           </button>
         </div>
-        <button class="today-button" type="button" @click="irParaHoje">Hoje</button>
-        <button class="create-event-button" type="button" @click="abrirNovoEvento">
-          <span aria-hidden="true">＋</span> Novo evento
+        <button class="today-button action-tooltip" type="button" aria-label="Hoje" @click="irParaHoje">
+          <ActionIcon name="today" /> Hoje
+        </button>
+        <button class="create-event-button" type="button" aria-label="Novo evento" @click="abrirNovoEvento">
+          <ActionIcon name="add" /> Novo evento
         </button>
       </div>
     </header>
 
     <div v-if="erro" class="notice notice-error" role="alert">
       <span>{{ erro }}</span>
-      <button type="button" @click="carregarCalendario">Tentar novamente</button>
+      <button type="button" class="action-tooltip" aria-label="Tentar novamente" @click="carregarCalendario">
+        <ActionIcon name="refresh" /> Tentar novamente
+      </button>
     </div>
     <div v-if="sucesso" class="notice notice-success" role="status">
       <span>{{ sucesso }}</span>
@@ -715,12 +724,13 @@ onMounted(carregarCalendario)
       </ul>
       <button
         v-if="itensVisiveis.filter(item => item.data >= hojeISO).length > 3"
-        class="all-events-button"
+        class="all-events-button action-tooltip"
+        :aria-label="mostrarEventosAnteriores ? 'Mostrar menos eventos' : 'Ver todos os eventos'"
         type="button"
         @click="mostrarEventosAnteriores = !mostrarEventosAnteriores"
       >
         {{ mostrarEventosAnteriores ? 'Mostrar menos' : 'Ver todos os eventos' }}
-        <span aria-hidden="true">→</span>
+        <ActionIcon :name="mostrarEventosAnteriores ? 'back' : 'forward'" />
       </button>
     </section>
 
@@ -772,21 +782,30 @@ onMounted(carregarCalendario)
           <p v-if="erro" class="form-error" role="alert">{{ erro }}</p>
           <div v-if="confirmarEliminacaoEvento" class="inline-confirm" role="group" aria-label="Confirmar eliminação do evento">
             <span>Eliminar o evento “{{ formulario.title }}”?</span>
-            <button class="delete-button" type="button" :disabled="guardandoEvento" @click="eliminarEvento">Confirmar eliminação</button>
-            <button class="cancel-button" type="button" :disabled="guardandoEvento" @click="confirmarEliminacaoEvento = false">Cancelar</button>
+            <button class="delete-button action-tooltip" type="button" aria-label="Confirmar eliminação" :disabled="guardandoEvento" @click="eliminarEvento">
+              <ActionIcon name="delete" /> Confirmar eliminação
+            </button>
+            <button class="cancel-button action-tooltip" type="button" aria-label="Cancelar" :disabled="guardandoEvento" @click="confirmarEliminacaoEvento = false">
+              <ActionIcon name="close" /> Cancelar
+            </button>
           </div>
           <footer class="form-panel-actions">
             <button
               v-if="formulario.id && !confirmarEliminacaoEvento"
-              class="delete-button"
+              class="delete-button action-tooltip"
+              aria-label="Eliminar evento"
               type="button"
               :disabled="guardandoEvento"
               @click="eliminarEvento"
             >
+              <ActionIcon name="delete" />
               Eliminar
             </button>
-            <button class="cancel-button" type="button" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">Cancelar</button>
-            <button class="save-button" type="submit" :disabled="guardandoEvento">
+            <button class="cancel-button action-tooltip" type="button" aria-label="Cancelar" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">
+              <ActionIcon name="close" /> Cancelar
+            </button>
+            <button class="save-button" type="submit" :aria-label="guardandoEvento ? 'A guardar evento' : formulario.id ? 'Guardar alterações' : 'Criar evento'" :disabled="guardandoEvento">
+              <ActionIcon :name="formulario.id ? 'save' : 'add'" />
               {{ guardandoEvento ? 'A guardar…' : formulario.id ? 'Guardar alterações' : 'Criar evento' }}
             </button>
           </footer>
@@ -802,7 +821,7 @@ onMounted(carregarCalendario)
 .calendar-icon svg { width: 64px; height: 64px; filter: drop-shadow(0 5px 5px rgb(42 89 198 / 16%)); }
 .heading-copy { min-width: 190px; }
 .heading-copy h1 { margin: 0 0 3px; color: #111d42; font-size: clamp(24px, 3vw, 31px); font-weight: 750; letter-spacing: -.05em; }
-.heading-copy p { margin: 0; color: #68789d; font-size: 12px; }
+.heading-copy p { margin: 0; color: #68789d; font-size: 14px; }
 .calendar-heading-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .period-control { display: flex; height: 37px; align-items: center; gap: 12px; padding: 0 9px; background: #fff; border: 1px solid #e8ecf7; border-radius: 20px; }
 .period-control button { display: grid; width: 24px; height: 28px; place-items: center; color: #4b5c82; background: transparent; border: 0; font-size: 23px; cursor: pointer; }
@@ -945,7 +964,7 @@ onMounted(carregarCalendario)
   .calendar-icon svg { width: 48px; height: 48px; }
   .heading-copy { padding-top: 5px; }
   .heading-copy h1 { font-size: 23px; }
-  .heading-copy p { font-size: 10px; }
+  .heading-copy p { font-size: 13px; }
   .calendar-heading-actions { width: 100%; justify-content: space-between; margin-left: 0; }
   .period-control { gap: 5px; padding: 0 5px; }
   .period-control strong { min-width: 94px; font-size: 10px; }

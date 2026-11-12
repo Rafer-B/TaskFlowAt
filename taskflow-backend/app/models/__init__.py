@@ -10,6 +10,10 @@ from app.models.task_work_log import TaskWorkLog, TaskWorkLogAttachment
 from app.models.calendar_event import CalendarEvent
 from app.models.team import Team
 from app.models.team_member import TeamMember
+from app.models.password_reset_token import PasswordResetToken
+from app.models.login_attempt import LoginAttempt
+from app.models.notification import Notification
+from app.models.task_history import TaskHistory
 
 __all__ = [
     "User",
@@ -22,4 +26,8 @@ __all__ = [
     "CalendarEvent",
     "Team",
     "TeamMember",
+    "PasswordResetToken",
+    "LoginAttempt",
+    "Notification",
+    "TaskHistory",
 ]

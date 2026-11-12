@@ -1,16 +1,16 @@
 """Modelo de tarefa com estado, progresso, atribuição e datas de atividade."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Identity,
     String,
     Text,
     Integer,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,14 +29,14 @@ class Task(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
-    project_id: Mapped[int] = mapped_column(
-        BigInteger,
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("projects.id"),
         nullable=False,
     )
@@ -75,14 +75,14 @@ class Task(Base):
         server_default="0",
     )
 
-    assigned_to: Mapped[int | None] = mapped_column(
-        BigInteger,
+    assigned_to: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id"),
         nullable=True,
     )
 
-    created_by: Mapped[int] = mapped_column(
-        BigInteger,
+    created_by: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
     )
@@ -117,6 +117,6 @@ class Task(Base):
     )
 
     @property
-    def assignee_ids(self) -> list[int]:
+    def assignee_ids(self) -> list[UUID]:
         """Expõe os IDs atribuídos no contrato da API."""
         return [assignee.user_id for assignee in self.assignees]

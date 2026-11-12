@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount } from 'vue'
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Resumo pessoal e radar dos projetos acessíveis, integrado na área de trabalho.
 
 type EstadoTarefa = 'to_do' | 'in_progress' | 'completed' | 'blocked'
 
 interface ProjetoAPI {
-  id: number
+  id: string
   name: string
   status: 'active' | 'completed' | 'archived'
   created_at: string
@@ -14,8 +15,8 @@ interface ProjetoAPI {
 }
 
 interface TarefaAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   status: EstadoTarefa
   progress: number
@@ -23,19 +24,19 @@ interface TarefaAPI {
 }
 
 interface TarefaRadarAPI {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   status: EstadoTarefa
-  assigned_to: number | null
-  assignee_ids: number[]
+  assigned_to: string | null
+  assignee_ids: string[]
   due_date: string | null
   created_at: string
   updated_at: string | null
 }
 
 interface TarefaPainel {
-  id: number
+  id: string
   title: string
   projectName: string
   status: EstadoTarefa
@@ -44,8 +45,8 @@ interface TarefaPainel {
 }
 
 interface TarefaRadar {
-  id: number
-  projectId: number
+  id: string
+  projectId: string
   title: string
   project: string
   status: 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
@@ -185,8 +186,8 @@ async function carregarPainel(): Promise<void> {
   try {
     // O resumo pessoal inclui apenas tarefas atribuídas à conta autenticada.
     const [projetosAPI, tarefasAPI] = await Promise.all([
-      api<ProjetoAPI[]>('/projects/'),
-      api<TarefaAPI[]>(`/tasks/?assigned_to=${encodeURIComponent(userId)}`),
+    fetchAllPages<ProjetoAPI>('/projects/'),
+    fetchAllPages<TarefaAPI>(`/tasks/?assigned_to=${encodeURIComponent(userId)}`),
     ])
     const nomesProjetos = new Map(projetosAPI.map(projeto => [projeto.id, projeto.name]))
 
@@ -214,7 +215,7 @@ async function carregarPainel(): Promise<void> {
   try {
     // A segunda consulta alimenta riscos dos projetos acessíveis, não só a lista pessoal.
     const userId = auth.user.value?.id
-    const tarefasAcessiveis = await api<TarefaRadarAPI[]>('/tasks/')
+    const tarefasAcessiveis = await fetchAllPages<TarefaRadarAPI>('/tasks/')
     const nomesProjetos = new Map(projetos.value.map(projeto => [projeto.id, projeto.name]))
 
     tarefasRadar.value = tarefasAcessiveis.map(tarefa => ({
@@ -225,7 +226,7 @@ async function carregarPainel(): Promise<void> {
       status: estadosRadar[tarefa.status],
       responsible: (tarefa.assignee_ids ?? (
         tarefa.assigned_to === null ? [] : [tarefa.assigned_to]
-      )).includes(userId ?? -1)
+      )).includes(userId ?? '')
         ? auth.user.value?.name ?? 'Membro atribuído'
         : (tarefa.assignee_ids ?? (
           tarefa.assigned_to === null ? [] : [tarefa.assigned_to]

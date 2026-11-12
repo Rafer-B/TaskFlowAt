@@ -1,6 +1,7 @@
 """Contratos de equipas, associação de membros e projetos."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -45,7 +46,7 @@ class TeamUpdate(BaseModel):
 class TeamProjectResponse(BaseModel):
     """Resumo de um projeto associado à equipa."""
 
-    id: int
+    id: UUID
     name: str
     status: str
 
@@ -55,10 +56,10 @@ class TeamResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     name: str
     description: str | None
-    created_by: int
+    created_by: UUID
     created_at: datetime
     updated_at: datetime
     member_count: int
@@ -70,19 +71,17 @@ class TeamResponse(BaseModel):
 class TeamMemberCreate(BaseModel):
     """Identificador da conta a adicionar à equipa."""
 
-    user_id: int = Field(gt=0)
+    user_id: UUID
 
 
 class TeamMembersCreate(BaseModel):
     """Lista limitada e sem duplicados de contas a adicionar em lote."""
 
-    user_ids: list[int] = Field(min_length=1, max_length=100)
+    user_ids: list[UUID] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validar_ids_unicos(self):
-        """Exige IDs positivos e distintos antes de iniciar a operação em lote."""
-        if any(user_id <= 0 for user_id in self.user_ids):
-            raise ValueError("Os IDs dos utilizadores devem ser positivos.")
+        """Exige IDs distintos antes de iniciar a operação em lote."""
         if len(set(self.user_ids)) != len(self.user_ids):
             raise ValueError("A lista contém utilizadores repetidos.")
         return self
@@ -91,7 +90,7 @@ class TeamMembersCreate(BaseModel):
 class TeamMemberResponse(BaseModel):
     """Dados públicos de um membro de equipa."""
 
-    user_id: int
+    user_id: UUID
     name: str
     email: str
     avatar_url: str | None = None

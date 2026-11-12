@@ -1,6 +1,8 @@
 """Rotas e regras de visibilidade e edição dos eventos de calendário."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -24,7 +26,12 @@ router = APIRouter(prefix="/calendar/events", tags=["Calendário"])
 EDITABLE_PROJECT_ROLES = {"admin", "owner", "contributor"}
 
 
-def listar_eventos_visiveis(db: Session, user: User) -> list[CalendarEvent]:
+def listar_eventos_visiveis(
+    db: Session,
+    user: User,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[CalendarEvent]:
     """Limita a lista aos eventos próprios ou ligados a projetos acessíveis."""
     consulta = db.query(CalendarEvent)
 
@@ -41,7 +48,12 @@ def listar_eventos_visiveis(db: Session, user: User) -> list[CalendarEvent]:
             )
         )
 
-    return consulta.order_by(CalendarEvent.start_at, CalendarEvent.id).all()
+    return (
+        consulta.order_by(CalendarEvent.start_at, CalendarEvent.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 def validar_acesso_edicao(
@@ -70,7 +82,7 @@ def validar_acesso_edicao(
 
 def validar_projeto_evento(
     db: Session,
-    project_id: int | None,
+    project_id: UUID | None,
     user: User,
 ) -> None:
     """Valida associação e impede novos eventos em projetos arquivados."""
@@ -93,10 +105,12 @@ def validar_projeto_evento(
 
 @router.get("/", response_model=list[CalendarEventResponse])
 def obter_eventos(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
-    return listar_eventos_visiveis(db, current_user)
+    return listar_eventos_visiveis(db, current_user, limit, offset)
 
 
 @router.post(
@@ -122,7 +136,7 @@ def criar_evento(
 
 @router.patch("/{event_id}", response_model=CalendarEventResponse)
 def atualizar_evento(
-    event_id: int,
+    event_id: UUID,
     dados: CalendarEventUpdate,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
@@ -160,7 +174,7 @@ def atualizar_evento(
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_evento(
-    event_id: int,
+    event_id: UUID,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):

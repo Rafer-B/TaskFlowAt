@@ -2,15 +2,20 @@
 """Rotas de contas, perfis, palavras-passe e fotografias de utilizador."""
 
 import logging
+import hashlib
 from pathlib import Path
-from uuid import uuid4
+import secrets
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
     HTTPException,
+    Query,
     UploadFile,
+    Response,
     status,
 )
 from pwdlib import PasswordHash
@@ -19,6 +24,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import exigir_administrador, get_db, obter_utilizador_atual
+<<<<<<< Updated upstream
 from app.models.calendar_event import CalendarEvent
 from app.models.project_member import ProjectMember
 from app.models.task import Task
@@ -26,7 +32,11 @@ from app.models.task_assignee import TaskAssignee
 from app.models.task_work_log import TaskWorkLog
 from app.models.team import Team
 from app.models.team_member import TeamMember
+=======
+from app.models.password_reset_token import PasswordResetToken
+>>>>>>> Stashed changes
 from app.models.user import User
+from app.settings import settings
 from app.schemas.user import (
     UserCreate,
     UserPasswordUpdate,
@@ -35,6 +45,8 @@ from app.schemas.user import (
     UserStatusUpdate,
     UserUpdate,
 )
+from app.schemas.auth import PasswordResetTokenResponse
+from app.sessions import set_session_cookies
 
 
 router = APIRouter(prefix="/users", tags=["Utilizadores"])
@@ -78,7 +90,7 @@ def utilizador_tem_dados_associados(db: Session, user_id: int) -> bool:
 password_hash = PasswordHash.recommended()
 
 # Pasta onde serão guardadas as fotografias.
-AVATAR_DIR = Path("uploads/avatars")
+AVATAR_DIR = settings.uploads_dir / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -135,15 +147,24 @@ def registar_utilizador(
 
 @router.get("/", response_model=list[UserPublic])
 def listar_utilizadores(
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
 ):
-    return db.query(User).order_by(User.id).all()
+    return (
+        db.query(User)
+        .order_by(User.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.patch("/me/password", response_model=UserPublic)
 def atualizar_palavra_passe(
     dados: UserPasswordUpdate,
+    response: Response,
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),
 ):
@@ -167,6 +188,7 @@ def atualizar_palavra_passe(
         )
 
     current_user.password_hash = password_hash.hash(dados.new_password)
+    current_user.session_version += 1
     current_user.updated_at = func.now()
 
     try:
@@ -180,7 +202,49 @@ def atualizar_palavra_passe(
             detail="Não foi possível atualizar a palavra-passe.",
         )
 
+    set_session_cookies(response, current_user)
     return current_user
+
+
+@router.post(
+    "/{user_id}/password-reset-token",
+    response_model=PasswordResetTokenResponse,
+)
+def emitir_token_recuperacao(
+    user_id: UUID,
+    _: User = Depends(exigir_administrador),
+    db: Session = Depends(get_db),
+) -> PasswordResetTokenResponse:
+    """Emite um token de recuperação de uso único, válido por 30 minutos."""
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilizador ativo não encontrado.",
+        )
+
+    raw_token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+    ).update(
+        {PasswordResetToken.used_at: now},
+        synchronize_session=False,
+    )
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+            created_by=_.id,
+            expires_at=now + timedelta(minutes=30),
+        )
+    )
+    db.commit()
+    return PasswordResetTokenResponse(
+        token=raw_token,
+        expires_at=now + timedelta(minutes=30),
+    )
 
 
 @router.patch("/me/profile", response_model=UserPublic)
@@ -194,7 +258,7 @@ def atualizar_o_proprio_perfil(
 
 @router.patch("/{user_id}", response_model=UserPublic)
 def atualizar_utilizador(
-    user_id: int,
+    user_id: UUID,
     dados: UserUpdate,
     _: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
@@ -276,7 +340,7 @@ def guardar_atualizacao_perfil(
 
 @router.patch("/{user_id}/role", response_model=UserPublic)
 def atualizar_perfil_utilizador(
-    user_id: int,
+    user_id: UUID,
     dados: UserRoleUpdate,
     current_user: User = Depends(exigir_administrador),
     db: Session = Depends(get_db),
@@ -562,7 +626,7 @@ def remover_fotografia_perfil(
 
 @router.post("/{user_id}/avatar", response_model=UserPublic)
 async def carregar_fotografia_perfil(
-    user_id: int,
+    user_id: UUID,
     file: UploadFile = File(...),
     current_user: User = Depends(obter_utilizador_atual),
     db: Session = Depends(get_db),

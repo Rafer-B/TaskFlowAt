@@ -8,7 +8,7 @@ type EstadoTarefa = 'Por fazer' | 'Em curso' | 'Concluída' | 'Bloqueada'
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 
 interface ProjetoRadar {
-  id: number
+  id: string
   name: string
   status: EstadoProjeto
   createdAt: string
@@ -16,14 +16,13 @@ interface ProjetoRadar {
 }
 
 interface TarefaRadar {
-  id: number
-  projectId: number
+  id: string
+  projectId: string
   title: string
   project: string
   responsible: string
   status: EstadoTarefa
   dueDate: string | null
-  responsible?: string
   createdAt: string
   updatedAt: string | null
 }
@@ -32,7 +31,7 @@ interface Risco {
   id: string
   type: 'blocked' | 'overdue' | 'inactive'
   severity: number
-  projectId: number
+  projectId: string
   title: string
   project: string
   description: string

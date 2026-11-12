@@ -6,13 +6,13 @@
 /* Tokens de cor e dimensão. */
 :root {
   --tf-font: 'DM Sans', Inter, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
-  --tf-bg: #e8ece6;
-  --tf-surface: #f4f5f1;
-  --tf-border: #d6ddd4;
-  --tf-border-soft: #e4e9e2;
-  --tf-text: #0f172a;
-  --tf-text-muted: #64748b;
-  --tf-text-light: #94a3b8;
+  --tf-bg: #f3f5f9;
+  --tf-surface: #fff;
+  --tf-border: #e1e7f0;
+  --tf-border-soft: #edf1f7;
+  --tf-text: #172b4d;
+  --tf-text-muted: #5f6f86;
+  --tf-text-light: #8492a6;
   --tf-primary: #5965e8;
   --tf-primary-hover: #454fc9;
   --tf-primary-soft: #eef2ff;
@@ -55,6 +55,7 @@ html[data-reduced-motion='true'] *::after {
 html {
   font-family: var(--tf-font);
   font-size: 16px;
+  line-height: 1.5;
   min-height: 100%;
 }
 
@@ -92,6 +93,50 @@ button {
   background: none;
   border: none;
   cursor: pointer;
+}
+
+.action-tooltip {
+  position: relative;
+  display: inline-flex !important;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0 !important;
+  padding: 0 !important;
+  overflow: visible;
+  font-size: 0 !important;
+}
+
+.action-tooltip::after {
+  position: absolute;
+  z-index: 1000;
+  top: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 9px;
+  color: #fff;
+  background: #192a49;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(25 42 73 / 18%);
+  content: attr(aria-label);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity .15s ease, transform .15s ease;
+  white-space: normal;
+}
+
+.action-tooltip:hover::after,
+.action-tooltip:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* Área principal do dashboard. */

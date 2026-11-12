@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { fetchAllPages } from '~/composables/usePaginatedApi'
 definePageMeta({
   layout: 'admin',
 })
 
 interface Utilizador {
-  id: number
+  id: string
   name: string
   email: string
   role: 'admin' | 'member'
@@ -14,8 +15,8 @@ interface Utilizador {
 }
 
 interface TarefaAssociada {
-  id: number
-  project_id: number
+  id: string
+  project_id: string
   title: string
   status: 'to_do' | 'in_progress' | 'completed' | 'blocked'
   priority: 'low' | 'medium' | 'high'
@@ -23,18 +24,18 @@ interface TarefaAssociada {
 }
 
 interface ProjetoResumo {
-  id: number
+  id: string
   name: string
 }
 
 interface EquipaResumo {
-  id: number
+  id: string
   name: string
   member_count: number
 }
 
 interface MembroEquipaResumo {
-  user_id: number
+  user_id: string
 }
 
 const route = useRoute()
@@ -114,12 +115,12 @@ function rotuloPrioridade(prioridade: TarefaAssociada['priority']): string {
   return rotulos[prioridade]
 }
 
-function nomeProjeto(projectId: number): string {
+function nomeProjeto(projectId: string): string {
   return projetos.value.find((projeto) => projeto.id === projectId)?.name
     ?? `Projeto #${projectId}`
 }
 
-async function carregarPerfil(userId: number): Promise<void> {
+async function carregarPerfil(userId: string): Promise<void> {
   const pedido = ++pedidoAtual
   carregando.value = true
   carregarAssociacoes.value = false
@@ -132,14 +133,14 @@ async function carregarPerfil(userId: number): Promise<void> {
   projetos.value = []
   equipas.value = []
 
-  if (!Number.isSafeInteger(userId) || userId <= 0) {
+  if (!userId) {
     erro.value = 'O identificador do utilizador é inválido.'
     carregando.value = false
     return
   }
 
   try {
-    const utilizadores = await api<Utilizador[]>('/users/')
+    const utilizadores = await fetchAllPages<Utilizador>('/users/')
     if (pedido !== pedidoAtual) return
 
     const encontrado = utilizadores.find((item) => item.id === userId)
@@ -155,13 +156,13 @@ async function carregarPerfil(userId: number): Promise<void> {
 
     try {
       const [tarefasDoUtilizador, projetosVisiveis, equipasVisiveis] = await Promise.all([
-        api<TarefaAssociada[]>(`/tasks/?assigned_to=${userId}`),
-        api<ProjetoResumo[]>('/projects/'),
-        api<EquipaResumo[]>('/teams/'),
+        fetchAllPages<TarefaAssociada>(`/tasks/?assigned_to=${userId}`),
+        fetchAllPages<ProjetoResumo>('/projects/'),
+        fetchAllPages<EquipaResumo>('/teams/'),
       ])
       const equipasDoUtilizador = await Promise.all(
         equipasVisiveis.map(async (equipa) => {
-          const membros = await api<MembroEquipaResumo[]>(
+          const membros = await fetchAllPages<MembroEquipaResumo>(
             `/teams/${equipa.id}/members`,
           )
           return membros.some((membro) => membro.user_id === userId)
@@ -242,13 +243,13 @@ watch(
   () => route.params.id,
   (id) => {
     const valor = Array.isArray(id) ? id[0] : id
-    void carregarPerfil(Number(valor))
+    void carregarPerfil(valor ?? '')
   },
 )
 
 onMounted(() => {
   const id = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
-  void carregarPerfil(Number(id))
+  void carregarPerfil(id ?? '')
 })
 </script>
 

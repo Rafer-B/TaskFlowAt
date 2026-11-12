@@ -14,7 +14,7 @@ const emit = defineEmits<{
 
 const mainLinks = [
   { label: 'Dashboard', to: '/', icon: 'dashboard' },
-  { label: 'A minha área', to: '/my-work', icon: 'my-work' },
+  { label: 'O meu trabalho', to: '/my-work', icon: 'my-work' },
   { label: 'Projetos', to: '/projects', icon: 'projects' },
   { label: 'Tarefas', to: '/tasks', icon: 'tasks' },
   { label: 'Utilizadores', to: '/users', icon: 'users' },
@@ -106,7 +106,6 @@ function isActive(path: string) {
 
       <template v-for="link in workspaceLinks" :key="link.label">
         <NuxtLink
-          v-if="'to' in link"
           :to="link.to"
           class="sidebar-link"
           :class="{ 'is-active': isActive(link.to) }"
@@ -119,18 +118,6 @@ function isActive(path: string) {
           <span>{{ link.label }}</span>
           <span v-if="isActive(link.to)" class="active-indicator"></span>
         </NuxtLink>
-        <div
-          v-else
-          class="sidebar-link sidebar-link-upcoming"
-          :title="`${link.label} — disponível numa próxima fase`"
-          aria-disabled="true"
-        >
-          <span class="sidebar-link-icon">
-            <SidebarIcon :name="link.icon" />
-          </span>
-          <span>{{ link.label }}</span>
-          <span class="upcoming-dot"></span>
-        </div>
       </template>
     </nav>
 
@@ -230,7 +217,7 @@ function isActive(path: string) {
 
 .brand-copy span {
   color: #9eafca;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .sidebar-close {
@@ -265,7 +252,7 @@ function isActive(path: string) {
   color: #dbeafe;
   background: #36548a;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -275,13 +262,13 @@ function isActive(path: string) {
 
 .workspace-copy strong {
   color: #f1f5ff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .workspace-copy span {
   color: #a9bad3;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .workspace-chevron {
@@ -299,7 +286,7 @@ function isActive(path: string) {
   margin: 0 0 9px;
   padding: 0 10px;
   color: #91a4c2;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -320,7 +307,7 @@ function isActive(path: string) {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   text-decoration: none;
   transition:

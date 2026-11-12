@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -12,7 +13,7 @@ EventColor = Literal["blue", "purple", "green", "red"]
 class CalendarEventCreate(BaseModel):
     """Dados de criação; exige datas com fuso e período válido."""
 
-    project_id: int | None = Field(default=None, gt=0)
+    project_id: UUID | None = None
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     start_at: datetime
@@ -37,7 +38,7 @@ class CalendarEventCreate(BaseModel):
 class CalendarEventUpdate(BaseModel):
     """Campos opcionais de edição, distinguindo omissão de valores nulos."""
 
-    project_id: int | None = Field(default=None, gt=0)
+    project_id: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     start_at: datetime | None = None
@@ -82,13 +83,13 @@ class CalendarEventResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    project_id: int | None
+    id: UUID
+    project_id: UUID | None
     title: str
     description: str | None
     start_at: datetime
     end_at: datetime
     color: EventColor
-    created_by: int
+    created_by: UUID
     created_at: datetime
     updated_at: datetime

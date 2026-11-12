@@ -1,15 +1,15 @@
 """Modelos para registos de trabalho e anexos associados a tarefas."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    BigInteger,
     DateTime,
     ForeignKey,
-    Identity,
     Integer,
     String,
     Text,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,21 +23,21 @@ class TaskWorkLog(Base):
 
     __tablename__ = "task_work_logs"
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
-    task_id: Mapped[int] = mapped_column(
-        BigInteger,
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    author_id: Mapped[int] = mapped_column(
-        BigInteger,
+    author_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
     )
@@ -71,14 +71,14 @@ class TaskWorkLogAttachment(Base):
 
     __tablename__ = "task_work_log_attachments"
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        Identity(always=True),
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        default=uuid4,
         primary_key=True,
     )
 
-    work_log_id: Mapped[int] = mapped_column(
-        Integer,
+    work_log_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("task_work_logs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
