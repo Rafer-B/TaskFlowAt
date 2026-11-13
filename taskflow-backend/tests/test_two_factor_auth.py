@@ -18,9 +18,20 @@ from app.models.login_attempt import LoginAttempt
 from app.models.two_factor_login_challenge import TwoFactorLoginChallenge
 from app.models.user import User
 from app.routers import auth as auth_routes
+from app.settings import load_settings
 
 
 SECRET = "test-secret-with-more-than-thirty-two-characters"
+
+
+def _set_required_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TASKFLOW_ENV", "test")
+    monkeypatch.setenv("DB_HOST", "localhost")
+    monkeypatch.setenv("DB_PORT", "5432")
+    monkeypatch.setenv("DB_NAME", "taskflow_test")
+    monkeypatch.setenv("DB_USER", "taskflow")
+    monkeypatch.setenv("DB_PASSWORD", "test-password")
+    monkeypatch.setenv("TASKFLOW_JWT_SECRET", SECRET)
 
 
 @pytest.fixture
@@ -30,6 +41,24 @@ def two_factor_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "settings",
         replace(auth_routes.settings, jwt_secret=SECRET),
     )
+
+
+def test_resend_settings_are_optional_but_must_be_configured_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_environment(monkeypatch)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("RESEND_FROM_EMAIL", raising=False)
+    assert not load_settings().resend_api_key
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    with pytest.raises(RuntimeError, match="configurados em conjunto"):
+        load_settings()
+
+    monkeypatch.setenv("RESEND_FROM_EMAIL", "TaskFlow <security@example.com>")
+    config = load_settings()
+    assert config.resend_api_key == "re_test_key"
+    assert config.resend_from_email == "TaskFlow <security@example.com>"
 
 
 def test_two_factor_secret_is_encrypted_and_can_be_decrypted(

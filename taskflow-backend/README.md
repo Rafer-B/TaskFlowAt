@@ -34,6 +34,9 @@ DB_PASSWORD=palavra-passe_postgres
 
 O ficheiro `.env` contém credenciais privadas e não deve ser enviado para o
 Git. Substitua os valores de exemplo pelos dados do seu ambiente.
+`.env.example` é apenas um modelo: a aplicação não o carrega. Se o copiar para
+criar `.env`, substitua os valores de exemplo e reinicie o backend depois de
+alterar a configuração.
 
 ## Instalação e migrações
 
@@ -176,8 +179,8 @@ guarda apenas o respetivo hash, controla a validade e só cria a sessão após a
 validação. Os códigos expiram ao fim de cinco minutos e só podem ser usados uma
 vez.
 
-Para disponibilizar o envio por email, configure no `.env` a chave da API do
-Resend e um remetente verificado no respetivo domínio:
+Para disponibilizar o envio por email, configure diretamente no `.env` a chave
+da API do Resend e um remetente verificado no respetivo domínio:
 
 ```dotenv
 RESEND_API_KEY=re_...

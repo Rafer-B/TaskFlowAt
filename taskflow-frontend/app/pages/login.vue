@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, ref } from 'vue'
 import type { AuthUser } from '~/composables/useAuth'
 import { homeForRole } from '~/utils/access'
 
@@ -16,7 +17,9 @@ const codigoDoisFatores = ref('')
 const metodosDoisFatores = ref<Array<'authenticator' | 'email'>>([])
 const metodoDoisFatores = ref<'authenticator' | 'email'>('authenticator')
 const codigoEmailEnviado = ref(false)
+const segundosParaReenvioEmail = ref(0)
 const aguardaDoisFatores = computed(() => Boolean(desafioDoisFatores.value))
+let temporizadorReenvioEmail: ReturnType<typeof setInterval> | undefined
 
 watch(
   () => route.query.email,
@@ -96,6 +99,7 @@ async function pedirCodigoPorEmail(): Promise<void> {
     metodoDoisFatores.value = 'email'
     codigoEmailEnviado.value = true
     codigoDoisFatores.value = ''
+    iniciarEsperaReenvioEmail()
   } catch (error) {
     console.error('Erro ao pedir código de autenticação por email:', error)
     const detalhe =
@@ -112,6 +116,28 @@ async function pedirCodigoPorEmail(): Promise<void> {
   } finally {
     aEntrar.value = false
   }
+}
+
+function iniciarEsperaReenvioEmail(): void {
+  if (temporizadorReenvioEmail) clearInterval(temporizadorReenvioEmail)
+  segundosParaReenvioEmail.value = 60
+  temporizadorReenvioEmail = setInterval(() => {
+    segundosParaReenvioEmail.value = Math.max(
+      0,
+      segundosParaReenvioEmail.value - 1,
+    )
+    if (segundosParaReenvioEmail.value === 0 && temporizadorReenvioEmail) {
+      clearInterval(temporizadorReenvioEmail)
+      temporizadorReenvioEmail = undefined
+    }
+  }, 1000)
+}
+
+function usarAutenticador(): void {
+  metodoDoisFatores.value = 'authenticator'
+  codigoEmailEnviado.value = false
+  codigoDoisFatores.value = ''
+  erro.value = ''
 }
 
 async function navegarAposLogin(role: AuthUser['role']): Promise<void> {
@@ -135,8 +161,17 @@ function voltarAoLogin(): void {
   metodosDoisFatores.value = []
   metodoDoisFatores.value = 'authenticator'
   codigoEmailEnviado.value = false
+  segundosParaReenvioEmail.value = 0
+  if (temporizadorReenvioEmail) {
+    clearInterval(temporizadorReenvioEmail)
+    temporizadorReenvioEmail = undefined
+  }
   erro.value = ''
 }
+
+onBeforeUnmount(() => {
+  if (temporizadorReenvioEmail) clearInterval(temporizadorReenvioEmail)
+})
 </script>
 
 <template>
@@ -304,15 +339,29 @@ function voltarAoLogin(): void {
               {{ aEntrar ? 'A enviar...' : 'Enviar código por email' }}
             </button>
             <button
-              v-else-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'email'"
+              v-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'email'"
+              class="factor-method-button"
+              type="button"
+              :disabled="aEntrar || segundosParaReenvioEmail > 0"
+              @click="pedirCodigoPorEmail"
+            >
+              {{ aEntrar
+                ? 'A enviar...'
+                : segundosParaReenvioEmail > 0
+                  ? `Pode pedir novo código em ${segundosParaReenvioEmail} s`
+                  : 'Reenviar código por email'
+              }}
+            </button>
+            <button
+              v-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'email'"
               class="factor-method-button"
               type="button"
               :disabled="aEntrar"
-              @click="metodoDoisFatores = 'authenticator'; codigoEmailEnviado = false; codigoDoisFatores = ''; erro = ''"
+              @click="usarAutenticador"
             >
               Usar app autenticadora ou código de recuperação
             </button>
-            <p v-else class="login-info" role="status">
+            <p v-if="!metodosDoisFatores.includes('email')" class="login-info" role="status">
               O código por email não está disponível neste servidor. A autenticação continua disponível pela app ou por um código de recuperação.
             </p>
           </template>
