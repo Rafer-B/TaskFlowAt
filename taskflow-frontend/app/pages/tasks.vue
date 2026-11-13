@@ -26,10 +26,9 @@ type Categoria =
 
 type EstadoAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
 type PrioridadeAPI = 'low' | 'medium' | 'high'
-type ChaveOrdenacaoTabela = 'id' | 'title' | 'project' | 'responsible' | 'status' | 'priority' | 'dueDate'
+type ChaveOrdenacaoTabela = 'title' | 'project' | 'responsible' | 'status' | 'priority' | 'dueDate'
 
 const colunasTabela: Array<{ chave: ChaveOrdenacaoTabela; rotulo: string }> = [
-  { chave: 'id', rotulo: 'ID' },
   { chave: 'title', rotulo: 'Tarefa' },
   { chave: 'project', rotulo: 'Projeto' },
   { chave: 'responsible', rotulo: 'Responsável' },
@@ -162,8 +161,8 @@ const ordenacaoTabela = ref<{
   chave: ChaveOrdenacaoTabela
   ascendente: boolean
 }>({
-  chave: 'id',
-  ascendente: false,
+  chave: 'title',
+  ascendente: true,
 })
 
 watch(
@@ -1634,7 +1633,6 @@ onBeforeUnmount(() => {
             </thead>
             <tbody>
               <tr v-for="tarefa in tarefasDaPaginaTabela" :key="tarefa.id">
-                <td class="table-task-id">#{{ tarefa.id }}</td>
                 <td>
                   <button
                     type="button"

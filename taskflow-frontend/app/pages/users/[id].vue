@@ -297,7 +297,7 @@ onMounted(() => {
           </div>
           <div class="identity-copy">
             <strong>{{ utilizador.name }}</strong>
-            <span>ID #{{ utilizador.id }} · {{ utilizador.email }}</span>
+            <span>{{ utilizador.email }}</span>
           </div>
           <span class="status-badge" :class="utilizador.is_active ? 'status-active' : 'status-inactive'">
             <span></span>{{ utilizador.is_active ? 'Ativo' : 'Inativo' }}

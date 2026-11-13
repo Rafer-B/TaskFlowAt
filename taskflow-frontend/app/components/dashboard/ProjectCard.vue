@@ -139,9 +139,6 @@ function colorFor(value: string): string {
             {{ project.name }}
           </strong>
 
-          <span class="project-meta">
-            Projeto #{{ project.id }}
-          </span>
         </div>
       </div>
 

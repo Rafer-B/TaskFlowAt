@@ -614,8 +614,6 @@ onMounted(carregarUtilizadores)
                     >
                       {{ utilizador.name }}
                     </NuxtLink>
-                    <span>ID #{{ utilizador.id }}</span>
-
                     <label
                       class="avatar-upload"
                       :class="{

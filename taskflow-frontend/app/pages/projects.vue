@@ -59,16 +59,14 @@ interface EquipaProjetoAPI {
 type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 type FiltroEstado = 'Todos' | EstadoProjeto
 type AcaoProjeto = 'archive' | 'delete'
-type ChaveOrdenacaoProjetos = 'id' | 'name' | 'status' | 'createdAt' | 'currentUserRole'
+type ChaveOrdenacaoProjetos = 'name' | 'status' | 'createdAt'
 
 const colunasTabelaProjetos: Array<{
   chave: ChaveOrdenacaoProjetos
   rotulo: string
 }> = [
-  { chave: 'id', rotulo: 'ID' },
   { chave: 'name', rotulo: 'Projeto' },
   { chave: 'status', rotulo: 'Estado' },
-  { chave: 'currentUserRole', rotulo: 'O teu papel' },
   { chave: 'createdAt', rotulo: 'Criado em' },
 ]
 
@@ -1397,7 +1395,6 @@ onMounted(carregarProjetos)
           </thead>
           <tbody>
             <tr v-for="projeto in projetosDaPagina" :key="projeto.id">
-              <td class="project-id-cell">#{{ projeto.id }}</td>
               <td class="project-name-cell">
                 <strong>{{ projeto.name }}</strong>
                 <small>{{ projeto.description || 'Sem descrição' }}</small>
@@ -1414,7 +1411,6 @@ onMounted(carregarProjetos)
                   A atualizar...
                 </small>
               </td>
-              <td>{{ nomePapelProjeto(projeto.currentUserRole) }}</td>
               <td>{{ formatarData(projeto.createdAt) }}</td>
               <td class="project-actions-cell">
                 <div class="project-row-actions">
