@@ -89,6 +89,13 @@ def load_settings() -> Settings:
     if not db_user or not db_password:
         raise RuntimeError("Configura DB_USER e DB_PASSWORD no ficheiro .env")
 
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+    resend_from_email = os.getenv("RESEND_FROM_EMAIL", "").strip()
+    if bool(resend_api_key) != bool(resend_from_email):
+        raise RuntimeError(
+            "RESEND_API_KEY e RESEND_FROM_EMAIL devem ser configurados em conjunto."
+        )
+
     return Settings(
         environment=environment,
         db_host=os.getenv("DB_HOST", "localhost"),
@@ -101,8 +108,8 @@ def load_settings() -> Settings:
         cookie_secure=cookie_secure,
         cookie_samesite=same_site,
         cookie_domain=os.getenv("TASKFLOW_COOKIE_DOMAIN") or None,
-        resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
-        resend_from_email=os.getenv("RESEND_FROM_EMAIL", "").strip(),
+        resend_api_key=resend_api_key,
+        resend_from_email=resend_from_email,
         uploads_dir=Path(
             os.getenv("TASKFLOW_UPLOADS_DIR", str(BACKEND_DIR / "uploads"))
         ).expanduser().resolve(),

@@ -74,6 +74,7 @@ As migrações atuais acrescentam:
 | `20261112_0011` | Acrescenta sessões revogáveis, recuperação de palavra-passe, notificações e histórico de alterações. |
 | `20261113_0012` | Acrescenta segredos cifrados e códigos de recuperação para autenticação de dois fatores. |
 | `20261113_0013` | Armazena hashes de códigos de email de uso único para 2FA. |
+| `20261113_0014` | Impede a reutilização de desafios de início de sessão com 2FA. |
 
 A revisão `20261112_0010` atribui novos UUIDs aos registos existentes e atualiza
 as referências entre tabelas; os valores numéricos antigos não são mantidos.
@@ -182,6 +183,18 @@ Resend e um remetente verificado no respetivo domínio:
 RESEND_API_KEY=re_...
 RESEND_FROM_EMAIL=TaskFlow <seguranca@seudominio.pt>
 ```
+
+No painel Resend, adicione e verifique primeiro o domínio do remetente e crie
+uma API key própria para o ambiente. Os dois valores são obrigatórios em
+conjunto: configurar apenas um deles impede o arranque da API, para evitar uma
+configuração de email incompleta. Depois de atualizar o `.env`, reinicie o
+backend para que as variáveis sejam recarregadas.
+
+Para testar o fluxo completo, ative 2FA em **Definições** com uma app TOTP,
+termine a sessão e volte a iniciar sessão. Depois de validar email e
+palavra-passe, o botão **Enviar código por email** aparece quando o Resend está
+configurado. O código enviado é numérico, expira em cinco minutos, só pode ser
+usado uma vez e há um intervalo de 60 segundos antes de poder pedir outro.
 
 Sem estas definições, o login continua a aceitar TOTP e códigos de recuperação,
 mas não apresenta o método por email. As credenciais do Resend devem ficar
