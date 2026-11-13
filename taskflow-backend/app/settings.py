@@ -39,6 +39,8 @@ class Settings:
     session_cookie_name: str = "taskflow_session"
     csrf_cookie_name: str = "taskflow_csrf"
     session_lifetime_minutes: int = 60
+    resend_api_key: str = ""
+    resend_from_email: str = ""
 
 
 def load_settings() -> Settings:
@@ -99,6 +101,8 @@ def load_settings() -> Settings:
         cookie_secure=cookie_secure,
         cookie_samesite=same_site,
         cookie_domain=os.getenv("TASKFLOW_COOKIE_DOMAIN") or None,
+        resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
+        resend_from_email=os.getenv("RESEND_FROM_EMAIL", "").strip(),
         uploads_dir=Path(
             os.getenv("TASKFLOW_UPLOADS_DIR", str(BACKEND_DIR / "uploads"))
         ).expanduser().resolve(),

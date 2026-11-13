@@ -6,8 +6,10 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     DateTime,
+    JSON,
     String,
     Uuid,
+    BigInteger,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -56,6 +58,30 @@ class User(Base):
         nullable=False,
         default=0,
         server_default="0",
+    )
+
+    two_factor_secret: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    two_factor_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    two_factor_last_used_step: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    two_factor_recovery_codes: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        server_default="[]",
     )
 
     avatar_url: Mapped[str | None] = mapped_column(

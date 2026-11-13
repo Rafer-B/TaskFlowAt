@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AuthUser } from '~/composables/useAuth'
 import { homeForRole } from '~/utils/access'
 
 // Gere credenciais, feedback do formulário e destino após autenticação.
@@ -10,6 +11,12 @@ const password = ref('')
 const erro = ref('')
 const aEntrar = ref(false)
 const mostrarPalavraPasse = ref(false)
+const desafioDoisFatores = ref('')
+const codigoDoisFatores = ref('')
+const metodosDoisFatores = ref<Array<'authenticator' | 'email'>>([])
+const metodoDoisFatores = ref<'authenticator' | 'email'>('authenticator')
+const codigoEmailEnviado = ref(false)
+const aguardaDoisFatores = computed(() => Boolean(desafioDoisFatores.value))
 
 watch(
   () => route.query.email,
@@ -28,19 +35,28 @@ async function entrar(): Promise<void> {
   aEntrar.value = true
 
   try {
-    const user = await auth.login(email.value, password.value)
-    // Só aceita destinos internos da mesma origem; evita redirecionamentos externos.
-    const redirect = typeof route.query.redirect === 'string'
-      ? route.query.redirect
-      : ''
-    const urlRedirecionamento = redirect.startsWith('/')
-      ? new URL(redirect, window.location.origin)
-      : null
-    const destino = urlRedirecionamento?.origin === window.location.origin
-      ? `${urlRedirecionamento.pathname}${urlRedirecionamento.search}${urlRedirecionamento.hash}`
-      : homeForRole(user.role)
-
-    await navigateTo(destino)
+    if (aguardaDoisFatores.value) {
+      const user = metodoDoisFatores.value === 'email'
+        ? await auth.verificarLoginPorEmail(
+            desafioDoisFatores.value,
+            codigoDoisFatores.value.trim(),
+          )
+        : await auth.verificarLoginDoisFatores(
+            desafioDoisFatores.value,
+            codigoDoisFatores.value.trim(),
+          )
+      await navegarAposLogin(user.role)
+    } else {
+      const resultado = await auth.login(email.value, password.value)
+      if (!('role' in resultado)) {
+        desafioDoisFatores.value = resultado.challenge_token
+        metodosDoisFatores.value = resultado.methods
+        metodoDoisFatores.value = 'authenticator'
+        codigoDoisFatores.value = ''
+      } else {
+        await navegarAposLogin(resultado.role)
+      }
+    }
   } catch (error) {
     // Prefere o detalhe útil da API, mas não expõe erros internos quando não há 401.
     console.error('Erro ao iniciar sessão:', error)
@@ -59,12 +75,67 @@ async function entrar(): Promise<void> {
         ? error.statusCode
         : undefined
 
-    erro.value = statusCode === 401 || !detalhe
-      ? 'Não foi possível iniciar sessão. Verifique o email e a palavra-passe.'
-      : detalhe
+    erro.value = detalhe || (
+      aguardaDoisFatores.value
+        ? 'Código inválido ou expirado. Tente novamente.'
+        : statusCode === 401 || !detalhe
+          ? 'Não foi possível iniciar sessão. Verifique o email e a palavra-passe.'
+          : 'Não foi possível iniciar sessão. Tente novamente.'
+    )
   } finally {
     aEntrar.value = false
   }
+}
+
+async function pedirCodigoPorEmail(): Promise<void> {
+  erro.value = ''
+  aEntrar.value = true
+
+  try {
+    await auth.pedirCodigoDoisFatoresPorEmail(desafioDoisFatores.value)
+    metodoDoisFatores.value = 'email'
+    codigoEmailEnviado.value = true
+    codigoDoisFatores.value = ''
+  } catch (error) {
+    console.error('Erro ao pedir código de autenticação por email:', error)
+    const detalhe =
+      typeof error === 'object' &&
+      error !== null &&
+      'data' in error &&
+      typeof error.data === 'object' &&
+      error.data !== null &&
+      'detail' in error.data &&
+      typeof error.data.detail === 'string'
+        ? error.data.detail
+        : ''
+    erro.value = detalhe || 'Não foi possível enviar o código. Tente novamente.'
+  } finally {
+    aEntrar.value = false
+  }
+}
+
+async function navegarAposLogin(role: AuthUser['role']): Promise<void> {
+  // Só aceita destinos internos da mesma origem; evita redirecionamentos externos.
+  const redirect = typeof route.query.redirect === 'string'
+    ? route.query.redirect
+    : ''
+  const urlRedirecionamento = redirect.startsWith('/')
+    ? new URL(redirect, window.location.origin)
+    : null
+  const destino = urlRedirecionamento?.origin === window.location.origin
+    ? `${urlRedirecionamento.pathname}${urlRedirecionamento.search}${urlRedirecionamento.hash}`
+    : homeForRole(role)
+
+  await navigateTo(destino)
+}
+
+function voltarAoLogin(): void {
+  desafioDoisFatores.value = ''
+  codigoDoisFatores.value = ''
+  metodosDoisFatores.value = []
+  metodoDoisFatores.value = 'authenticator'
+  codigoEmailEnviado.value = false
+  erro.value = ''
 }
 </script>
 
@@ -148,62 +219,103 @@ async function entrar(): Promise<void> {
         </div>
 
         <div class="form-intro">
-          <span class="login-kicker">{{ aAdicionarConta ? 'ADICIONAR CONTA' : 'BEM-VINDO/A DE VOLTA' }}</span>
-          <h1 id="login-title">{{ aAdicionarConta ? 'Entre noutra conta' : 'Entre na sua conta' }}</h1>
-          <p>{{ aAdicionarConta ? 'A conta atual mantém-se disponível para alternar mais tarde.' : 'Continue de onde a sua equipa precisa de si.' }}</p>
+          <span class="login-kicker">{{ aguardaDoisFatores ? 'SEGUNDO FATOR' : aAdicionarConta ? 'ADICIONAR CONTA' : 'BEM-VINDO/A DE VOLTA' }}</span>
+          <h1 id="login-title">{{ aguardaDoisFatores ? 'Confirme a sua identidade' : aAdicionarConta ? 'Entre noutra conta' : 'Entre na sua conta' }}</h1>
+          <p>{{ aguardaDoisFatores ? metodoDoisFatores === 'email' ? 'Introduza o código de seis dígitos enviado para o email associado à conta.' : 'Introduza o código da sua app autenticadora ou um código de recuperação.' : aAdicionarConta ? 'A conta atual mantém-se disponível para alternar mais tarde.' : 'Continue de onde a sua equipa precisa de si.' }}</p>
         </div>
 
         <form class="login-form" @submit.prevent="entrar">
-          <label for="email">Endereço de email</label>
-          <div class="input-wrap">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <rect x="2.75" y="4.25" width="14.5" height="11.5" rx="2.5" stroke="currentColor" stroke-width="1.5" />
-              <path d="m4 6 6 4.5L16 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <input
-              id="email"
-              v-model="email"
-              type="email"
-              autocomplete="username"
-              placeholder="nome@empresa.com"
-              required
-              :disabled="aEntrar"
-            />
-          </div>
+          <template v-if="!aguardaDoisFatores">
+            <label for="email">Endereço de email</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="2.75" y="4.25" width="14.5" height="11.5" rx="2.5" stroke="currentColor" stroke-width="1.5" />
+                <path d="m4 6 6 4.5L16 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <input
+                id="email"
+                v-model="email"
+                type="email"
+                autocomplete="username"
+                placeholder="nome@empresa.com"
+                required
+                :disabled="aEntrar"
+              />
+            </div>
 
-          <div class="password-label-row">
-            <label for="password">Palavra-passe</label>
-          </div>
-          <div class="input-wrap">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <rect x="3.25" y="8" width="13.5" height="9" rx="2.25" stroke="currentColor" stroke-width="1.5" />
-              <path d="M6.25 8V5.75a3.75 3.75 0 0 1 7.5 0V8M10 11.5v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-            </svg>
-            <input
-              id="password"
-              v-model="password"
-              :type="mostrarPalavraPasse ? 'text' : 'password'"
-              autocomplete="current-password"
-              placeholder="Introduza a sua palavra-passe"
-              required
-              :disabled="aEntrar"
-            />
+            <div class="password-label-row">
+              <label for="password">Palavra-passe</label>
+            </div>
+            <div class="input-wrap">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="3.25" y="8" width="13.5" height="9" rx="2.25" stroke="currentColor" stroke-width="1.5" />
+                <path d="M6.25 8V5.75a3.75 3.75 0 0 1 7.5 0V8M10 11.5v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+              <input
+                id="password"
+                v-model="password"
+                :type="mostrarPalavraPasse ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="Introduza a sua palavra-passe"
+                required
+                :disabled="aEntrar"
+              />
+              <button
+                class="password-toggle"
+                type="button"
+                :aria-label="mostrarPalavraPasse ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'"
+                :aria-pressed="mostrarPalavraPasse"
+                @click="mostrarPalavraPasse = !mostrarPalavraPasse"
+              >
+                <svg v-if="mostrarPalavraPasse" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5Z" stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="10" cy="10" r="2.1" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+                <svg v-else viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="m3 3 14 14M8.6 5.2A7.6 7.6 0 0 1 10 5c4.8 0 7.5 5 7.5 5a12 12 0 0 1-2.2 2.8M5.2 5.8C3.4 7.1 2.5 10 2.5 10s2.7 5 7.5 5c.8 0 1.6-.2 2.3-.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <label for="two-factor-code">{{ metodoDoisFatores === 'email' ? 'Código enviado por email' : 'Código da app ou de recuperação' }}</label>
+            <div class="input-wrap">
+              <input
+                id="two-factor-code"
+                v-model="codigoDoisFatores"
+                type="text"
+                :inputmode="metodoDoisFatores === 'email' ? 'numeric' : undefined"
+                autocomplete="one-time-code"
+                :placeholder="metodoDoisFatores === 'email' ? 'Introduza o código enviado por email' : 'Código de seis dígitos ou de recuperação'"
+                required
+                :disabled="aEntrar"
+              />
+            </div>
+            <p v-if="codigoEmailEnviado" class="login-info" role="status">
+              Enviámos um código para o email associado à sua conta. O código expira em 5 minutos.
+            </p>
             <button
-              class="password-toggle"
+              v-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'authenticator'"
+              class="factor-method-button"
               type="button"
-              :aria-label="mostrarPalavraPasse ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'"
-              :aria-pressed="mostrarPalavraPasse"
-              @click="mostrarPalavraPasse = !mostrarPalavraPasse"
+              :disabled="aEntrar"
+              @click="pedirCodigoPorEmail"
             >
-              <svg v-if="mostrarPalavraPasse" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5Z" stroke="currentColor" stroke-width="1.5" />
-                <circle cx="10" cy="10" r="2.1" stroke="currentColor" stroke-width="1.5" />
-              </svg>
-              <svg v-else viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path d="m3 3 14 14M8.6 5.2A7.6 7.6 0 0 1 10 5c4.8 0 7.5 5 7.5 5a12 12 0 0 1-2.2 2.8M5.2 5.8C3.4 7.1 2.5 10 2.5 10s2.7 5 7.5 5c.8 0 1.6-.2 2.3-.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+              {{ aEntrar ? 'A enviar...' : 'Enviar código por email' }}
             </button>
-          </div>
+            <button
+              v-else-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'email'"
+              class="factor-method-button"
+              type="button"
+              :disabled="aEntrar"
+              @click="metodoDoisFatores = 'authenticator'; codigoEmailEnviado = false; codigoDoisFatores = ''; erro = ''"
+            >
+              Usar app autenticadora ou código de recuperação
+            </button>
+            <p v-else class="login-info" role="status">
+              O código por email não está disponível neste servidor. A autenticação continua disponível pela app ou por um código de recuperação.
+            </p>
+          </template>
 
           <p v-if="erro" class="login-error" role="alert">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5" /><path d="M10 6v4.5m0 3h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
@@ -211,13 +323,22 @@ async function entrar(): Promise<void> {
           </p>
 
           <button class="submit-button" type="submit" :disabled="aEntrar">
-            <span>{{ aEntrar ? 'A validar os seus dados...' : 'Iniciar sessão' }}</span>
+            <span>{{ aEntrar ? 'A validar os seus dados...' : aguardaDoisFatores ? 'Verificar código' : 'Iniciar sessão' }}</span>
             <svg v-if="!aEntrar" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11m0 0-4-4m4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
             <span v-else class="button-spinner" aria-hidden="true"></span>
           </button>
+          <button
+            v-if="aguardaDoisFatores"
+            class="secondary-login-button"
+            type="button"
+            :disabled="aEntrar"
+            @click="voltarAoLogin"
+          >
+            Voltar
+          </button>
         </form>
 
-        <NuxtLink class="recovery-link" to="/password-reset">
+        <NuxtLink v-if="!aguardaDoisFatores" class="recovery-link" to="/password-reset">
           Esqueceu-se da palavra-passe?
         </NuxtLink>
 
@@ -528,12 +649,21 @@ async function entrar(): Promise<void> {
 
 .login-error { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 0; padding: 10px 11px; color: #a53636; background: #fff4f3; border: 1px solid #f6d5d2; border-radius: 8px; font-size: 10px; line-height: 1.5; }
 .login-error svg { width: 15px; height: 15px; flex: 0 0 15px; margin-top: 1px; }
+.login-info { margin: 0; color: #5363a5; font-size: 11px; line-height: 1.5; }
+.factor-method-button { justify-self: start; padding: 2px 0; color: #5146c8; background: transparent; border: 0; font-size: 11px; font-weight: 650; text-align: left; cursor: pointer; }
+.factor-method-button:hover:not(:disabled) { color: #3730a3; text-decoration: underline; }
+.factor-method-button:focus-visible { outline: 3px solid #c7d2fe; outline-offset: 3px; border-radius: 3px; }
+.factor-method-button:disabled { opacity: .6; cursor: wait; }
 
 .submit-button { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 9px; margin-top: 13px; color: #fff; background: linear-gradient(105deg, var(--tf-primary), var(--tf-primary-hover)); border: 1px solid var(--tf-primary-hover); border-radius: 10px; box-shadow: 0 7px 18px rgb(79 70 229 / 26%); font-size: 14px; font-weight: 700; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
 .submit-button:hover:not(:disabled) { transform: translateY(-1px); background: linear-gradient(105deg, var(--tf-primary-hover), #3730a3); box-shadow: 0 10px 22px rgb(79 70 229 / 32%); }
 .submit-button:focus-visible { outline: 3px solid #c7d2fe; outline-offset: 3px; }
 .submit-button:disabled { opacity: .75; cursor: wait; }
 .submit-button > svg { width: 17px; height: 17px; }
+.secondary-login-button { min-height: 40px; margin-top: 5px; color: #64708a; background: transparent; border: 0; border-radius: 8px; font-size: 12px; font-weight: 650; cursor: pointer; }
+.secondary-login-button:hover:not(:disabled) { color: #4338ca; background: #f4f5ff; }
+.secondary-login-button:focus-visible { outline: 3px solid #c7d2fe; outline-offset: 2px; }
+.secondary-login-button:disabled { opacity: .6; cursor: wait; }
 .button-spinner { width: 14px; height: 14px; border: 2px solid rgb(255 255 255 / 35%); border-top-color: #fff; border-radius: 50%; animation: spin .75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

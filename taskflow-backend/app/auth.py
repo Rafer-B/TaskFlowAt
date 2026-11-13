@@ -1,5 +1,6 @@
 """Dependências de autenticação, sessão da base de dados e permissões."""
 
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Generator
@@ -9,10 +10,12 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.project_member import ProjectMember
+from app.models.two_factor_login_challenge import TwoFactorLoginChallenge
 from app.models.user import User
 from app.settings import settings
 
@@ -52,6 +55,81 @@ def criar_token_acesso(user: User) -> str:
         _jwt_secret(),
         algorithm="HS256",
     )
+
+
+def criar_token_desafio_2fa(user: User) -> str:
+    """Assina um token de curta duração que só permite concluir o login 2FA."""
+    agora = datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": str(user.id),
+            "iat": agora,
+            "exp": agora + timedelta(minutes=5),
+            "ver": user.session_version,
+            "purpose": "2fa-login",
+            "jti": secrets.token_urlsafe(16),
+        },
+        _jwt_secret(),
+        algorithm="HS256",
+    )
+
+
+def obter_utilizador_desafio_2fa(token: str, db: Session) -> User:
+    """Valida o desafio de login e devolve uma conta ainda ativa e não revogada."""
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Desafio de autenticação inválido ou expirado.",
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            _jwt_secret(),
+            algorithms=["HS256"],
+            options={"require": ["sub", "exp", "ver", "purpose", "jti"]},
+        )
+        if payload["purpose"] != "2fa-login":
+            raise ValueError("Invalid challenge purpose")
+        user_id = UUID(payload["sub"])
+        token_version = payload["ver"]
+        if not isinstance(token_version, int):
+            raise ValueError("Invalid token version")
+    except (InvalidTokenError, KeyError, TypeError, ValueError):
+        raise unauthorized
+
+    now = datetime.now(timezone.utc)
+    challenge_hash = hashlib.sha256(token.encode()).hexdigest()
+    challenge = db.scalar(
+        select(TwoFactorLoginChallenge)
+        .where(TwoFactorLoginChallenge.challenge_hash == challenge_hash)
+        .with_for_update()
+    )
+    if (
+        challenge is None
+        or challenge.consumed_at is not None
+        or _challenge_expired(challenge.expires_at, now)
+        or challenge.user_id != user_id
+    ):
+        raise unauthorized
+
+    user = db.scalar(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    if (
+        user is None
+        or not user.is_active
+        or user.session_version != token_version
+        or not user.two_factor_enabled
+    ):
+        raise unauthorized
+
+    return user
+
+
+def _challenge_expired(expires_at: datetime, now: datetime) -> bool:
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= now
 
 
 def obter_utilizador_atual(

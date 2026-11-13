@@ -33,6 +33,16 @@ const mostrarEdicaoPerfil = ref(false)
 const palavraPasseAAtualizar = ref(false)
 const mostrarFormularioPalavraPasse = ref(false)
 const formularioPalavraPasseRef = ref<HTMLElement | null>(null)
+const doisFatoresAtivado = ref(false)
+const doisFatoresAConfigurar = ref<{ secret: string; qr_svg: string } | null>(null)
+const codigosRecuperacao = ref<string[]>([])
+const palavraPasseDoisFatores = ref('')
+const codigoAtivacaoDoisFatores = ref('')
+const codigoDesativacaoDoisFatores = ref('')
+const aCarregarEstadoDoisFatores = ref(false)
+const aAtualizarDoisFatores = ref(false)
+const erroDoisFatores = ref('')
+const sucessoDoisFatores = ref('')
 
 async function alternarFormularioPalavraPasse(): Promise<void> {
   mostrarFormularioPalavraPasse.value = !mostrarFormularioPalavraPasse.value
@@ -286,6 +296,90 @@ async function atualizarPalavraPasse(): Promise<void> {
   }
 }
 
+async function carregarEstadoDoisFatores(): Promise<void> {
+  aCarregarEstadoDoisFatores.value = true
+  erroDoisFatores.value = ''
+
+  try {
+    const estado = await api<{ enabled: boolean }>('/auth/2fa/status')
+    doisFatoresAtivado.value = estado.enabled
+  } catch (error) {
+    console.error('Erro ao carregar o estado da autenticação de dois fatores:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aCarregarEstadoDoisFatores.value = false
+  }
+}
+
+async function iniciarConfiguracaoDoisFatores(): Promise<void> {
+  aAtualizarDoisFatores.value = true
+  erroDoisFatores.value = ''
+  sucessoDoisFatores.value = ''
+
+  try {
+    doisFatoresAConfigurar.value = await api<{ secret: string; qr_svg: string }>('/auth/2fa/setup', {
+      method: 'POST',
+      body: { current_password: palavraPasseDoisFatores.value },
+    })
+    palavraPasseDoisFatores.value = ''
+  } catch (error) {
+    console.error('Erro ao iniciar a configuração da autenticação de dois fatores:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aAtualizarDoisFatores.value = false
+  }
+}
+
+async function ativarDoisFatores(): Promise<void> {
+  aAtualizarDoisFatores.value = true
+  erroDoisFatores.value = ''
+  sucessoDoisFatores.value = ''
+
+  try {
+    const resultado = await api<{ recovery_codes: string[] }>('/auth/2fa/enable', {
+      method: 'POST',
+      body: { code: codigoAtivacaoDoisFatores.value.trim() },
+    })
+    doisFatoresAtivado.value = true
+    doisFatoresAConfigurar.value = null
+    codigoAtivacaoDoisFatores.value = ''
+    codigosRecuperacao.value = resultado.recovery_codes
+    sucessoDoisFatores.value = 'Autenticação de dois fatores ativada. Guarde os códigos de recuperação num local seguro.'
+  } catch (error) {
+    console.error('Erro ao ativar a autenticação de dois fatores:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aAtualizarDoisFatores.value = false
+  }
+}
+
+async function desativarDoisFatores(): Promise<void> {
+  aAtualizarDoisFatores.value = true
+  erroDoisFatores.value = ''
+  sucessoDoisFatores.value = ''
+
+  try {
+    await api('/auth/2fa/disable', {
+      method: 'POST',
+      body: {
+        current_password: palavraPasseDoisFatores.value,
+        code: codigoDesativacaoDoisFatores.value.trim(),
+      },
+    })
+    doisFatoresAtivado.value = false
+    doisFatoresAConfigurar.value = null
+    codigosRecuperacao.value = []
+    palavraPasseDoisFatores.value = ''
+    codigoDesativacaoDoisFatores.value = ''
+    sucessoDoisFatores.value = 'Autenticação de dois fatores desativada.'
+  } catch (error) {
+    console.error('Erro ao desativar a autenticação de dois fatores:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aAtualizarDoisFatores.value = false
+  }
+}
+
 function formatarData(data: string | undefined): string {
   if (!data) return 'Indisponível'
   const parsed = new Date(data)
@@ -301,6 +395,7 @@ function formatarData(data: string | undefined): string {
 onMounted(() => {
   carregarPreferencias()
   if (route.query.editProfile === '1') editarPerfil()
+  void carregarEstadoDoisFatores()
 })
 </script>
 
@@ -527,6 +622,160 @@ onMounted(() => {
           {{ palavraPasseAAtualizar ? 'A atualizar...' : 'Atualizar palavra-passe' }}
         </button>
       </form>
+    </section>
+
+    <section class="settings-section" aria-labelledby="two-factor-heading">
+      <div class="settings-section-heading">
+        <h2 id="two-factor-heading">Autenticação de dois fatores</h2>
+        <p>Adicione um código da sua app autenticadora ao iniciar sessão.</p>
+      </div>
+
+      <article class="content-card two-factor-card">
+        <p
+          v-if="erroDoisFatores"
+          class="settings-message settings-error"
+          role="alert"
+        >
+          {{ erroDoisFatores }}
+        </p>
+        <p
+          v-if="sucessoDoisFatores"
+          class="settings-message settings-success"
+          role="status"
+        >
+          {{ sucessoDoisFatores }}
+        </p>
+
+        <p v-if="aCarregarEstadoDoisFatores" class="settings-help">
+          A verificar o estado da autenticação...
+        </p>
+        <template v-else-if="doisFatoresAtivado">
+          <div class="two-factor-status">
+            <span class="two-factor-status-indicator" aria-hidden="true"></span>
+            <strong>Autenticação de dois fatores ativada</strong>
+          </div>
+
+          <div v-if="codigosRecuperacao.length" class="recovery-codes">
+            <h3>Códigos de recuperação</h3>
+            <p>
+              Guarde estes códigos agora. Cada código só pode ser utilizado uma vez
+              e não voltará a ser apresentado.
+            </p>
+            <ul>
+              <li v-for="code in codigosRecuperacao" :key="code">
+                <code>{{ code }}</code>
+              </li>
+            </ul>
+          </div>
+
+          <form class="two-factor-form" @submit.prevent="desativarDoisFatores">
+            <label>
+              <span>Palavra-passe atual</span>
+              <input
+                v-model="palavraPasseDoisFatores"
+                type="password"
+                autocomplete="current-password"
+                required
+                maxlength="128"
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <label>
+              <span>Código da app ou código de recuperação</span>
+              <input
+                v-model="codigoDesativacaoDoisFatores"
+                type="text"
+                autocomplete="one-time-code"
+                required
+                minlength="6"
+                maxlength="32"
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <button
+              type="submit"
+              class="btn btn-outline two-factor-disable"
+              :disabled="aAtualizarDoisFatores"
+            >
+              {{ aAtualizarDoisFatores ? 'A desativar...' : 'Desativar autenticação de dois fatores' }}
+            </button>
+          </form>
+        </template>
+        <template v-else>
+          <p class="settings-help">
+            Utilize uma app compatível com códigos TOTP. Será necessário confirmar
+            a configuração antes de a autenticação ficar ativa.
+          </p>
+
+          <form
+            v-if="!doisFatoresAConfigurar"
+            class="two-factor-form"
+            @submit.prevent="iniciarConfiguracaoDoisFatores"
+          >
+            <label>
+              <span>Confirme a palavra-passe atual</span>
+              <input
+                v-model="palavraPasseDoisFatores"
+                type="password"
+                autocomplete="current-password"
+                required
+                maxlength="128"
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              :disabled="aAtualizarDoisFatores"
+            >
+              {{ aAtualizarDoisFatores ? 'A preparar...' : 'Configurar autenticador' }}
+            </button>
+          </form>
+
+          <div v-else class="two-factor-enrollment">
+            <div class="two-factor-qr">
+              <img :src="doisFatoresAConfigurar.qr_svg" alt="QR code de configuração do autenticador" />
+            </div>
+            <div class="two-factor-enrollment-details">
+              <p>Leia o QR code na app autenticadora. Se não o conseguir ler, introduza esta chave manualmente:</p>
+              <code class="two-factor-secret">{{ doisFatoresAConfigurar.secret }}</code>
+              <form class="two-factor-form" @submit.prevent="ativarDoisFatores">
+                <label>
+                  <span>Código de seis dígitos da app</span>
+                  <input
+                    v-model="codigoAtivacaoDoisFatores"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    minlength="6"
+                    maxlength="6"
+                    required
+                    :disabled="aAtualizarDoisFatores"
+                  />
+                </label>
+                <div class="two-factor-form-actions">
+                  <button
+                    type="submit"
+                    class="btn btn-primary"
+                    :disabled="aAtualizarDoisFatores"
+                  >
+                    {{ aAtualizarDoisFatores ? 'A confirmar...' : 'Ativar autenticação de dois fatores' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline"
+                    :disabled="aAtualizarDoisFatores"
+                    @click="doisFatoresAConfigurar = null; codigoAtivacaoDoisFatores = ''"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </template>
+      </article>
     </section>
 
     <section class="settings-section" aria-labelledby="appearance-heading">
@@ -918,6 +1167,169 @@ onMounted(() => {
   justify-self: start;
 }
 
+.two-factor-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.two-factor-card > .settings-message {
+  margin: 0;
+}
+
+.two-factor-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--tf-success);
+  font-size: 13px;
+}
+
+.two-factor-status-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px var(--tf-success-soft);
+}
+
+.two-factor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+
+.two-factor-form > label {
+  display: grid;
+  gap: 7px;
+  color: var(--tf-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.two-factor-form input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 11px;
+  color: var(--tf-text);
+  background: var(--tf-surface);
+  border: 1px solid var(--tf-border);
+  border-radius: 9px;
+  outline: none;
+  font-size: 13px;
+}
+
+.two-factor-form input:focus {
+  border-color: var(--tf-primary);
+  box-shadow: 0 0 0 3px var(--tf-primary-soft);
+}
+
+.two-factor-form input:disabled {
+  background: var(--tf-border-soft);
+}
+
+.two-factor-form > .btn {
+  justify-self: start;
+}
+
+.two-factor-disable {
+  grid-column: 1 / -1;
+  color: var(--tf-danger);
+}
+
+.two-factor-enrollment {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.two-factor-qr {
+  display: grid;
+  width: 180px;
+  height: 180px;
+  padding: 10px;
+  place-items: center;
+  background: #fff;
+  border: 1px solid var(--tf-border);
+  border-radius: 12px;
+}
+
+.two-factor-qr img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.two-factor-enrollment-details {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.two-factor-enrollment-details > p,
+.recovery-codes p {
+  margin: 0;
+  color: var(--tf-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.two-factor-secret {
+  width: fit-content;
+  padding: 9px 11px;
+  color: var(--tf-text);
+  background: var(--tf-border-soft);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  overflow-wrap: anywhere;
+}
+
+.two-factor-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.two-factor-form-actions .btn {
+  justify-self: start;
+}
+
+.recovery-codes {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: var(--tf-border-soft);
+  border-radius: 10px;
+}
+
+.recovery-codes h3 {
+  margin: 0;
+  color: var(--tf-text);
+  font-size: 13px;
+}
+
+.recovery-codes ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 12px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recovery-codes code {
+  color: var(--tf-text);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .theme-fieldset {
   min-width: 0;
   margin: 0;
@@ -1160,6 +1572,25 @@ onMounted(() => {
 
   .profile-edit-form {
     grid-template-columns: 1fr;
+  }
+
+  .two-factor-card {
+    padding: 18px;
+  }
+
+  .two-factor-form,
+  .two-factor-enrollment,
+  .recovery-codes ul {
+    grid-template-columns: 1fr;
+  }
+
+  .two-factor-enrollment {
+    justify-items: start;
+  }
+
+  .two-factor-disable,
+  .two-factor-form-actions {
+    grid-column: auto;
   }
 
   .theme-options {

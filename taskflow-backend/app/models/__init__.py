@@ -14,6 +14,8 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.login_attempt import LoginAttempt
 from app.models.notification import Notification
 from app.models.task_history import TaskHistory
+from app.models.email_login_code import EmailLoginCode
+from app.models.two_factor_login_challenge import TwoFactorLoginChallenge
 
 __all__ = [
     "User",
@@ -30,4 +32,6 @@ __all__ = [
     "LoginAttempt",
     "Notification",
     "TaskHistory",
+    "EmailLoginCode",
+    "TwoFactorLoginChallenge",
 ]

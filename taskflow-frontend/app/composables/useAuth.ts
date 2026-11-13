@@ -10,6 +10,14 @@ export interface AuthUser {
   created_at: string
 }
 
+export interface TwoFactorChallenge {
+  requires_two_factor: true
+  challenge_token: string
+  methods: Array<'authenticator' | 'email'>
+}
+
+export type LoginResponse = AuthUser | TwoFactorChallenge
+
 interface SavedAccount {
   user: AuthUser
 }
@@ -67,14 +75,51 @@ export function useAuth() {
     return atual
   }
 
-  async function login(email: string, password: string): Promise<AuthUser> {
+  async function login(email: string, password: string): Promise<LoginResponse> {
     const form = new URLSearchParams({
       username: email.trim().toLowerCase(),
       password,
     })
-    const atual = await api<AuthUser>('/auth/login', {
+    const resultado = await api<LoginResponse>('/auth/login', {
       method: 'POST',
       body: form,
+    })
+    if ('role' in resultado) {
+      user.value = resultado
+      guardarConta(resultado)
+    }
+    return resultado
+  }
+
+  async function verificarLoginDoisFatores(
+    challengeToken: string,
+    code: string,
+  ): Promise<AuthUser> {
+    const atual = await api<AuthUser>('/auth/login/2fa', {
+      method: 'POST',
+      body: { challenge_token: challengeToken, code },
+    })
+    user.value = atual
+    guardarConta(atual)
+    return atual
+  }
+
+  async function pedirCodigoDoisFatoresPorEmail(
+    challengeToken: string,
+  ): Promise<void> {
+    await api('/auth/login/2fa/email/request', {
+      method: 'POST',
+      body: { challenge_token: challengeToken },
+    })
+  }
+
+  async function verificarLoginPorEmail(
+    challengeToken: string,
+    code: string,
+  ): Promise<AuthUser> {
+    const atual = await api<AuthUser>('/auth/login/2fa/email', {
+      method: 'POST',
+      body: { challenge_token: challengeToken, code },
     })
     user.value = atual
     guardarConta(atual)
@@ -93,6 +138,9 @@ export function useAuth() {
   return {
     user,
     login,
+    verificarLoginDoisFatores,
+    pedirCodigoDoisFatoresPorEmail,
+    verificarLoginPorEmail,
     logout,
     carregarContasGuardadas,
     limparSessao,

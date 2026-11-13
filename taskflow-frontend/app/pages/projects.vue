@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 
@@ -250,6 +250,30 @@ function nomePapelProjeto(papel: ProjetoAPI['current_user_role']): string {
     viewer: 'Observador',
   }
   return nomes[papel]
+}
+
+function fecharMenuAcoes(event: MouseEvent) {
+  const menu = event.currentTarget
+  if (!(menu instanceof HTMLElement)) return
+
+  const dropdown = menu.closest('details')
+  if (dropdown instanceof HTMLDetailsElement) {
+    dropdown.open = false
+  }
+}
+
+function fecharDropdownsAcoes(event: MouseEvent) {
+  const alvo = event.target
+  const dropdownClicado = alvo instanceof Element
+    ? alvo.closest('.project-actions-dropdown')
+    : null
+
+  document.querySelectorAll<HTMLDetailsElement>('.project-actions-dropdown[open]')
+    .forEach((dropdown) => {
+      if (dropdown !== dropdownClicado) {
+        dropdown.open = false
+      }
+    })
 }
 
 // --------------------------------------------------
@@ -979,7 +1003,14 @@ async function removerMembro(membro: MembroAPI) {
   }
 }
 
-onMounted(carregarProjetos)
+onMounted(() => {
+  document.addEventListener('click', fecharDropdownsAcoes)
+  carregarProjetos()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', fecharDropdownsAcoes)
+})
 </script>
 
 <template>
@@ -1413,84 +1444,83 @@ onMounted(carregarProjetos)
               </td>
               <td>{{ formatarData(projeto.createdAt) }}</td>
               <td class="project-actions-cell">
-                <div class="project-row-actions">
-                  <button
-                    v-if="podeGerirProjeto(projeto)"
-                    class="action-button action-tooltip"
-                    aria-label="Editar projeto"
-                    type="button"
-                    @click="abrirEdicao(projeto)"
-                  >
-                    <ActionIcon name="edit" />
-                    Editar
-                  </button>
+                <details class="project-actions-dropdown">
+                  <summary class="project-actions-trigger" :aria-label="`Ações do projeto ${projeto.name}`">
+                    <span class="project-actions-dots" aria-hidden="true" />
+                  </summary>
+                  <div class="project-actions-menu" @click="fecharMenuAcoes">
+                    <button
+                      v-if="podeGerirProjeto(projeto)"
+                      class="action-button"
+                      type="button"
+                      @click="abrirEdicao(projeto)"
+                    >
+                      <ActionIcon name="edit" />
+                      Editar
+                    </button>
 
-                  <NuxtLink
-                    :to="`/tasks?project=${projeto.id}`"
-                    class="action-button action-tooltip"
-                    :aria-label="podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas'"
-                  >
-                    <ActionIcon name="tasks" />
-                    {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
-                  </NuxtLink>
+                    <NuxtLink
+                      :to="`/tasks?project=${projeto.id}`"
+                      class="action-button"
+                    >
+                      <ActionIcon name="tasks" />
+                      {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
+                    </NuxtLink>
 
-                  <button
-                    class="action-button members-action action-tooltip"
-                    aria-label="Membros"
-                    type="button"
-                    @click="abrirMembros(projeto)"
-                  >
-                    <ActionIcon name="team" />
-                    Membros
-                  </button>
+                    <button
+                      class="action-button members-action"
+                      type="button"
+                      @click="abrirMembros(projeto)"
+                    >
+                      <ActionIcon name="team" />
+                      Membros
+                    </button>
 
-                  <button
-                    v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
-                    type="button"
-                    class="state-button complete-action action-tooltip"
-                    aria-label="Concluir projeto"
-                    :disabled="aAtualizarEstado === projeto.id"
-                    @click="atualizarEstado(projeto, 'Concluído')"
-                  >
-                    <ActionIcon name="check" />
-                    Concluir
-                  </button>
+                    <button
+                      v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
+                      type="button"
+                      class="state-button complete-action"
+                      :disabled="aAtualizarEstado === projeto.id"
+                      @click="atualizarEstado(projeto, 'Concluído')"
+                    >
+                      <ActionIcon name="check" />
+                      Concluir
+                    </button>
 
-                  <button
-                    v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
-                    type="button"
-                    class="state-button archive-action action-tooltip"
-                    aria-label="Arquivar projeto"
-                    :disabled="aAtualizarEstado === projeto.id"
-                    @click="pedirConfirmacao(projeto, 'archive')"
-                  >
-                    <ActionIcon name="archive" />
-                    Arquivar
-                  </button>
+                    <button
+                      v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
+                      type="button"
+                      class="state-button archive-action"
+                      :disabled="aAtualizarEstado === projeto.id"
+                      @click="pedirConfirmacao(projeto, 'archive')"
+                    >
+                      <ActionIcon name="archive" />
+                      Arquivar
+                    </button>
 
-                  <button
-                    v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
-                    type="button"
-                    class="state-button reactivate-action action-tooltip"
-                    aria-label="Reativar projeto"
-                    :disabled="aAtualizarEstado === projeto.id"
-                    @click="atualizarEstado(projeto, 'Ativo')"
-                  >
-                    <ActionIcon name="undo" />
-                    Reativar
-                  </button>
+                    <button
+                      v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
+                      type="button"
+                      class="state-button reactivate-action"
+                      :disabled="aAtualizarEstado === projeto.id"
+                      @click="atualizarEstado(projeto, 'Ativo')"
+                    >
+                      <ActionIcon name="undo" />
+                      Reativar
+                    </button>
 
-                  <button
-                    v-if="auth.user.value?.role === 'admin'"
-                    type="button"
-                    class="delete-action action-tooltip"
-                    :disabled="aEliminar"
-                    :aria-label="`Eliminar projeto ${projeto.name}`"
-                    @click="pedirConfirmacao(projeto, 'delete')"
-                  >
-                    <ActionIcon name="delete" /> Eliminar
-                  </button>
-                </div>
+                    <button
+                      v-if="auth.user.value?.role === 'admin'"
+                      type="button"
+                      class="delete-action"
+                      :disabled="aEliminar"
+                      @click="pedirConfirmacao(projeto, 'delete')"
+                    >
+                      <ActionIcon name="delete" />
+                      Eliminar
+                    </button>
+                  </div>
+                </details>
               </td>
             </tr>
           </tbody>
@@ -2502,14 +2532,14 @@ onMounted(carregarProjetos)
 
 .projects-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 760px;
   border-collapse: collapse;
   text-align: left;
 }
 
 .projects-table th,
 .projects-table td {
-  padding: 13px 15px;
+  padding: 12px 16px;
   border-bottom: 1px solid #eff2f7;
   color: #475569;
   font-size: 12px;
@@ -2542,8 +2572,9 @@ onMounted(carregarProjetos)
 }
 
 .projects-table th button:focus-visible,
-.project-row-actions button:focus-visible,
-.project-row-actions a:focus-visible,
+.project-actions-trigger:focus-visible,
+.project-actions-menu button:focus-visible,
+.project-actions-menu a:focus-visible,
 .projects-page-controls button:focus-visible {
   outline: 3px solid #c7d2fe;
   outline-offset: 2px;
@@ -2657,19 +2688,114 @@ onMounted(carregarProjetos)
 }
 
 .project-actions-cell {
-  min-width: 430px;
+  width: 130px;
+  min-width: 130px;
 }
 
-.project-row-actions {
+.project-actions-dropdown {
+  position: relative;
+  width: max-content;
+}
+
+.project-actions-trigger {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-  padding: 2px;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e3e7f0;
+  border-radius: 7px;
+  background: white;
+  color: #5363a5;
+  cursor: pointer;
+  list-style: none;
 }
 
-.project-row-actions > button {
-  flex: 0 0 auto;
+.project-actions-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.project-actions-trigger:hover,
+.project-actions-dropdown[open] .project-actions-trigger {
+  border-color: #cfd5f3;
+  background: #f4f5ff;
+}
+
+.project-actions-dots {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 -6px currentColor, 0 6px currentColor;
+}
+
+.project-actions-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  min-width: 170px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid #e3e7f0;
+  border-radius: 9px;
+  background: white;
+  box-shadow: 0 8px 22px rgb(35 49 91 / 14%);
+}
+
+.project-actions-menu .action-button,
+.project-actions-menu .state-button,
+.project-actions-menu .delete-action {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  text-align: left;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.project-actions-menu .action-button:hover,
+.project-actions-menu .state-button:hover:not(:disabled) {
+  transform: none;
+  background: #f4f5ff;
+  box-shadow: none;
+}
+
+.project-actions-menu .members-action {
+  color: #4858ad;
+}
+
+.project-actions-menu .complete-action {
+  color: #376bc0;
+}
+
+.project-actions-menu .archive-action {
+  color: #69768a;
+}
+
+.project-actions-menu .reactivate-action {
+  color: #168653;
+}
+
+.project-actions-menu .delete-action {
+  color: #c04444;
+}
+
+.project-actions-menu .delete-action:hover:not(:disabled) {
+  background: #fff0f0;
 }
 
 .state-button {

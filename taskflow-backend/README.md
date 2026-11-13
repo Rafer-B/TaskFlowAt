@@ -72,6 +72,8 @@ As migrações atuais acrescentam:
 | `20261106_0009` | Limita cada tarefa a um responsável e preserva a atribuição principal. |
 | `20261112_0010` | Converte IDs e referências para UUID, preservando registos e associações. |
 | `20261112_0011` | Acrescenta sessões revogáveis, recuperação de palavra-passe, notificações e histórico de alterações. |
+| `20261113_0012` | Acrescenta segredos cifrados e códigos de recuperação para autenticação de dois fatores. |
+| `20261113_0013` | Armazena hashes de códigos de email de uso único para 2FA. |
 
 A revisão `20261112_0010` atribui novos UUIDs aos registos existentes e atualiza
 as referências entre tabelas; os valores numéricos antigos não são mantidos.
@@ -153,6 +155,43 @@ conta ainda não existir, pede os dados necessários e guarda a palavra-passe so
 a forma de hash. Este é o único processo previsto para criar o primeiro
 administrador sem uma sessão autenticada; não o disponibilize como endpoint da
 API.
+
+A chave `TASKFLOW_JWT_SECRET` também cifra os segredos dos autenticadores TOTP.
+Mantenha-a estável e protegida, incluindo nas cópias de segurança; alterá-la
+impede a validação dos autenticadores já configurados.
+
+### Autenticação de dois fatores
+
+Cada utilizador pode ativar a autenticação de dois fatores em **Definições**.
+O fluxo usa uma app autenticadora compatível com TOTP: confirme a palavra-passe,
+leia o QR code (ou introduza a chave manualmente) e valide o primeiro código.
+Depois da ativação, o início de sessão exige a palavra-passe e um código
+temporário da app. São também apresentados dez códigos de recuperação de uso
+único; guarde-os fora do TaskFlow, pois não são apresentados novamente.
+Como alternativa, o utilizador pode pedir um código temporário por email, se o
+Resend estiver configurado. O
+Resend apenas entrega o código: é a API TaskFlow que o gera, limita os pedidos,
+guarda apenas o respetivo hash, controla a validade e só cria a sessão após a
+validação. Os códigos expiram ao fim de cinco minutos e só podem ser usados uma
+vez.
+
+Para disponibilizar o envio por email, configure no `.env` a chave da API do
+Resend e um remetente verificado no respetivo domínio:
+
+```dotenv
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=TaskFlow <seguranca@seudominio.pt>
+```
+
+Sem estas definições, o login continua a aceitar TOTP e códigos de recuperação,
+mas não apresenta o método por email. As credenciais do Resend devem ficar
+apenas no ambiente do backend, nunca no frontend nem no Git.
+
+Para aplicar as alterações de esquema:
+
+```bash
+alembic upgrade head
+```
 
 ### Perfis da plataforma
 
