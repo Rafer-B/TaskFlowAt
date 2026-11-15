@@ -72,6 +72,20 @@ class User(Base):
         server_default="false",
     )
 
+    two_factor_email_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    two_factor_authenticator_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
     two_factor_last_used_step: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,

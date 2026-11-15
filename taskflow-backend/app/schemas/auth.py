@@ -28,7 +28,7 @@ class TwoFactorEmailRequest(BaseModel):
 
 
 class TwoFactorSetupRequest(BaseModel):
-    """Confirma a palavra-passe antes de iniciar a configuração do autenticador."""
+    """Confirma a palavra-passe antes de alterar os métodos de 2FA."""
 
     current_password: str = Field(min_length=1, max_length=128)
 

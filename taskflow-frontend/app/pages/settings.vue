@@ -34,11 +34,17 @@ const palavraPasseAAtualizar = ref(false)
 const mostrarFormularioPalavraPasse = ref(false)
 const formularioPalavraPasseRef = ref<HTMLElement | null>(null)
 const doisFatoresAtivado = ref(false)
+const doisFatoresEmailAtivado = ref(false)
+const autenticadorDoisFatoresAtivado = ref(false)
+const emailDoisFatoresDisponivel = ref(false)
 const doisFatoresAConfigurar = ref<{ secret: string; qr_svg: string } | null>(null)
 const codigosRecuperacao = ref<string[]>([])
 const palavraPasseDoisFatores = ref('')
 const codigoAtivacaoDoisFatores = ref('')
 const codigoDesativacaoDoisFatores = ref('')
+const codigoEmailDoisFatores = ref('')
+const codigoEmailDoisFatoresEnviado = ref(false)
+const configurarQrDoisFatores = ref(false)
 const aCarregarEstadoDoisFatores = ref(false)
 const aAtualizarDoisFatores = ref(false)
 const erroDoisFatores = ref('')
@@ -301,13 +307,67 @@ async function carregarEstadoDoisFatores(): Promise<void> {
   erroDoisFatores.value = ''
 
   try {
-    const estado = await api<{ enabled: boolean }>('/auth/2fa/status')
+    const estado = await api<{
+      enabled: boolean
+      email_enabled: boolean
+      authenticator_enabled: boolean
+      email_available: boolean
+    }>('/auth/2fa/status')
     doisFatoresAtivado.value = estado.enabled
+    autenticadorDoisFatoresAtivado.value = estado.authenticator_enabled
+    emailDoisFatoresDisponivel.value = estado.email_available
+    doisFatoresEmailAtivado.value = estado.email_enabled ||
+      (estado.authenticator_enabled && estado.email_available)
   } catch (error) {
     console.error('Erro ao carregar o estado da autenticação de dois fatores:', error)
     erroDoisFatores.value = obterMensagemErro(error)
   } finally {
     aCarregarEstadoDoisFatores.value = false
+  }
+}
+
+async function pedirCodigoEmailDoisFatores(): Promise<void> {
+  aAtualizarDoisFatores.value = true
+  erroDoisFatores.value = ''
+  sucessoDoisFatores.value = ''
+
+  try {
+    await api('/auth/2fa/email/request', {
+      method: 'POST',
+      body: { current_password: palavraPasseDoisFatores.value },
+    })
+    codigoEmailDoisFatores.value = ''
+    codigoEmailDoisFatoresEnviado.value = true
+    sucessoDoisFatores.value = 'Enviámos um código para o email associado à conta. É válido durante 5 minutos.'
+  } catch (error) {
+    console.error('Erro ao pedir código de email para o 2FA:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aAtualizarDoisFatores.value = false
+  }
+}
+
+async function ativarDoisFatoresPorEmail(): Promise<void> {
+  aAtualizarDoisFatores.value = true
+  erroDoisFatores.value = ''
+  sucessoDoisFatores.value = ''
+
+  try {
+    await api('/auth/2fa/email/enable', {
+      method: 'POST',
+      body: { code: codigoEmailDoisFatores.value.trim() },
+    })
+    doisFatoresAtivado.value = true
+    doisFatoresEmailAtivado.value = true
+    codigoEmailDoisFatores.value = ''
+    codigoEmailDoisFatoresEnviado.value = false
+    palavraPasseDoisFatores.value = ''
+    sucessoDoisFatores.value = 'Autenticação de dois fatores por email ativada.'
+  } catch (error) {
+    console.error('Erro ao ativar o 2FA por email:', error)
+    erroDoisFatores.value = obterMensagemErro(error)
+  } finally {
+    aAtualizarDoisFatores.value = false
   }
 }
 
@@ -341,7 +401,9 @@ async function ativarDoisFatores(): Promise<void> {
       body: { code: codigoAtivacaoDoisFatores.value.trim() },
     })
     doisFatoresAtivado.value = true
+    autenticadorDoisFatoresAtivado.value = true
     doisFatoresAConfigurar.value = null
+    configurarQrDoisFatores.value = false
     codigoAtivacaoDoisFatores.value = ''
     codigosRecuperacao.value = resultado.recovery_codes
     sucessoDoisFatores.value = 'Autenticação de dois fatores ativada. Guarde os códigos de recuperação num local seguro.'
@@ -367,10 +429,14 @@ async function desativarDoisFatores(): Promise<void> {
       },
     })
     doisFatoresAtivado.value = false
+    doisFatoresEmailAtivado.value = false
+    autenticadorDoisFatoresAtivado.value = false
     doisFatoresAConfigurar.value = null
     codigosRecuperacao.value = []
     palavraPasseDoisFatores.value = ''
     codigoDesativacaoDoisFatores.value = ''
+    codigoEmailDoisFatores.value = ''
+    codigoEmailDoisFatoresEnviado.value = false
     sucessoDoisFatores.value = 'Autenticação de dois fatores desativada.'
   } catch (error) {
     console.error('Erro ao desativar a autenticação de dois fatores:', error)
@@ -627,7 +693,7 @@ onMounted(() => {
     <section class="settings-section" aria-labelledby="two-factor-heading">
       <div class="settings-section-heading">
         <h2 id="two-factor-heading">Autenticação de dois fatores</h2>
-        <p>Adicione um código da sua app autenticadora ao iniciar sessão.</p>
+        <p>Confirme o acesso por email. Também pode adicionar uma app autenticadora como alternativa.</p>
       </div>
 
       <article class="content-card two-factor-card">
@@ -649,11 +715,18 @@ onMounted(() => {
         <p v-if="aCarregarEstadoDoisFatores" class="settings-help">
           A verificar o estado da autenticação...
         </p>
-        <template v-else-if="doisFatoresAtivado">
-          <div class="two-factor-status">
+        <template v-else>
+          <div v-if="doisFatoresAtivado" class="two-factor-status">
             <span class="two-factor-status-indicator" aria-hidden="true"></span>
             <strong>Autenticação de dois fatores ativada</strong>
           </div>
+
+          <p v-if="doisFatoresAtivado" class="settings-help">
+            Métodos ativos:
+            {{ doisFatoresEmailAtivado ? 'email' : '' }}
+            {{ doisFatoresEmailAtivado && autenticadorDoisFatoresAtivado ? ' e ' : '' }}
+            {{ autenticadorDoisFatoresAtivado ? 'app autenticadora' : '' }}.
+          </p>
 
           <div v-if="codigosRecuperacao.length" class="recovery-codes">
             <h3>Códigos de recuperação</h3>
@@ -668,7 +741,61 @@ onMounted(() => {
             </ul>
           </div>
 
-          <form class="two-factor-form" @submit.prevent="desativarDoisFatores">
+          <form
+            v-if="!doisFatoresAtivado"
+            class="two-factor-form"
+            @submit.prevent="codigoEmailDoisFatoresEnviado ? ativarDoisFatoresPorEmail() : pedirCodigoEmailDoisFatores()"
+          >
+            <p class="settings-help">
+              Ative o 2FA confirmando um código enviado para o email associado à sua conta.
+            </p>
+            <label>
+              <span>Confirme a palavra-passe atual</span>
+              <input
+                v-model="palavraPasseDoisFatores"
+                type="password"
+                autocomplete="current-password"
+                required
+                maxlength="128"
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <label v-if="codigoEmailDoisFatoresEnviado">
+              <span>Código enviado por email</span>
+              <input
+                v-model="codigoEmailDoisFatores"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                pattern="[0-9]{6}"
+                minlength="6"
+                maxlength="6"
+                required
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              :disabled="aAtualizarDoisFatores || !emailDoisFatoresDisponivel"
+            >
+              {{ aAtualizarDoisFatores
+                ? (codigoEmailDoisFatoresEnviado ? 'A confirmar...' : 'A enviar...')
+                : codigoEmailDoisFatoresEnviado
+                  ? 'Ativar autenticação por email'
+                  : 'Enviar código para ativar 2FA'
+              }}
+            </button>
+            <p v-if="!emailDoisFatoresDisponivel" class="settings-help">
+              O envio por email não está configurado neste servidor. Pode configurar uma app autenticadora.
+            </p>
+          </form>
+
+          <form
+            v-if="doisFatoresAtivado"
+            class="two-factor-form"
+            @submit.prevent="desativarDoisFatores"
+          >
             <label>
               <span>Palavra-passe atual</span>
               <input
@@ -681,7 +808,7 @@ onMounted(() => {
               />
             </label>
             <label>
-              <span>Código da app ou código de recuperação</span>
+              <span>Código da app, email ou de recuperação</span>
               <input
                 v-model="codigoDesativacaoDoisFatores"
                 type="text"
@@ -693,6 +820,15 @@ onMounted(() => {
               />
             </label>
             <button
+              v-if="emailDoisFatoresDisponivel"
+              type="button"
+              class="btn btn-outline"
+              :disabled="aAtualizarDoisFatores"
+              @click="pedirCodigoEmailDoisFatores"
+            >
+              Enviar código por email para confirmar
+            </button>
+            <button
               type="submit"
               class="btn btn-outline two-factor-disable"
               :disabled="aAtualizarDoisFatores"
@@ -700,39 +836,8 @@ onMounted(() => {
               {{ aAtualizarDoisFatores ? 'A desativar...' : 'Desativar autenticação de dois fatores' }}
             </button>
           </form>
-        </template>
-        <template v-else>
-          <p class="settings-help">
-            Utilize uma app compatível com códigos TOTP. Será necessário confirmar
-            a configuração antes de a autenticação ficar ativa.
-          </p>
 
-          <form
-            v-if="!doisFatoresAConfigurar"
-            class="two-factor-form"
-            @submit.prevent="iniciarConfiguracaoDoisFatores"
-          >
-            <label>
-              <span>Confirme a palavra-passe atual</span>
-              <input
-                v-model="palavraPasseDoisFatores"
-                type="password"
-                autocomplete="current-password"
-                required
-                maxlength="128"
-                :disabled="aAtualizarDoisFatores"
-              />
-            </label>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              :disabled="aAtualizarDoisFatores"
-            >
-              {{ aAtualizarDoisFatores ? 'A preparar...' : 'Configurar autenticador' }}
-            </button>
-          </form>
-
-          <div v-else class="two-factor-enrollment">
+          <div v-if="doisFatoresAConfigurar" class="two-factor-enrollment">
             <div class="two-factor-qr">
               <img :src="doisFatoresAConfigurar.qr_svg" alt="QR code de configuração do autenticador" />
             </div>
@@ -760,7 +865,12 @@ onMounted(() => {
                     class="btn btn-primary"
                     :disabled="aAtualizarDoisFatores"
                   >
-                    {{ aAtualizarDoisFatores ? 'A confirmar...' : 'Ativar autenticação de dois fatores' }}
+                    {{ aAtualizarDoisFatores
+                      ? 'A confirmar...'
+                      : doisFatoresAtivado
+                        ? 'Adicionar app autenticadora'
+                        : 'Ativar com app autenticadora'
+                    }}
                   </button>
                   <button
                     type="button"
@@ -774,6 +884,36 @@ onMounted(() => {
               </form>
             </div>
           </div>
+          <form
+            v-else-if="!autenticadorDoisFatoresAtivado"
+            class="two-factor-form"
+            @submit.prevent="iniciarConfiguracaoDoisFatores"
+          >
+            <p class="settings-help">
+              {{ doisFatoresAtivado
+                ? 'Adicione uma app TOTP para poder usá-la como alternativa ao email no login.'
+                : 'Como alternativa ao email, pode ativar o 2FA com uma app autenticadora.'
+              }}
+            </p>
+            <label>
+              <span>Confirme a palavra-passe atual</span>
+              <input
+                v-model="palavraPasseDoisFatores"
+                type="password"
+                autocomplete="current-password"
+                required
+                maxlength="128"
+                :disabled="aAtualizarDoisFatores"
+              />
+            </label>
+            <button
+              type="submit"
+              class="btn btn-outline"
+              :disabled="aAtualizarDoisFatores"
+            >
+              {{ aAtualizarDoisFatores ? 'A preparar...' : 'Configurar app autenticadora (QR)' }}
+            </button>
+          </form>
         </template>
       </article>
     </section>

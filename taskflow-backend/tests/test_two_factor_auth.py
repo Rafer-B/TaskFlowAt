@@ -1,10 +1,13 @@
 from dataclasses import replace
+from datetime import timedelta
+from io import BytesIO
 import json
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 
 import pyotp
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -121,6 +124,7 @@ def test_resend_request_sends_email_with_configured_credentials(
     def fake_urlopen(request, timeout):
         captured["url"] = request.full_url
         captured["authorization"] = request.get_header("Authorization")
+        captured["user_agent"] = request.get_header("User-agent")
         captured["payload"] = json.loads(request.data)
         captured["timeout"] = timeout
         return SuccessfulResponse()
@@ -131,6 +135,7 @@ def test_resend_request_sends_email_with_configured_credentials(
 
     assert captured["url"] == "https://api.resend.com/emails"
     assert captured["authorization"] == "Bearer re_test_api_key"
+    assert captured["user_agent"] == "TaskFlow-Backend"
     assert captured["timeout"] == 10
     assert captured["payload"] == {
         "from": "TaskFlow <security@example.com>",
@@ -142,6 +147,116 @@ def test_resend_request_sends_email_with_configured_credentials(
             "Se não iniciou esta sessão, ignore este email."
         ),
     }
+
+
+def test_resend_connection_failure_logs_reason_without_exposing_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+    two_factor_settings: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    api_key = "re_test_sensitive_api_key"
+    monkeypatch.setattr(
+        auth_routes,
+        "settings",
+        replace(
+            auth_routes.settings,
+            resend_api_key=api_key,
+            resend_from_email="TaskFlow <security@example.com>",
+        ),
+    )
+
+    def failed_urlopen(_request, timeout):
+        assert timeout == 10
+        raise URLError("DNS lookup failed")
+
+    monkeypatch.setattr(auth_routes, "urlopen", failed_urlopen)
+
+    with pytest.raises(HTTPException) as error:
+        auth_routes._send_two_factor_email("person@example.com", "042681")
+
+    assert error.value.status_code == 502
+    assert "DNS lookup failed" in caplog.text
+    assert api_key not in caplog.text
+
+
+def test_resend_rejection_logs_provider_message_without_sensitive_values(
+    monkeypatch: pytest.MonkeyPatch,
+    two_factor_settings: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    api_key = "re_test_sensitive_api_key"
+    address = "person@example.com"
+    sender = "TaskFlow <security@example.com>"
+    code = "042681"
+    monkeypatch.setattr(
+        auth_routes,
+        "settings",
+        replace(
+            auth_routes.settings,
+            resend_api_key=api_key,
+            resend_from_email=sender,
+        ),
+    )
+    response_body = json.dumps({
+        "message": f"Sender {sender} is not verified for {address}; code {code}",
+    }).encode()
+
+    def rejected_urlopen(_request, timeout):
+        assert timeout == 10
+        raise HTTPError(
+            "https://api.resend.com/emails",
+            403,
+            "Forbidden",
+            {"cf-ray": "test-ray-id"},
+            BytesIO(response_body),
+        )
+
+    monkeypatch.setattr(auth_routes, "urlopen", rejected_urlopen)
+
+    with pytest.raises(HTTPException) as error:
+        auth_routes._send_two_factor_email(address, code)
+
+    assert error.value.status_code == 502
+    assert "HTTP 403" in caplog.text
+    assert "Cloudflare Ray ID: test-ray-id" in caplog.text
+    assert "[redigido] is not verified for [redigido]; code [redigido]" in caplog.text
+    assert api_key not in caplog.text
+    assert address not in caplog.text
+    assert sender not in caplog.text
+    assert code not in caplog.text
+
+
+def test_resend_rejection_logs_error_field_when_message_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    two_factor_settings: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        auth_routes,
+        "settings",
+        replace(
+            auth_routes.settings,
+            resend_api_key="re_test_api_key",
+            resend_from_email="TaskFlow <security@example.com>",
+        ),
+    )
+
+    def rejected_urlopen(_request, timeout):
+        assert timeout == 10
+        raise HTTPError(
+            "https://api.resend.com/emails",
+            403,
+            "Forbidden",
+            None,
+            BytesIO(b'{"error":"domain is not verified"}'),
+        )
+
+    monkeypatch.setattr(auth_routes, "urlopen", rejected_urlopen)
+
+    with pytest.raises(HTTPException):
+        auth_routes._send_two_factor_email("person@example.com", "042681")
+
+    assert "domain is not verified" in caplog.text
 
 
 def test_login_requires_and_accepts_a_second_factor(
@@ -184,6 +299,7 @@ def test_login_requires_and_accepts_a_second_factor(
         session_version=0,
         two_factor_secret=auth_routes._encrypt_two_factor_secret(secret),
         two_factor_enabled=True,
+        two_factor_authenticator_enabled=True,
         two_factor_recovery_codes=[],
         is_active=True,
     )
@@ -278,6 +394,193 @@ def test_login_requires_and_accepts_a_second_factor(
                 },
             )
             assert reused_email_code.status_code == 401
+
+            logout_response = client.post(
+                "/auth/logout",
+                headers={
+                    "x-csrf-token": client.cookies.get("taskflow_csrf", ""),
+                },
+            )
+            assert logout_response.status_code == 204
+
+            login_after_logout = client.post(
+                "/auth/login",
+                data={
+                    "username": "two-factor@example.com",
+                    "password": "a-secure-password",
+                },
+            )
+            assert login_after_logout.status_code == 200
+            assert login_after_logout.json()["requires_two_factor"] is True
+            assert "taskflow_session" not in login_after_logout.cookies
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_email_activates_two_factor_and_totp_can_be_added_as_alternative(
+    monkeypatch: pytest.MonkeyPatch,
+    two_factor_settings: None,
+) -> None:
+    secure_settings = replace(
+        auth_module.settings,
+        jwt_secret=SECRET,
+        cookie_secure=False,
+        resend_api_key="re_test_api_key",
+        resend_from_email="TaskFlow <security@example.com>",
+    )
+    monkeypatch.setattr(auth_module, "settings", secure_settings)
+    monkeypatch.setattr(session_module, "settings", secure_settings)
+    monkeypatch.setattr(auth_routes, "settings", secure_settings)
+    monkeypatch.setattr(
+        auth_routes,
+        "EMAIL_CODE_RESEND_DELAY",
+        timedelta(seconds=0),
+    )
+    sent_codes: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        auth_routes,
+        "_send_two_factor_email",
+        lambda address, code: sent_codes.append((address, code)),
+    )
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    User.__table__.create(engine)
+    LoginAttempt.__table__.create(engine)
+    EmailLoginCode.__table__.create(engine)
+    TwoFactorLoginChallenge.__table__.create(engine)
+    test_session = sessionmaker(bind=engine, expire_on_commit=False)
+    user = User(
+        name="Email Two Factor User",
+        email="email-two-factor@example.com",
+        password_hash=auth_routes.password_hash.hash("a-secure-password"),
+        role="member",
+        session_version=0,
+        two_factor_enabled=False,
+        is_active=True,
+    )
+    with test_session() as db:
+        db.add(user)
+        db.commit()
+
+    app = FastAPI()
+    app.include_router(auth_routes.router)
+
+    def override_get_db():
+        with test_session() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestClient(app) as client:
+            login_response = client.post(
+                "/auth/login",
+                data={
+                    "username": "email-two-factor@example.com",
+                    "password": "a-secure-password",
+                },
+            )
+            assert login_response.status_code == 200
+            csrf_headers = lambda: {
+                "x-csrf-token": client.cookies.get("taskflow_csrf", ""),
+            }
+
+            request_setup_code = client.post(
+                "/auth/2fa/email/request",
+                json={"current_password": "a-secure-password"},
+                headers=csrf_headers(),
+            )
+            assert request_setup_code.status_code == 200
+            assert sent_codes[-1][0] == "email-two-factor@example.com"
+
+            enable_email = client.post(
+                "/auth/2fa/email/enable",
+                json={"code": sent_codes[-1][1]},
+                headers=csrf_headers(),
+            )
+            assert enable_email.status_code == 200
+            assert enable_email.json() == {"enabled": True}
+
+            logout_response = client.post(
+                "/auth/logout",
+                headers=csrf_headers(),
+            )
+            assert logout_response.status_code == 204
+            next_login = client.post(
+                "/auth/login",
+                data={
+                    "username": "email-two-factor@example.com",
+                    "password": "a-secure-password",
+                },
+            )
+            assert next_login.status_code == 200
+            challenge = next_login.json()
+            assert challenge["methods"] == ["email"]
+
+            request_login_code = client.post(
+                "/auth/login/2fa/email/request",
+                json={"challenge_token": challenge["challenge_token"]},
+            )
+            assert request_login_code.status_code == 200
+            verify_email_login = client.post(
+                "/auth/login/2fa/email",
+                json={
+                    "challenge_token": challenge["challenge_token"],
+                    "code": sent_codes[-1][1],
+                },
+            )
+            assert verify_email_login.status_code == 200
+
+            setup_authenticator = client.post(
+                "/auth/2fa/setup",
+                json={"current_password": "a-secure-password"},
+                headers=csrf_headers(),
+            )
+            assert setup_authenticator.status_code == 200
+            authenticator_secret = setup_authenticator.json()["secret"]
+            enable_authenticator = client.post(
+                "/auth/2fa/enable",
+                json={"code": pyotp.TOTP(authenticator_secret).now()},
+                headers=csrf_headers(),
+            )
+            assert enable_authenticator.status_code == 200
+            assert len(enable_authenticator.json()["recovery_codes"]) == 10
+
+            login_with_both_methods = client.post(
+                "/auth/login",
+                data={
+                    "username": "email-two-factor@example.com",
+                    "password": "a-secure-password",
+                },
+            )
+            assert login_with_both_methods.status_code == 200
+            assert login_with_both_methods.json()["methods"] == [
+                "authenticator",
+                "email",
+            ]
+
+            request_disable_code = client.post(
+                "/auth/2fa/email/request",
+                json={"current_password": "a-secure-password"},
+                headers=csrf_headers(),
+            )
+            assert request_disable_code.status_code == 200
+            disable_two_factor = client.post(
+                "/auth/2fa/disable",
+                json={
+                    "current_password": "a-secure-password",
+                    "code": sent_codes[-1][1],
+                },
+                headers=csrf_headers(),
+            )
+            assert disable_two_factor.status_code == 204
+            disabled_status = client.get("/auth/2fa/status")
+            assert disabled_status.json()["enabled"] is False
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

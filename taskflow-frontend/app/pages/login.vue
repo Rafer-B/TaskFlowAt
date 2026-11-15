@@ -54,8 +54,13 @@ async function entrar(): Promise<void> {
       if (!('role' in resultado)) {
         desafioDoisFatores.value = resultado.challenge_token
         metodosDoisFatores.value = resultado.methods
-        metodoDoisFatores.value = 'authenticator'
+        metodoDoisFatores.value = resultado.methods.includes('authenticator')
+          ? 'authenticator'
+          : 'email'
         codigoDoisFatores.value = ''
+        if (metodoDoisFatores.value === 'email') {
+          await pedirCodigoPorEmail()
+        }
       } else {
         await navegarAposLogin(resultado.role)
       }
@@ -349,11 +354,13 @@ onBeforeUnmount(() => {
                 ? 'A enviar...'
                 : segundosParaReenvioEmail > 0
                   ? `Pode pedir novo código em ${segundosParaReenvioEmail} s`
-                  : 'Reenviar código por email'
+                  : codigoEmailEnviado
+                    ? 'Reenviar código por email'
+                    : 'Enviar código por email'
               }}
             </button>
             <button
-              v-if="metodosDoisFatores.includes('email') && metodoDoisFatores === 'email'"
+              v-if="metodosDoisFatores.includes('authenticator') && metodoDoisFatores === 'email'"
               class="factor-method-button"
               type="button"
               :disabled="aEntrar"
@@ -362,7 +369,7 @@ onBeforeUnmount(() => {
               Usar app autenticadora ou código de recuperação
             </button>
             <p v-if="!metodosDoisFatores.includes('email')" class="login-info" role="status">
-              O código por email não está disponível neste servidor. A autenticação continua disponível pela app ou por um código de recuperação.
+              O código por email não está disponível neste servidor. Use a app autenticadora ou um código de recuperação.
             </p>
           </template>
 

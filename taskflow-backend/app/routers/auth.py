@@ -207,7 +207,11 @@ def _lock_two_factor_user(user: User, db: Session) -> User:
 
 
 def _validar_codigo_2fa(user: User, code: str) -> bool:
-    if len(code) == 6 and code.isdigit():
+    if (
+        user.two_factor_authenticator_enabled
+        and len(code) == 6
+        and code.isdigit()
+    ):
         return _validar_codigo_totp(user, code)
     return _consumir_codigo_recuperacao(user, code)
 
@@ -222,6 +226,46 @@ def _hash_email_code(challenge_token: str, code: str) -> str:
         f"taskflow-email-2fa:{challenge_token}:{code}".encode(),
         hashlib.sha256,
     ).hexdigest()
+
+
+def _email_two_factor_action_token(user: User) -> str:
+    return f"taskflow-email-2fa-action:{user.id}"
+
+
+def _consume_email_two_factor_action_code(
+    user: User,
+    code: str,
+    db: Session,
+) -> bool:
+    action_token = _email_two_factor_action_token(user)
+    challenge_hash = hashlib.sha256(action_token.encode()).hexdigest()
+    email_code = db.scalar(
+        select(EmailLoginCode)
+        .where(EmailLoginCode.challenge_hash == challenge_hash)
+        .with_for_update()
+    )
+    now = datetime.now(timezone.utc)
+    valid = (
+        email_code is not None
+        and email_code.user_id == user.id
+        and email_code.used_at is None
+        and email_code.failed_attempts < MAX_EMAIL_CODE_FAILURES
+        and _utc_datetime(email_code.expires_at) > now
+        and hmac.compare_digest(
+            email_code.code_hash,
+            _hash_email_code(action_token, code),
+        )
+    )
+    if email_code is None or email_code.used_at is not None:
+        return False
+    if valid:
+        email_code.used_at = now
+        return True
+
+    email_code.failed_attempts += 1
+    if email_code.failed_attempts >= MAX_EMAIL_CODE_FAILURES:
+        email_code.used_at = now
+    return False
 
 
 def _send_two_factor_email(address: str, code: str) -> None:
@@ -247,6 +291,7 @@ def _send_two_factor_email(address: str, code: str) -> None:
         headers={
             "Authorization": f"Bearer {settings.resend_api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "TaskFlow-Backend",
         },
         method="POST",
     )
@@ -259,13 +304,47 @@ def _send_two_factor_email(address: str, code: str) -> None:
                     detail="Não foi possível enviar o código por email.",
                 )
     except HTTPError as error:
-        logger.error("Resend rejeitou o envio do código 2FA: HTTP %s", error.code)
+        provider_message = error.read().decode("utf-8", errors="replace").strip()
+        try:
+            error_payload = json.loads(provider_message)
+        except json.JSONDecodeError:
+            error_payload = None
+        if isinstance(error_payload, dict):
+            message = error_payload.get("message") or error_payload.get("error")
+            provider_message = (
+                message
+                if isinstance(message, str)
+                else json.dumps(error_payload, ensure_ascii=True)
+            )
+        for sensitive_value in (
+            settings.resend_api_key,
+            address,
+            settings.resend_from_email,
+            code,
+        ):
+            if sensitive_value:
+                provider_message = provider_message.replace(
+                    sensitive_value,
+                    "[redigido]",
+                )
+        provider_message = " ".join(provider_message.split())[:300]
+        logger.error(
+            "Resend rejeitou o envio do código 2FA: HTTP %s%s%s",
+            error.code,
+            f" — {provider_message}" if provider_message else "",
+            f" (Cloudflare Ray ID: {error.headers.get('cf-ray')})"
+            if error.headers and error.headers.get("cf-ray")
+            else "",
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Não foi possível enviar o código por email.",
         ) from error
     except (TimeoutError, URLError) as error:
-        logger.error("Falha de comunicação com o Resend ao enviar o código 2FA.")
+        logger.error(
+            "Falha de comunicação com o Resend ao enviar o código 2FA: %s",
+            error,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="O serviço de email não está disponível. Tente novamente.",
@@ -350,10 +429,18 @@ def login(
         return TwoFactorChallenge(
             challenge_token=challenge_token,
             methods=[
-                "authenticator",
+                *(
+                    ["authenticator"]
+                    if user.two_factor_authenticator_enabled
+                    else []
+                ),
                 *(
                     ["email"]
                     if _email_two_factor_configured()
+                    and (
+                        user.two_factor_email_enabled
+                        or user.two_factor_authenticator_enabled
+                    )
                     else []
                 ),
             ],
@@ -406,6 +493,14 @@ def pedir_codigo_2fa_email(
 ) -> dict[str, str]:
     """Envia um código temporário ao email após validar o desafio de login."""
     user = obter_utilizador_desafio_2fa(dados.challenge_token, db)
+    if not (
+        user.two_factor_email_enabled
+        or user.two_factor_authenticator_enabled
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Este método de autenticação não está ativo.",
+        )
     if not _email_two_factor_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -540,8 +635,114 @@ def concluir_login_2fa_email(
 def estado_2fa(
     user: User = Depends(obter_utilizador_atual),
 ) -> dict[str, bool]:
-    """Devolve apenas se a autenticação de dois fatores está ativada."""
-    return {"enabled": user.two_factor_enabled}
+    """Devolve o estado de cada método de autenticação de dois fatores."""
+    return {
+        "enabled": user.two_factor_enabled,
+        "email_enabled": user.two_factor_email_enabled,
+        "authenticator_enabled": user.two_factor_authenticator_enabled,
+        "email_available": _email_two_factor_configured(),
+    }
+
+
+@router.post("/2fa/email/request")
+def pedir_codigo_email_2fa_para_conta(
+    dados: TwoFactorSetupRequest,
+    response: Response,
+    user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Envia um código de e-mail para ativar ou desativar o método 2FA."""
+    user = _lock_two_factor_user(user, db)
+    if not password_hash.verify(dados.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Palavra-passe atual inválida.",
+        )
+    if not _email_two_factor_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="O envio de códigos por email não está configurado.",
+        )
+
+    action_token = _email_two_factor_action_token(user)
+    challenge_hash = hashlib.sha256(action_token.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+    db.execute(delete(EmailLoginCode).where(EmailLoginCode.expires_at <= now))
+    most_recent_code = db.scalar(
+        select(EmailLoginCode)
+        .where(EmailLoginCode.user_id == user.id)
+        .order_by(EmailLoginCode.sent_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if most_recent_code is not None:
+        retry_after = EMAIL_CODE_RESEND_DELAY - (
+            now - _utc_datetime(most_recent_code.sent_at)
+        )
+        if retry_after.total_seconds() > 0:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Aguarde antes de pedir outro código por email.",
+                headers={"Retry-After": str(int(retry_after.total_seconds()) + 1)},
+            )
+
+    email_code = db.scalar(
+        select(EmailLoginCode)
+        .where(EmailLoginCode.challenge_hash == challenge_hash)
+        .with_for_update()
+    )
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    if email_code is None:
+        email_code = EmailLoginCode(
+            challenge_hash=challenge_hash,
+            user_id=user.id,
+            code_hash=_hash_email_code(action_token, code),
+            expires_at=now + EMAIL_CODE_TTL,
+            sent_at=now,
+            failed_attempts=0,
+        )
+        db.add(email_code)
+    else:
+        email_code.code_hash = _hash_email_code(action_token, code)
+        email_code.expires_at = now + EMAIL_CODE_TTL
+        email_code.sent_at = now
+        email_code.failed_attempts = 0
+        email_code.used_at = None
+
+    _send_two_factor_email(user.email, code)
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return {"message": "Código enviado para o email associado à conta."}
+
+
+@router.post("/2fa/email/enable")
+def ativar_2fa_por_email(
+    dados: TwoFactorCodeRequest,
+    response: Response,
+    user: User = Depends(obter_utilizador_atual),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Ativa o 2FA depois de validar o código enviado ao endereço da conta."""
+    user = _lock_two_factor_user(user, db)
+    if user.two_factor_email_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A autenticação de dois fatores por email já está ativada.",
+        )
+    if not _consume_email_two_factor_action_code(user, dados.code, db):
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Código inválido ou expirado. Peça um novo código.",
+        )
+
+    user.two_factor_enabled = True
+    user.two_factor_email_enabled = True
+    user.session_version += 1
+    db.commit()
+    set_session_cookies(response, user)
+    response.headers["Cache-Control"] = "no-store"
+    return {"enabled": True}
 
 
 @router.post("/2fa/setup")
@@ -553,7 +754,7 @@ def iniciar_configuracao_2fa(
 ) -> dict[str, str]:
     """Gera um segredo temporário e um QR code após confirmar a palavra-passe."""
     user = _lock_two_factor_user(user, db)
-    if user.two_factor_enabled:
+    if user.two_factor_authenticator_enabled:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A autenticação de dois fatores já está ativada.",
@@ -597,7 +798,7 @@ def ativar_2fa(
 ) -> dict[str, list[str]]:
     """Ativa o segundo fator depois de confirmar um primeiro código TOTP."""
     user = _lock_two_factor_user(user, db)
-    if user.two_factor_enabled or not user.two_factor_secret:
+    if user.two_factor_authenticator_enabled or not user.two_factor_secret:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Inicie uma nova configuração do autenticador.",
@@ -613,6 +814,7 @@ def ativar_2fa(
         for _ in range(RECOVERY_CODE_COUNT)
     ]
     user.two_factor_enabled = True
+    user.two_factor_authenticator_enabled = True
     user.two_factor_recovery_codes = [
         _recovery_code_hash(code)
         for code in recovery_codes
@@ -643,13 +845,19 @@ def desativar_2fa(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Palavra-passe atual inválida.",
         )
-    if not _validar_codigo_2fa(user, dados.code):
+    if not (
+        _validar_codigo_2fa(user, dados.code)
+        or _consume_email_two_factor_action_code(user, dados.code, db)
+    ):
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Código de autenticação inválido.",
         )
 
     user.two_factor_enabled = False
+    user.two_factor_email_enabled = False
+    user.two_factor_authenticator_enabled = False
     user.two_factor_secret = None
     user.two_factor_last_used_step = None
     user.two_factor_recovery_codes = []

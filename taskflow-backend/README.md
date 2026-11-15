@@ -78,6 +78,7 @@ As migrações atuais acrescentam:
 | `20261113_0012` | Acrescenta segredos cifrados e códigos de recuperação para autenticação de dois fatores. |
 | `20261113_0013` | Armazena hashes de códigos de email de uso único para 2FA. |
 | `20261113_0014` | Impede a reutilização de desafios de início de sessão com 2FA. |
+| `20261115_0015` | Regista separadamente a ativação dos métodos 2FA por email e autenticador. |
 
 A revisão `20261112_0010` atribui novos UUIDs aos registos existentes e atualiza
 as referências entre tabelas; os valores numéricos antigos não são mantidos.
@@ -166,18 +167,19 @@ impede a validação dos autenticadores já configurados.
 
 ### Autenticação de dois fatores
 
-Cada utilizador pode ativar a autenticação de dois fatores em **Definições**.
-O fluxo usa uma app autenticadora compatível com TOTP: confirme a palavra-passe,
-leia o QR code (ou introduza a chave manualmente) e valide o primeiro código.
-Depois da ativação, o início de sessão exige a palavra-passe e um código
-temporário da app. São também apresentados dez códigos de recuperação de uso
-único; guarde-os fora do TaskFlow, pois não são apresentados novamente.
-Como alternativa, o utilizador pode pedir um código temporário por email, se o
-Resend estiver configurado. O
-Resend apenas entrega o código: é a API TaskFlow que o gera, limita os pedidos,
-guarda apenas o respetivo hash, controla a validade e só cria a sessão após a
-validação. Os códigos expiram ao fim de cinco minutos e só podem ser usados uma
-vez.
+Cada utilizador ativa o 2FA em **Definições** confirmando um código enviado ao
+email associado à conta. Depois da ativação, cada início de sessão exige a
+palavra-passe e um novo código de email. Se o utilizador quiser, pode também
+configurar uma app autenticadora compatível com TOTP através do QR code; quando
+configurada, essa app passa a ser uma alternativa ao email no login. A ativação
+do 2FA por email não exige configurar o QR code.
+
+Ao configurar a app autenticadora são apresentados dez códigos de recuperação
+de uso único; guarde-os fora do TaskFlow, pois não são apresentados novamente.
+O Resend apenas entrega os códigos: é a API TaskFlow que os gera, limita os
+pedidos, guarda apenas os respetivos hashes, controla a validade e só cria a
+sessão após a validação. Os códigos expiram ao fim de cinco minutos e só podem
+ser usados uma vez.
 
 Para disponibilizar o envio por email, configure diretamente no `.env` a chave
 da API do Resend e um remetente verificado no respetivo domínio:
@@ -193,15 +195,17 @@ conjunto: configurar apenas um deles impede o arranque da API, para evitar uma
 configuração de email incompleta. Depois de atualizar o `.env`, reinicie o
 backend para que as variáveis sejam recarregadas.
 
-Para testar o fluxo completo, ative 2FA em **Definições** com uma app TOTP,
-termine a sessão e volte a iniciar sessão. Depois de validar email e
-palavra-passe, o botão **Enviar código por email** aparece quando o Resend está
-configurado. O código enviado é numérico, expira em cinco minutos, só pode ser
-usado uma vez e há um intervalo de 60 segundos antes de poder pedir outro.
+Para testar o fluxo completo, ative 2FA em **Definições** e confirme o código
+enviado por email. Termine a sessão e volte a iniciar sessão: depois de validar
+email e palavra-passe, a API envia um novo código. Se também configurar o
+autenticador TOTP nas Definições, poderá escolher esse método no login. Os
+códigos de email são numéricos, expiram em cinco minutos, só podem ser usados
+uma vez e há um intervalo de 60 segundos antes de poder pedir outro.
 
-Sem estas definições, o login continua a aceitar TOTP e códigos de recuperação,
-mas não apresenta o método por email. As credenciais do Resend devem ficar
-apenas no ambiente do backend, nunca no frontend nem no Git.
+Sem estas definições, não é possível ativar o 2FA por email; contas que já
+tenham configurado o autenticador TOTP continuam a poder usá-lo. As credenciais
+do Resend devem ficar apenas no ambiente do backend, nunca no frontend nem no
+Git.
 
 Para aplicar as alterações de esquema:
 
