@@ -777,7 +777,10 @@ function fecharDetalhes() {
   tarefaPendenteEliminacao.value = null
 }
 
-async function editarTarefa(tarefa: Tarefa) {
+async function editarTarefa(
+  tarefa: Tarefa,
+  focarResponsavel = false,
+) {
   erro.value = ''
   sucesso.value = ''
   fecharDetalhes()
@@ -806,6 +809,10 @@ async function editarTarefa(tarefa: Tarefa) {
   mostrarFormulario.value = true
 
   await carregarMembrosProjeto(tarefa.projectId)
+  if (focarResponsavel && podeAtribuirTarefa(tarefa.projectId)) {
+    responsavelAberto.value = true
+    pesquisaResponsavel.value = ''
+  }
   await deslocarAteFormulario()
 }
 
@@ -1487,7 +1494,17 @@ onBeforeUnmount(() => {
                 </p>
                 <p v-else-if="!membrosAtivos.length" class="assignee-empty">
                   Este projeto ainda não tem membros ativos elegíveis.
-                  <NuxtLink to="/projects">Gerir membros do projeto</NuxtLink>
+                  <NuxtLink
+                    :to="{
+                      path: '/projects',
+                      query: {
+                        manageMembers: novaTarefa.projectId,
+                        returnTask: tarefaEmEdicao ?? undefined,
+                      },
+                    }"
+                  >
+                    Gerir membros do projeto
+                  </NuxtLink>
                 </p>
               </div>
             </div>
@@ -2057,6 +2074,19 @@ onBeforeUnmount(() => {
           <div class="detail-item">
             <span>Responsável</span>
             <strong>{{ tarefaSelecionada.responsible }}</strong>
+            <button
+              v-if="
+                !tarefaSelecionada.assignedTo &&
+                tarefaSelecionada.projectStatus !== 'archived' &&
+                podeAtribuirTarefa(tarefaSelecionada.projectId)
+              "
+              type="button"
+              class="assign-member-link"
+              @click="editarTarefa(tarefaSelecionada, true)"
+            >
+              <ActionIcon name="team" />
+              Atribuir membro
+            </button>
           </div>
 
           <div class="detail-item">
@@ -2693,6 +2723,34 @@ onBeforeUnmount(() => {
   margin-left: 3px;
   color: #4f5bcc;
   font-weight: 700;
+}
+
+.assign-member-link {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #dfe4ff;
+  border-radius: 8px;
+  background: #f4f5ff;
+  color: #4f46e5;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+
+.assign-member-link:hover {
+  border-color: #c9ceff;
+  background: #e9ebff;
+}
+
+.assign-member-link:focus-visible,
+.assignee-empty a:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
 }
 
 .assignee-permission-note {

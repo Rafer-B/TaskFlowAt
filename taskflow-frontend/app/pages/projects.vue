@@ -186,6 +186,10 @@ const mostrarPainelMembros = ref(false)
 const painelMembrosRef = ref<HTMLElement | null>(null)
 const membroPendenteRemocao = ref<string | null>(null)
 const projetoMembros = ref<Projeto | null>(null)
+const tarefaParaRegressar = computed(() => {
+  const taskId = route.query.returnTask
+  return Array.isArray(taskId) ? taskId[0] ?? '' : taskId ?? ''
+})
 const membros = ref<MembroAPI[]>([])
 const utilizadoresDisponiveis = ref<UtilizadorDisponivelAPI[]>([])
 const equipaProjeto = ref<EquipaProjetoAPI | null>(null)
@@ -201,6 +205,20 @@ const membroEmRemocao = ref<string | null>(null)
 
 const erroMembros = ref('')
 const sucessoMembros = ref('')
+
+watch(
+  [() => route.query.manageMembers, projetos],
+  ([projectIdValue]) => {
+    const projectId = Array.isArray(projectIdValue)
+      ? projectIdValue[0]
+      : projectIdValue
+    if (!projectId || mostrarPainelMembros.value) return
+
+    const projeto = projetos.value.find(item => item.id === projectId)
+    if (projeto) void abrirMembros(projeto)
+  },
+  { immediate: true },
+)
 
 const novoMembro = ref({
   user_id: '',
@@ -1800,6 +1818,20 @@ onBeforeUnmount(() => {
                 <h2 id="members-title">Membros do projeto</h2>
                 <p>{{ projetoMembros.name }}</p>
               </div>
+
+              <NuxtLink
+                v-if="tarefaParaRegressar"
+                class="return-task-link"
+                :to="{
+                  path: '/tasks',
+                  query: {
+                    projectId: projetoMembros.id,
+                    taskId: tarefaParaRegressar,
+                  },
+                }"
+              >
+                Voltar à tarefa
+              </NuxtLink>
 
               <button
                 class="close-button"
@@ -3484,6 +3516,27 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #8792a5;
   font-size: 12px;
+}
+
+.return-task-link {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  border: 1px solid #dfe4ff;
+  border-radius: 8px;
+  background: #f4f5ff;
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.return-task-link:hover {
+  border-color: #c9ceff;
+  background: #e9ebff;
 }
 
 .member-summary {
