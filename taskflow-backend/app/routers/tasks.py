@@ -42,6 +42,7 @@ from app.schemas.task import (
     TaskStatus,
     TaskUpdate,
     TaskWorkLogResponse,
+    validar_periodo_tarefa,
 )
 from app.schemas.activity import TaskHistoryResponse
 from app.settings import settings
@@ -459,6 +460,17 @@ def atualizar_tarefa(
     )
 
     alteracoes = dados.model_dump(exclude_unset=True)
+    try:
+        validar_periodo_tarefa(
+            alteracoes.get("start_date", tarefa.start_date),
+            alteracoes.get("due_date", tarefa.due_date),
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
     alteracoes_hist = {
         campo: {
             "old": _json_value(getattr(tarefa, campo)),

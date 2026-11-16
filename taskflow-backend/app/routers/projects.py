@@ -139,6 +139,9 @@ def criar_projeto(
                 project_id=projeto.id,
                 title=tarefa.title,
                 description=tarefa.description,
+                start_date=tarefa.start_date,
+                due_date=tarefa.due_date,
+                delay_reason=tarefa.delay_reason,
                 created_by=current_user.id,
             )
             for tarefa in dados.tasks

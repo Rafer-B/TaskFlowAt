@@ -26,7 +26,7 @@ type Categoria =
 
 type EstadoAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
 type PrioridadeAPI = 'low' | 'medium' | 'high'
-type ChaveOrdenacaoTabela = 'title' | 'project' | 'responsible' | 'status' | 'priority' | 'dueDate'
+type ChaveOrdenacaoTabela = 'title' | 'project' | 'responsible' | 'status' | 'priority' | 'startDate' | 'dueDate'
 
 const colunasTabela: Array<{ chave: ChaveOrdenacaoTabela; rotulo: string }> = [
   { chave: 'title', rotulo: 'Tarefa' },
@@ -34,7 +34,8 @@ const colunasTabela: Array<{ chave: ChaveOrdenacaoTabela; rotulo: string }> = [
   { chave: 'responsible', rotulo: 'Responsável' },
   { chave: 'status', rotulo: 'Estado' },
   { chave: 'priority', rotulo: 'Prioridade' },
-  { chave: 'dueDate', rotulo: 'Prazo' },
+  { chave: 'startDate', rotulo: 'Início' },
+  { chave: 'dueDate', rotulo: 'Fim' },
 ]
 
 type CategoriaAPI =
@@ -88,7 +89,9 @@ interface TarefaAPI {
   assigned_to: string | null
   assignee_ids: string[]
   created_by: string
+  start_date: string | null
   due_date: string | null
+  delay_reason: string | null
   created_at: string
   updated_at: string
   completed_at: string | null
@@ -103,7 +106,9 @@ interface Tarefa {
   projectStatus: ProjetoAPI['status']
   responsible: string
   assignedTo: string
+  startDate: string
   dueDate: string
+  delayReason: string
   priority: Prioridade
   status: EstadoTarefa
   category: Categoria
@@ -126,7 +131,9 @@ interface FormularioTarefa {
   description: string
   projectId: string
   assignedTo: string
+  startDate: string
   dueDate: string
+  delayReason: string
   priority: Prioridade
   status: EstadoTarefa
   category: Categoria
@@ -194,6 +201,10 @@ const carregandoMembros = ref(false)
 const responsavelSeletorRef = ref<HTMLElement | null>(null)
 const responsavelAberto = ref(false)
 const pesquisaResponsavel = ref('')
+const visualizacaoTarefas = ref<'kanban' | 'lista'>('kanban')
+const estadosEmAtualizacao = ref<string[]>([])
+const tarefaEmArrasto = ref<string | null>(null)
+const colunaEmDestaque = ref<EstadoTarefa | null>(null)
 
 let pedidoMembros = 0
 
@@ -295,7 +306,9 @@ const novaTarefa = ref<FormularioTarefa>({
   description: '',
   projectId: '',
   assignedTo: '',
+  startDate: '',
   dueDate: '',
+  delayReason: '',
   priority: 'Média',
   status: 'Por fazer',
   category: 'Desenvolvimento',
@@ -378,7 +391,9 @@ function limparFormulario() {
     description: '',
     projectId: primeiroProjeto ? String(primeiroProjeto.id) : '',
     assignedTo: '',
+    startDate: '',
     dueDate: '',
+    delayReason: '',
     priority: 'Média',
     status: 'Por fazer',
     category: 'Desenvolvimento',
@@ -540,6 +555,13 @@ const tarefasFiltradas = computed(() => {
   })
 })
 
+const tarefasPorEstado = computed(() =>
+  estados.map((status) => ({
+    status,
+    tarefas: tarefasFiltradas.value.filter((tarefa) => tarefa.status === status),
+  })),
+)
+
 const tarefasTabelaFiltradas = computed(() => {
   const termo = pesquisaTabela.value.trim().toLocaleLowerCase('pt-PT')
   const correspondentes = tarefasFiltradas.value.filter((tarefa) =>
@@ -655,9 +677,11 @@ function converterTarefa(tarefa: TarefaAPI): Tarefa {
     projectStatus: projeto?.status ?? 'archived',
     responsible: responsaveis.length ? responsaveis.join(', ') : 'Por atribuir',
     assignedTo: assigneeIds.length ? String(assigneeIds[0]) : '',
+    startDate: tarefa.start_date ? tarefa.start_date.slice(0, 10) : '',
     dueDate: tarefa.due_date
       ? tarefa.due_date.slice(0, 10)
       : '',
+    delayReason: tarefa.delay_reason ?? '',
     priority: prioridadeDaAPI[tarefa.priority],
     status: estadoDaAPI[tarefa.status],
     category: categoriaDaAPI[tarefa.category],
@@ -771,7 +795,9 @@ async function editarTarefa(tarefa: Tarefa) {
     description: tarefa.description,
     projectId: String(tarefa.projectId),
     assignedTo: tarefa.assignedTo,
+    startDate: tarefa.startDate,
     dueDate: tarefa.dueDate,
+    delayReason: tarefa.delayReason,
     priority: tarefa.priority,
     status: tarefa.status,
     category: tarefa.category,
@@ -812,6 +838,20 @@ async function guardarTarefa() {
 
   if (descricao.length > 5000) {
     erro.value = 'A descrição não pode ultrapassar 5000 caracteres.'
+    return
+  }
+
+  if (
+    novaTarefa.value.startDate &&
+    novaTarefa.value.dueDate &&
+    novaTarefa.value.startDate > novaTarefa.value.dueDate
+  ) {
+    erro.value = 'A data de início não pode ser posterior à data de fim.'
+    return
+  }
+
+  if (novaTarefa.value.delayReason.trim().length > 5000) {
+    erro.value = 'A justificação do atraso não pode ultrapassar 5000 caracteres.'
     return
   }
 
@@ -876,9 +916,13 @@ async function guardarTarefa() {
       category: categoriaParaAPI[novaTarefa.value.category],
       priority: prioridadeParaAPI[novaTarefa.value.priority],
       status: estadoParaAPI[novaTarefa.value.status],
+      start_date: novaTarefa.value.startDate
+        ? `${novaTarefa.value.startDate}T00:00:00`
+        : null,
       due_date: novaTarefa.value.dueDate
         ? `${novaTarefa.value.dueDate}T00:00:00`
         : null,
+      delay_reason: novaTarefa.value.delayReason.trim() || null,
     }
     if (podeAtribuirTarefa(projetoId)) {
       corpo.assigned_to = responsavelId
@@ -949,6 +993,7 @@ async function alterarEstado(
 
   if (!estados.includes(novoEstado)) return
   if (novoEstado === estadoAnterior) return
+  if (estadosEmAtualizacao.value.includes(tarefa.id)) return
 
   if (!podeEditarTarefasDoProjeto(tarefa.projectId)) {
     erro.value = 'O teu papel neste projeto permite apenas consultar as tarefas.'
@@ -964,6 +1009,7 @@ async function alterarEstado(
 
   erro.value = ''
   sucesso.value = ''
+  estadosEmAtualizacao.value.push(tarefa.id)
 
   // Atualização otimista: reverte o estado se o servidor rejeitar a alteração.
   tarefa.status = novoEstado
@@ -1001,6 +1047,10 @@ async function alterarEstado(
     if (elemento) elemento.value = estadoAnterior
 
     erro.value = obterMensagemErro(error)
+  } finally {
+    estadosEmAtualizacao.value = estadosEmAtualizacao.value.filter(
+      (id) => id !== tarefa.id,
+    )
   }
 }
 
@@ -1014,6 +1064,49 @@ function alterarEstadoPorEvento(tarefa: Tarefa, evento: Event): void {
   }
 
   void alterarEstado(tarefa, novoEstado, elemento)
+}
+
+function podeArrastarTarefa(tarefa: Tarefa): boolean {
+  return tarefa.projectStatus !== 'archived' &&
+    podeEditarTarefasDoProjeto(tarefa.projectId) &&
+    !estadosEmAtualizacao.value.includes(tarefa.id)
+}
+
+function iniciarArrasto(evento: DragEvent, tarefa: Tarefa): void {
+  if (!podeArrastarTarefa(tarefa)) {
+    evento.preventDefault()
+    return
+  }
+
+  tarefaEmArrasto.value = tarefa.id
+  colunaEmDestaque.value = null
+  if (evento.dataTransfer) {
+    evento.dataTransfer.effectAllowed = 'move'
+    evento.dataTransfer.setData('text/plain', tarefa.id)
+  }
+}
+
+function destacarColuna(estado: EstadoTarefa): void {
+  if (tarefaEmArrasto.value) {
+    colunaEmDestaque.value = estado
+  }
+}
+
+function soltarTarefa(evento: DragEvent, estado: EstadoTarefa): void {
+  evento.preventDefault()
+  const tarefaId = evento.dataTransfer?.getData('text/plain') || tarefaEmArrasto.value
+  const tarefa = tarefas.value.find((item) => item.id === tarefaId)
+
+  if (tarefa) {
+    void alterarEstado(tarefa, estado)
+  }
+
+  terminarArrasto()
+}
+
+function terminarArrasto(): void {
+  tarefaEmArrasto.value = null
+  colunaEmDestaque.value = null
 }
 
 function obterMensagemErro(error: unknown): string {
@@ -1116,6 +1209,21 @@ function formatarData(data: string) {
   if (!ano || !mes || !dia) return 'Data inválida'
 
   return `${dia}/${mes}/${ano}`
+}
+
+function prazoUltrapassado(tarefa: Tarefa): boolean {
+  const hoje = new Date()
+  const hojeISO = [
+    hoje.getFullYear(),
+    String(hoje.getMonth() + 1).padStart(2, '0'),
+    String(hoje.getDate()).padStart(2, '0'),
+  ].join('-')
+
+  return Boolean(
+    tarefa.dueDate &&
+    tarefa.status !== 'Concluída' &&
+    tarefa.dueDate < hojeISO,
+  )
 }
 
 function formatarDataHora(data: string | null) {
@@ -1405,13 +1513,37 @@ onBeforeUnmount(() => {
           </p>
 
           <div class="field">
-            <label for="prazo">Prazo</label>
-
+            <label for="data-inicio">Data prevista de início</label>
             <input
-              id="prazo"
+              id="data-inicio"
+              v-model="novaTarefa.startDate"
+              type="date"
+              :max="novaTarefa.dueDate || undefined"
+            />
+          </div>
+
+          <div class="field">
+            <label for="data-fim">Prazo final</label>
+            <input
+              id="data-fim"
               v-model="novaTarefa.dueDate"
               type="date"
+              :min="novaTarefa.startDate || undefined"
             />
+          </div>
+
+          <div class="field full-width">
+            <label for="motivo-atraso">Justificação de atraso (opcional)</label>
+            <textarea
+              id="motivo-atraso"
+              v-model="novaTarefa.delayReason"
+              rows="3"
+              maxlength="5000"
+              placeholder="Regista o motivo caso a tarefa não seja concluída dentro do prazo."
+            />
+            <small>
+              Podes preencher ou atualizar esta justificação sempre que o prazo não for cumprido.
+            </small>
           </div>
 
           <div class="field">
@@ -1584,24 +1716,186 @@ onBeforeUnmount(() => {
 
       </div>
 
-      <section class="task-table-section" aria-labelledby="task-table-title">
+      <section
+        class="task-table-section"
+        :class="{ 'kanban-mode': visualizacaoTarefas === 'kanban' }"
+        aria-labelledby="task-table-title"
+      >
         <header class="task-table-heading">
           <div>
-            <span class="section-eyebrow">VISTA DETALHADA</span>
-            <h2 id="task-table-title">Lista de tarefas</h2>
-            <p>{{ tarefasTabelaFiltradas.length }} tarefa(s) correspondem aos filtros atuais</p>
+            <span class="section-eyebrow">
+              {{ visualizacaoTarefas === 'kanban' ? 'VISTA KANBAN' : 'VISTA DE LISTA' }}
+            </span>
+            <h2 id="task-table-title">
+              {{ visualizacaoTarefas === 'kanban' ? 'Quadro de tarefas' : 'Lista de tarefas' }}
+            </h2>
+            <p>
+              {{ tarefasFiltradas.length }} tarefa(s) correspondem aos filtros atuais
+              <span v-if="visualizacaoTarefas === 'kanban'" class="kanban-hint">
+                · Arraste cartões entre colunas para atualizar o estado
+              </span>
+            </p>
           </div>
-          <label class="table-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              v-model="pesquisaTabela"
-              type="search"
-              aria-label="Pesquisar na lista de tarefas"
-              placeholder="Pesquisar na lista..."
-            />
-          </label>
+          <div class="task-view-controls">
+            <div class="view-switch" role="group" aria-label="Modo de visualização das tarefas">
+              <button
+                type="button"
+                class="view-switch-button"
+                :class="{ 'is-active': visualizacaoTarefas === 'kanban' }"
+                :aria-pressed="visualizacaoTarefas === 'kanban'"
+                @click="visualizacaoTarefas = 'kanban'"
+              >
+                <span aria-hidden="true">▦</span>
+                Kanban
+              </button>
+              <button
+                type="button"
+                class="view-switch-button"
+                :class="{ 'is-active': visualizacaoTarefas === 'lista' }"
+                :aria-pressed="visualizacaoTarefas === 'lista'"
+                @click="visualizacaoTarefas = 'lista'"
+              >
+                <span aria-hidden="true">☷</span>
+                Lista
+              </button>
+            </div>
+            <label v-if="visualizacaoTarefas === 'lista'" class="table-search">
+              <span aria-hidden="true">⌕</span>
+              <input
+                v-model="pesquisaTabela"
+                type="search"
+                aria-label="Pesquisar na lista de tarefas"
+                placeholder="Pesquisar na lista..."
+              />
+            </label>
+          </div>
         </header>
 
+        <div
+          v-if="visualizacaoTarefas === 'kanban'"
+          class="kanban-board"
+          aria-label="Quadro Kanban de tarefas"
+        >
+          <section
+            v-for="coluna in tarefasPorEstado"
+            :key="coluna.status"
+            class="kanban-column"
+            :class="[
+              classeEstado(coluna.status),
+              { 'kanban-column-drag-over': colunaEmDestaque === coluna.status },
+            ]"
+            :aria-label="`${coluna.status}: ${coluna.tarefas.length} tarefas`"
+            @dragover.prevent="destacarColuna(coluna.status)"
+            @drop="soltarTarefa($event, coluna.status)"
+          >
+            <header class="kanban-column-heading">
+              <h3>
+                <span class="kanban-status-dot" aria-hidden="true" />
+                {{ coluna.status }}
+              </h3>
+              <div class="kanban-column-tools">
+                <span class="kanban-column-count">{{ coluna.tarefas.length }}</span>
+                <button
+                  v-if="podeCriarTarefa"
+                  type="button"
+                  class="kanban-add-task"
+                  :aria-label="`Criar tarefa em ${coluna.status}`"
+                  :title="`Criar tarefa em ${coluna.status}`"
+                  @click="abrirFormularioCriar(coluna.status)"
+                >
+                  <ActionIcon name="add" />
+                </button>
+              </div>
+            </header>
+
+            <div class="kanban-card-list">
+              <article
+                v-for="tarefa in coluna.tarefas"
+                :key="tarefa.id"
+                class="kanban-card"
+                :class="{
+                  'is-being-dragged': tarefaEmArrasto === tarefa.id,
+                  'is-draggable': podeArrastarTarefa(tarefa),
+                }"
+                :draggable="podeArrastarTarefa(tarefa)"
+                @click="consultarTarefa(tarefa)"
+                @dragstart="iniciarArrasto($event, tarefa)"
+                @dragend="terminarArrasto"
+              >
+                <div class="kanban-card-topline">
+                  <span class="kanban-category">{{ tarefa.category }}</span>
+                  <span class="priority" :class="classePrioridade(tarefa.priority)">
+                    {{ tarefa.priority }}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  class="kanban-card-title"
+                  @click="consultarTarefa(tarefa)"
+                >
+                  {{ tarefa.title }}
+                </button>
+
+                <p v-if="tarefa.description" class="kanban-card-description">
+                  {{ tarefa.description }}
+                </p>
+
+                <div class="kanban-card-project">
+                  <span aria-hidden="true">▦</span>
+                  {{ tarefa.project }}
+                </div>
+
+                <footer class="kanban-card-footer">
+                  <span
+                    class="kanban-card-due-date"
+                    :class="{
+                      'has-no-due-date': !tarefa.dueDate,
+                      'is-overdue': prazoUltrapassado(tarefa),
+                    }"
+                  >
+                    <span aria-hidden="true">{{ tarefa.dueDate ? '◷' : '—' }}</span>
+                    {{ tarefa.startDate ? `${formatarData(tarefa.startDate)} – ` : '' }}{{ formatarData(tarefa.dueDate) }}
+                    <span v-if="prazoUltrapassado(tarefa)" class="kanban-overdue-label">
+                      Em atraso
+                    </span>
+                  </span>
+                  <span class="kanban-card-assignee" :title="tarefa.responsible">
+                    {{ tarefa.responsible }}
+                  </span>
+                </footer>
+                <p v-if="tarefa.delayReason" class="kanban-delay-reason">
+                  <strong>Atraso:</strong> {{ tarefa.delayReason }}
+                </p>
+
+                <label class="kanban-card-status">
+                  <span>Alterar estado</span>
+                  <select
+                    :value="tarefa.status"
+                    :disabled="
+                      estadosEmAtualizacao.includes(tarefa.id) ||
+                      !podeEditarTarefasDoProjeto(tarefa.projectId) ||
+                      tarefa.projectStatus === 'archived'
+                    "
+                    :aria-label="`Alterar estado de ${tarefa.title}`"
+                    @click.stop
+                    @change="alterarEstadoPorEvento(tarefa, $event)"
+                  >
+                    <option v-for="estado in estados" :key="estado" :value="estado">
+                      {{ estado }}
+                    </option>
+                  </select>
+                </label>
+              </article>
+
+              <p v-if="!coluna.tarefas.length" class="kanban-column-empty">
+                {{ carregando ? 'A carregar tarefas...' : 'Sem tarefas neste estado.' }}
+              </p>
+            </div>
+          </section>
+        </div>
+
+        <template v-else>
         <div class="task-table-scroll">
           <table class="task-table">
             <thead>
@@ -1655,6 +1949,7 @@ onBeforeUnmount(() => {
                     {{ tarefa.priority }}
                   </span>
                 </td>
+                <td>{{ formatarData(tarefa.startDate) }}</td>
                 <td>{{ formatarData(tarefa.dueDate) }}</td>
                 <td>
                   <button
@@ -1711,6 +2006,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </footer>
+        </template>
       </section>
 
     </section>
@@ -1786,7 +2082,8 @@ onBeforeUnmount(() => {
               :value="tarefaSelecionada.status"
               :disabled="
                 tarefaSelecionada.projectStatus === 'archived' ||
-                !podeEditarTarefasDoProjeto(tarefaSelecionada.projectId)
+                !podeEditarTarefasDoProjeto(tarefaSelecionada.projectId) ||
+                estadosEmAtualizacao.includes(tarefaSelecionada.id)
               "
               :aria-label="`Alterar estado de ${tarefaSelecionada.title}`"
               @change="alterarEstadoPorEvento(tarefaSelecionada, $event)"
@@ -1802,8 +2099,21 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="detail-item">
-            <span>Prazo</span>
-            <strong>{{ formatarData(tarefaSelecionada.dueDate) }}</strong>
+            <span>Início previsto</span>
+            <strong>{{ formatarData(tarefaSelecionada.startDate) }}</strong>
+          </div>
+
+          <div class="detail-item">
+            <span>Prazo final</span>
+            <strong :class="{ 'overdue-text': prazoUltrapassado(tarefaSelecionada) }">
+              {{ formatarData(tarefaSelecionada.dueDate) }}
+              <span v-if="prazoUltrapassado(tarefaSelecionada)"> · Em atraso</span>
+            </strong>
+          </div>
+
+          <div class="detail-item full-width">
+            <span>Justificação do atraso</span>
+            <p>{{ tarefaSelecionada.delayReason || 'Sem justificação registada.' }}</p>
           </div>
 
           <div class="detail-item">
@@ -2736,9 +3046,19 @@ onBeforeUnmount(() => {
 }
 
 .task-table-section {
+  min-width: 0;
   margin-top: 0;
   padding: 20px;
   font-family: var(--tf-font);
+}
+
+.task-table-section.kanban-mode {
+  padding: 24px;
+  border: 1px solid #dbe3ff;
+  background:
+    radial-gradient(ellipse at 4% 0%, rgb(224 231 255 / 68%), transparent 34%),
+    linear-gradient(145deg, #fff 0%, #fbfcff 54%, #f5f7ff 100%);
+  box-shadow: 0 14px 36px rgb(49 46 129 / 9%);
 }
 
 .task-table-heading {
@@ -2766,6 +3086,11 @@ onBeforeUnmount(() => {
   color: #8792a5;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.kanban-hint {
+  color: #6269b2;
+  font-weight: 600;
 }
 
 .table-search {
@@ -2804,6 +3129,414 @@ onBeforeUnmount(() => {
 
 .table-search input::placeholder {
   color: #a0a9b8;
+}
+
+.task-view-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.view-switch {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid #e3e8f1;
+  border-radius: 10px;
+  background: #f7f8fc;
+}
+
+.view-switch-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+.view-switch-button.is-active {
+  background: #fff;
+  color: #4338ca;
+  box-shadow: 0 2px 7px rgb(49 46 129 / 17%);
+}
+
+.view-switch-button:focus-visible,
+.kanban-card-title:focus-visible,
+.kanban-card-status select:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
+}
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(255px, 1fr));
+  gap: 16px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e3e8f7;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(224 231 255 / 44%), transparent 55%),
+    #f0f3fb;
+  overflow-x: auto;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+.kanban-column {
+  display: flex;
+  min-height: 440px;
+  flex-direction: column;
+  padding: 13px;
+  border: 1px solid #e2e8f0;
+  border-top: 4px solid #94a3b8;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f2f5fa 100%);
+  box-shadow: 0 4px 12px rgb(31 41 55 / 5%);
+  transition: transform .18s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.kanban-column.por-fazer { border-top-color: #64748b; }
+.kanban-column.em-curso { border-top-color: #3b82f6; }
+.kanban-column.concluida { border-top-color: #16a36a; }
+.kanban-column.bloqueada { border-top-color: #e5484d; }
+
+.kanban-column-drag-over {
+  border-color: #818cf8;
+  background: linear-gradient(180deg, #eef2ff 0%, #e6eaff 100%);
+  box-shadow: inset 0 0 0 1px #818cf8, 0 8px 20px rgb(79 70 229 / 14%);
+  transform: translateY(-2px);
+}
+
+.kanban-column-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 13px;
+  margin: -1px -1px 12px;
+  border: 1px solid rgb(148 163 184 / 16%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 70%);
+}
+
+.kanban-column.por-fazer .kanban-column-heading {
+  border-color: #d7dee8;
+  background: linear-gradient(115deg, #f1f5f9, #fff);
+}
+
+.kanban-column.em-curso .kanban-column-heading {
+  border-color: #d4e3ff;
+  background: linear-gradient(115deg, #eaf2ff, #fff);
+}
+
+.kanban-column.concluida .kanban-column-heading {
+  border-color: #c8ecd9;
+  background: linear-gradient(115deg, #eaf8f0, #fff);
+}
+
+.kanban-column.bloqueada .kanban-column-heading {
+  border-color: #f5d1d1;
+  background: linear-gradient(115deg, #fff0ef, #fff);
+}
+
+.kanban-column-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.kanban-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.kanban-column.em-curso .kanban-status-dot { background: #3b82f6; }
+.kanban-column.concluida .kanban-status-dot { background: #22a36a; }
+.kanban-column.bloqueada .kanban-status-dot { background: #ef4444; }
+
+.kanban-column-count {
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e7ebf2;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.kanban-column.em-curso .kanban-column-count { background: #dbeafe; color: #1d4ed8; }
+.kanban-column.concluida .kanban-column-count { background: #dcfce7; color: #15803d; }
+.kanban-column.bloqueada .kanban-column-count { background: #fee2e2; color: #b91c1c; }
+
+.kanban-column-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kanban-add-task {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #78859a;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+
+.kanban-add-task:hover {
+  border-color: #dfe4ff;
+  background: #fff;
+  color: #4f46e5;
+}
+
+.kanban-add-task:focus-visible {
+  outline: 3px solid #c7d2fe;
+  outline-offset: 2px;
+}
+
+.kanban-card-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kanban-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e1e6ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 8px rgb(23 37 84 / 5%);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 9px 18px rgb(23 37 84 / 10%);
+}
+
+.kanban-card.is-draggable {
+  cursor: grab;
+}
+
+.kanban-card.is-draggable:active {
+  cursor: grabbing;
+}
+
+.kanban-card.is-being-dragged {
+  opacity: .48;
+  transform: rotate(1deg);
+}
+
+.kanban-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.kanban-category {
+  overflow: hidden;
+  color: #7c879b;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-topline .priority {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  font-size: 10px;
+}
+
+.kanban-card-title {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #26344c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.kanban-card-title:hover {
+  color: #4f46e5;
+}
+
+.kanban-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 7px 0 0;
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.kanban-delay-reason {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 8px 9px;
+  margin: 10px 0 0;
+  border: 1px solid #f5d6a5;
+  border-radius: 7px;
+  background: #fff9eb;
+  color: #825b22;
+  font-size: 10px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.kanban-delay-reason strong {
+  color: #754a12;
+}
+
+.kanban-card-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  margin-top: 12px;
+  color: #59677e;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-project span {
+  color: #7772d8;
+}
+
+.kanban-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #f0f2f6;
+}
+
+.kanban-card-due-date,
+.kanban-card-assignee {
+  overflow: hidden;
+  color: #68758a;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-due-date {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.kanban-card-due-date.has-no-due-date {
+  color: #9aa4b4;
+}
+
+.kanban-card-due-date.is-overdue,
+.overdue-text {
+  color: #b91c1c;
+  font-weight: 750;
+}
+
+.kanban-overdue-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.kanban-card-assignee {
+  text-align: right;
+}
+
+.kanban-card-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: #8a95a7;
+  font-size: 10px;
+}
+
+.kanban-card-status select {
+  min-width: 0;
+  max-width: 142px;
+  padding: 5px 22px 5px 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #526078;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.kanban-card-status select:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.kanban-column-empty {
+  padding: 25px 10px;
+  margin: auto 0;
+  color: #98a2b3;
+  font-size: 11px;
+  text-align: center;
 }
 
 .task-table-scroll {

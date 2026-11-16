@@ -153,7 +153,13 @@ const projetoEmEdicao = ref<string | null>(null)
 const equipasDisponiveis = ref<EquipaDisponivelAPI[]>([])
 const membrosCandidatos = ref<UtilizadorDisponivelAPI[]>([])
 const membrosSelecionados = ref<string[]>([])
-const tarefasIniciais = ref<Array<{ title: string; description: string }>>([])
+const tarefasIniciais = ref<Array<{
+  title: string
+  description: string
+  startDate: string
+  dueDate: string
+  delayReason: string
+}>>([])
 const aCarregarOpcoesCriacao = ref(false)
 const opcoesCriacaoCarregadas = ref(false)
 
@@ -465,7 +471,13 @@ async function carregarOpcoesCriacao() {
 }
 
 function adicionarTarefaInicial() {
-  tarefasIniciais.value.push({ title: '', description: '' })
+  tarefasIniciais.value.push({
+    title: '',
+    description: '',
+    startDate: '',
+    dueDate: '',
+    delayReason: '',
+  })
 }
 
 function removerTarefaInicial(index: number) {
@@ -539,6 +551,16 @@ async function guardarProjeto() {
     return
   }
 
+  if (
+    !modoEdicao.value &&
+    tarefasIniciais.value.some(
+      tarefa => tarefa.startDate && tarefa.dueDate && tarefa.startDate > tarefa.dueDate,
+    )
+  ) {
+    erro.value = 'A data de início de cada tarefa não pode ser posterior à data de fim.'
+    return
+  }
+
   aGuardar.value = true
 
   try {
@@ -577,6 +599,13 @@ async function guardarProjeto() {
             tasks: tarefasIniciais.value.map(tarefa => ({
               title: tarefa.title.trim(),
               description: tarefa.description.trim() || null,
+              start_date: tarefa.startDate
+                ? `${tarefa.startDate}T00:00:00`
+                : null,
+              due_date: tarefa.dueDate
+                ? `${tarefa.dueDate}T00:00:00`
+                : null,
+              delay_reason: tarefa.delayReason.trim() || null,
             })),
           },
         },
@@ -1306,6 +1335,34 @@ onBeforeUnmount(() => {
                     placeholder="Detalhes (opcional)"
                   />
                 </div>
+                <div class="form-field">
+                  <label :for="`initial-task-start-${index}`">Início previsto</label>
+                  <input
+                    :id="`initial-task-start-${index}`"
+                    v-model="tarefa.startDate"
+                    type="date"
+                    :max="tarefa.dueDate || undefined"
+                  />
+                </div>
+                <div class="form-field">
+                  <label :for="`initial-task-due-${index}`">Prazo final</label>
+                  <input
+                    :id="`initial-task-due-${index}`"
+                    v-model="tarefa.dueDate"
+                    type="date"
+                    :min="tarefa.startDate || undefined"
+                  />
+                </div>
+                <div class="form-field initial-task-reason">
+                  <label :for="`initial-task-reason-${index}`">Justificação de atraso (opcional)</label>
+                  <textarea
+                    :id="`initial-task-reason-${index}`"
+                    v-model="tarefa.delayReason"
+                    rows="2"
+                    maxlength="5000"
+                    placeholder="Motivo caso o prazo não seja cumprido"
+                  />
+                </div>
                 <button
                   type="button"
                   class="remove-initial-task action-tooltip"
@@ -1588,6 +1645,11 @@ onBeforeUnmount(() => {
 
         <div v-else class="projects-cards-grid" aria-label="Projetos em cards">
           <article v-for="projeto in projetosDaPagina" :key="projeto.id" class="project-view-card">
+            <NuxtLink
+              class="project-view-card-link"
+              :to="{ path: '/tasks', query: { project: projeto.id } }"
+              :aria-label="`Abrir tarefas do projeto ${projeto.name}`"
+            />
             <header class="project-view-card-header">
               <div class="project-view-card-heading">
                 <span class="project-view-card-initial" aria-hidden="true">
@@ -2541,7 +2603,7 @@ onBeforeUnmount(() => {
 
 .initial-task-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 34px;
   align-items: end;
   gap: 10px;
   padding: 12px;
@@ -2553,6 +2615,10 @@ onBeforeUnmount(() => {
 
 .initial-task-fields .form-field {
   min-width: 0;
+}
+
+.initial-task-fields .initial-task-reason {
+  grid-column: 1 / -1;
 }
 
 .remove-initial-task {
@@ -2721,6 +2787,7 @@ onBeforeUnmount(() => {
 }
 
 .project-view-card {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -2745,6 +2812,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.project-view-card-link {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.project-view-card-link:focus-visible {
+  outline: 3px solid #818cf8;
+  outline-offset: 3px;
 }
 
 .project-view-card-header {
@@ -2836,6 +2915,10 @@ onBeforeUnmount(() => {
 }
 
 .project-view-card-actions {
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+  align-items: flex-start;
   margin-top: auto;
 }
 
@@ -3082,6 +3165,10 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 34px;
   align-items: center;
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: 8px;
   padding: 0 9px;
@@ -3762,16 +3849,11 @@ onBeforeUnmount(() => {
   }
 
   .initial-task-fields {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .initial-task-fields .form-field:nth-child(2) {
-    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .remove-initial-task {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    grid-column: 1;
   }
 
   .inline-members-panel {

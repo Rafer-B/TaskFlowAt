@@ -28,7 +28,9 @@ interface TarefaAPI {
   progress: number
   assigned_to: string | null
   assignee_ids: string[]
+  start_date: string | null
   due_date: string | null
+  delay_reason: string | null
   completed_at: string | null
 }
 
@@ -71,7 +73,9 @@ interface Tarefa {
   priority: PrioridadeAPI
   status: EstadoTarefaAPI
   progress: number
+  startDate: string | null
   dueDate: string | null
+  delayReason: string | null
   completedAt: string | null
   saving: boolean
   updates: RegistoTrabalhoAPI[]
@@ -255,7 +259,9 @@ function converterTarefa(
     priority: tarefa.priority,
     status: tarefa.status,
     progress: tarefa.progress,
+    startDate: tarefa.start_date,
     dueDate: tarefa.due_date,
+    delayReason: tarefa.delay_reason,
     completedAt: tarefa.completed_at,
     saving: false,
     updates: [],
@@ -721,14 +727,20 @@ onBeforeUnmount(() => {
                 <span
                   class="due-date"
                   :class="classePrazo(tarefa)"
-                  :title="tarefa.dueDate ? `Prazo: ${formatarData(tarefa.dueDate)}` : undefined"
+                  :title="tarefa.dueDate
+                    ? `Período: ${tarefa.startDate ? `${formatarData(tarefa.startDate)} – ` : ''}${formatarData(tarefa.dueDate)}`
+                    : undefined"
                 >
-                  <span aria-hidden="true">◷</span>{{ formatarData(tarefa.dueDate) }}
+                  <span aria-hidden="true">◷</span>
+                  {{ tarefa.startDate ? `${formatarData(tarefa.startDate)} – ` : '' }}{{ formatarData(tarefa.dueDate) }}
                 </span>
                 <span v-if="tarefa.projectStatus === 'archived'" class="archived-label">
                   Projeto arquivado
                 </span>
               </div>
+              <p v-if="tarefa.delayReason" class="task-delay-reason">
+                <strong>Justificação do atraso:</strong> {{ tarefa.delayReason }}
+              </p>
               <div class="task-progress">
                 <div
                   class="task-progress-track"
@@ -1269,6 +1281,18 @@ onBeforeUnmount(() => {
   color: #75839a;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.task-main > .task-delay-reason {
+  padding: 8px 10px;
+  border: 1px solid #f5d6a5;
+  border-radius: 7px;
+  background: #fff9eb;
+  color: #825b22;
+}
+
+.task-delay-reason strong {
+  color: #754a12;
 }
 
 .task-progress {

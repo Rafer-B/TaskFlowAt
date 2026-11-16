@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_validator,
 )
 
 
@@ -33,6 +34,21 @@ TaskStatus = Literal[
     "completed",
     "blocked",
 ]
+
+
+def validar_periodo_tarefa(
+    start_date: datetime | None,
+    due_date: datetime | None,
+) -> None:
+    """Garante que a data de início prevista não sucede ao prazo final."""
+    if (
+        start_date is not None
+        and due_date is not None
+        and start_date.date() > due_date.date()
+    ):
+        raise ValueError(
+            "A data de início não pode ser posterior à data de fim."
+        )
 
 
 class TaskCreate(BaseModel):
@@ -60,7 +76,16 @@ class TaskCreate(BaseModel):
 
     assignee_ids: list[UUID] | None = None
 
+    start_date: datetime | None = None
+
     due_date: datetime | None = None
+
+    delay_reason: str | None = Field(default=None, max_length=5000)
+
+    @model_validator(mode="after")
+    def validar_periodo(self) -> "TaskCreate":
+        validar_periodo_tarefa(self.start_date, self.due_date)
+        return self
 
     @field_validator("title")
     @classmethod
@@ -86,6 +111,14 @@ class TaskCreate(BaseModel):
         valor = valor.strip()
 
         return valor or None
+
+    @field_validator("delay_reason")
+    @classmethod
+    def validar_motivo_atraso(cls, valor: str | None) -> str | None:
+        """Remove espaços periféricos e converte texto vazio em ausência."""
+        if valor is None:
+            return None
+        return valor.strip() or None
 
     @field_validator("assignee_ids")
     @classmethod
@@ -133,7 +166,16 @@ class TaskUpdate(BaseModel):
 
     assignee_ids: list[UUID] | None = None
 
+    start_date: datetime | None = None
+
     due_date: datetime | None = None
+
+    delay_reason: str | None = Field(default=None, max_length=5000)
+
+    @model_validator(mode="after")
+    def validar_periodo(self) -> "TaskUpdate":
+        validar_periodo_tarefa(self.start_date, self.due_date)
+        return self
 
     @field_validator("title")
     @classmethod
@@ -165,6 +207,14 @@ class TaskUpdate(BaseModel):
         valor = valor.strip()
 
         return valor or None
+
+    @field_validator("delay_reason")
+    @classmethod
+    def validar_motivo_atraso(cls, valor: str | None) -> str | None:
+        """Remove espaços periféricos e converte texto vazio em ausência."""
+        if valor is None:
+            return None
+        return valor.strip() or None
 
     @field_validator("assignee_ids")
     @classmethod
@@ -198,7 +248,9 @@ class TaskResponse(BaseModel):
     assigned_to: UUID | None
     assignee_ids: list[UUID]
     created_by: UUID
+    start_date: datetime | None
     due_date: datetime | None
+    delay_reason: str | None
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None

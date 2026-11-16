@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.task import validar_periodo_tarefa
+
 
 ProjectStatus = Literal["active", "completed", "archived"]
 
@@ -16,6 +18,14 @@ class ProjectTaskCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
+    start_date: datetime | None = None
+    due_date: datetime | None = None
+    delay_reason: str | None = Field(default=None, max_length=5000)
+
+    @model_validator(mode="after")
+    def validar_periodo(self) -> "ProjectTaskCreate":
+        validar_periodo_tarefa(self.start_date, self.due_date)
+        return self
 
     @field_validator("title")
     @classmethod
@@ -28,6 +38,13 @@ class ProjectTaskCreate(BaseModel):
     @field_validator("description")
     @classmethod
     def validar_descricao(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return None
+        return valor.strip() or None
+
+    @field_validator("delay_reason")
+    @classmethod
+    def validar_motivo_atraso(cls, valor: str | None) -> str | None:
         if valor is None:
             return None
         return valor.strip() or None
