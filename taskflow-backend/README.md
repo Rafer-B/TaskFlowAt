@@ -79,6 +79,7 @@ As migrações atuais acrescentam:
 | `20261113_0013` | Armazena hashes de códigos de email de uso único para 2FA. |
 | `20261113_0014` | Impede a reutilização de desafios de início de sessão com 2FA. |
 | `20261115_0015` | Regista separadamente a ativação dos métodos 2FA por email e autenticador. |
+| `20261116_0016` | Acrescenta datas previstas de início e justificação de atraso às tarefas. |
 
 A revisão `20261112_0010` atribui novos UUIDs aos registos existentes e atualiza
 as referências entre tabelas; os valores numéricos antigos não são mantidos.
@@ -319,6 +320,66 @@ Configure `TASKFLOW_CORS_ORIGINS` com as origens exatas do frontend. Em
 produção, use HTTPS e configure `TASKFLOW_COOKIE_DOMAIN` quando a aplicação e
 a API estiverem em subdomínios do mesmo domínio raiz. Nunca habilite origens
 CORS wildcard com credenciais.
+
+### Preparação e publicação em produção
+
+Configure as variáveis no gestor de segredos do serviço de alojamento; não
+reutilize o `.env` local nem grave credenciais no repositório. O backend em
+produção exige:
+
+```dotenv
+TASKFLOW_ENV=production
+DB_HOST=<endereco-do-postgresql>
+DB_PORT=5432
+DB_NAME=<base-de-dados-de-producao>
+DB_USER=<utilizador-da-aplicacao>
+DB_PASSWORD=<segredo-forte>
+TASKFLOW_JWT_SECRET=<segredo-aleatorio-com-pelo-menos-32-caracteres>
+TASKFLOW_CORS_ORIGINS=https://<dominio-do-frontend>
+TASKFLOW_COOKIE_SECURE=true
+TASKFLOW_COOKIE_SAMESITE=lax
+```
+
+Gere uma chave JWT única por ambiente e mantenha-a estável: também protege os
+segredos TOTP já guardados. Configure `RESEND_API_KEY` e `RESEND_FROM_EMAIL`
+em conjunto se for necessário ativar 2FA por email. Guarde uploads e anexos
+num volume persistente ou num armazenamento durável; não dependa do disco
+efémero do contentor. Defina `TASKFLOW_UPLOADS_DIR`,
+`TASKFLOW_TASK_ATTACHMENTS_DIR` e `TASKFLOW_BACKUP_DIR` para destinos
+persistentes e configure backups externos com retenção adequada.
+
+Antes de cada publicação, execute `pytest -q`, aplique `alembic upgrade head`
+numa cópia de teste e confirme o build e `npm run typecheck` do frontend. Para
+atualizar produção, faça primeiro um backup verificado, aplique as migrações
+compatíveis, publique backend e frontend e confirme `/health`, `/health/db`,
+login e os fluxos principais através do domínio HTTPS. Teste periodicamente a
+restauração do backup numa base de dados isolada. A CI valida testes, migrações,
+tipos e build, mas não publica automaticamente nem substitui testes no ambiente
+real.
+
+#### Publicação no Render
+
+O ficheiro `../render.yaml` define o frontend Nuxt, a API FastAPI, PostgreSQL,
+um disco persistente para uploads/anexos e a execução das migrações antes da
+publicação da API. Os serviços e a base de dados estão configurados para
+Frankfurt; os planos pagos indicados no blueprint são necessários para manter
+os serviços ativos e preservar os ficheiros. Confirme os preços atuais no
+Render antes de criar os recursos.
+
+No Render, crie um Blueprint a partir deste repositório e reveja os recursos
+propostos antes de os aplicar. Quando solicitado, defina `TASKFLOW_JWT_SECRET`
+com um segredo aleatório de pelo menos 32 caracteres, `TASKFLOW_CORS_ORIGINS`
+com a origem HTTPS exata do frontend e `NUXT_PUBLIC_API_BASE` com a URL HTTPS
+pública da API. Depois de os domínios serem atribuídos, confirme estes dois
+últimos valores e atualize-os se usar domínios personalizados. Configure
+`RESEND_API_KEY` e `RESEND_FROM_EMAIL` no serviço da API apenas se ativar o 2FA
+por email.
+
+Antes de apontar tráfego real, confirme que `/health/db` responde com sucesso,
+que as migrações terminaram, e que login, cookies, uploads e anexos funcionam
+nos domínios HTTPS finais. Configure backups da base de dados e dos ficheiros
+fora do disco do serviço; um disco persistente não substitui uma cópia de
+segurança independente.
 
 ## Cópias de segurança
 

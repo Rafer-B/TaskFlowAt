@@ -3,6 +3,65 @@ import pytest
 from app.settings import load_settings
 
 
+def configurar_ambiente_producao(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TASKFLOW_ENV", "production")
+    monkeypatch.setenv("DB_HOST", "db.example.com")
+    monkeypatch.setenv("DB_PORT", "5432")
+    monkeypatch.setenv("DB_NAME", "taskflow_production")
+    monkeypatch.setenv("DB_USER", "taskflow")
+    monkeypatch.setenv("DB_PASSWORD", "production-test-password")
+    monkeypatch.setenv(
+        "TASKFLOW_JWT_SECRET",
+        "production-test-secret-with-at-least-thirty-two-characters",
+    )
+    monkeypatch.setenv(
+        "TASKFLOW_CORS_ORIGINS",
+        "https://app.example.com,https://admin.example.com",
+    )
+    monkeypatch.delenv("TASKFLOW_COOKIE_SECURE", raising=False)
+    monkeypatch.setenv("TASKFLOW_COOKIE_SAMESITE", "lax")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("RESEND_FROM_EMAIL", raising=False)
+
+
+def test_production_settings_require_long_jwt_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configurar_ambiente_producao(monkeypatch)
+    monkeypatch.setenv("TASKFLOW_JWT_SECRET", "too-short")
+
+    with pytest.raises(RuntimeError, match="pelo menos 32 caracteres"):
+        load_settings()
+
+
+def test_production_settings_require_https_cors_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configurar_ambiente_producao(monkeypatch)
+    monkeypatch.setenv(
+        "TASKFLOW_CORS_ORIGINS",
+        "https://app.example.com,http://localhost:3000",
+    )
+
+    with pytest.raises(RuntimeError, match="devem usar HTTPS"):
+        load_settings()
+
+
+def test_production_settings_enable_secure_cookies_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configurar_ambiente_producao(monkeypatch)
+
+    configured_settings = load_settings()
+
+    assert configured_settings.cookie_secure is True
+    assert configured_settings.cookie_samesite == "lax"
+    assert configured_settings.cors_origins == (
+        "https://app.example.com",
+        "https://admin.example.com",
+    )
+
+
 @pytest.mark.parametrize(
     ("api_key", "from_email"),
     [

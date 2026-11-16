@@ -1,0 +1,73 @@
+databases:
+  - name: taskflow-db
+    databaseName: taskflow
+    user: taskflow
+    plan: basic-256mb
+    region: frankfurt
+
+services:
+  - type: web
+    name: taskflow-api
+    runtime: python
+    plan: starter
+    region: frankfurt
+    rootDir: taskflow-backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/db
+    disk:
+      name: taskflow-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: TASKFLOW_ENV
+        value: production
+      - key: DB_HOST
+        fromDatabase:
+          name: taskflow-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: taskflow-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: taskflow-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: taskflow-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: taskflow-db
+          property: password
+      - key: TASKFLOW_JWT_SECRET
+        sync: false
+      - key: TASKFLOW_CORS_ORIGINS
+        sync: false
+      - key: TASKFLOW_COOKIE_SECURE
+        value: "true"
+      - key: TASKFLOW_COOKIE_SAMESITE
+        value: lax
+      - key: TASKFLOW_UPLOADS_DIR
+        value: /var/data/uploads
+      - key: TASKFLOW_TASK_ATTACHMENTS_DIR
+        value: /var/data/task_attachments
+      - key: TASKFLOW_BACKUP_DIR
+        value: /var/data/backups
+
+  - type: web
+    name: taskflow-frontend
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: taskflow-frontend
+    buildCommand: npm ci && npm run build
+    startCommand: node .output/server/index.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NUXT_PUBLIC_API_BASE
+        sync: false
