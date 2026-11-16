@@ -7,6 +7,7 @@ import { fetchAllPages } from '~/composables/usePaginatedApi'
 // Gere tarefas, sincronizando filtros, projetos, papéis e operações com a API.
 definePageMeta({
   layout: 'admin',
+  key: 'tasks-page',
 })
 
 // --------------------------------------------------
@@ -146,6 +147,8 @@ interface FormularioTarefa {
 const api = useNuxtApp().$api
 const auth = useAuth()
 const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/tasks')
 
 // --------------------------------------------------
 // DADOS
@@ -432,6 +435,7 @@ async function abrirFormularioCriar(estadoInicial: EstadoTarefa = 'Por fazer') {
 
   modoFormulario.value = 'criar'
   mostrarFormulario.value = true
+  if (route.path !== '/tasks/create') await pageReturn.openPage('/tasks/create')
 
   if (novaTarefa.value.projectId) {
     await carregarMembrosProjeto(novaTarefa.value.projectId)
@@ -446,6 +450,7 @@ function fecharFormulario() {
   mostrarFormulario.value = false
   erro.value = ''
   limparFormulario()
+  if (route.path !== '/tasks') void pageReturn.closePage('/tasks')
 }
 
 // --------------------------------------------------
@@ -755,8 +760,53 @@ async function carregarDados() {
 async function consultarTarefa(tarefa: Tarefa) {
   tarefaSelecionada.value = tarefa
   mostrarDetalhes.value = true
+  if (route.path !== `/tasks/${tarefa.id}`) {
+    await pageReturn.openPage(`/tasks/${tarefa.id}`)
+  }
   await scrollToPanel(detalhesRef)
 }
+
+watch(
+  [() => route.path, tarefas],
+  ([path]) => {
+    if (path === '/tasks') {
+      if (mostrarFormulario.value) {
+        mostrarFormulario.value = false
+        limparFormulario()
+      }
+      if (mostrarDetalhes.value) {
+        mostrarDetalhes.value = false
+        tarefaSelecionada.value = null
+      }
+      return
+    }
+
+    if (path === '/tasks/create') {
+      if (!mostrarFormulario.value) void abrirFormularioCriar()
+      return
+    }
+
+    const correspondencia = path.match(/^\/tasks\/([^/]+)(?:\/(edit))?$/)
+    if (!correspondencia) return
+
+    const tarefa = tarefas.value.find((item) => item.id === correspondencia[1])
+    if (!tarefa) return
+
+    if (correspondencia[2]) {
+      if (tarefaEmEdicao.value !== tarefa.id || !mostrarFormulario.value) {
+        void editarTarefa(tarefa)
+      }
+      return
+    }
+
+    if (tarefaSelecionada.value?.id !== tarefa.id || !mostrarDetalhes.value) {
+      tarefaSelecionada.value = tarefa
+      mostrarFormulario.value = false
+      mostrarDetalhes.value = true
+    }
+  },
+  { immediate: true },
+)
 
 watch(
   [() => route.fullPath, tarefas],
@@ -775,6 +825,7 @@ function fecharDetalhes() {
   mostrarDetalhes.value = false
   tarefaSelecionada.value = null
   tarefaPendenteEliminacao.value = null
+  if (route.path !== '/tasks') void pageReturn.closePage('/tasks')
 }
 
 async function editarTarefa(
@@ -783,10 +834,19 @@ async function editarTarefa(
 ) {
   erro.value = ''
   sucesso.value = ''
-  fecharDetalhes()
+  mostrarDetalhes.value = false
+  tarefaSelecionada.value = null
+  tarefaPendenteEliminacao.value = null
+
+  if (!podeEditarTarefasDoProjeto(tarefa.projectId)) {
+    erro.value = 'Não tens permissões para editar tarefas deste projeto.'
+    if (route.path.endsWith('/edit')) void pageReturn.closePage('/tasks')
+    return
+  }
 
   if (tarefa.projectStatus === 'archived') {
     erro.value = 'Não é possível editar tarefas de projetos arquivados.'
+    if (route.path.endsWith('/edit')) void pageReturn.closePage('/tasks')
     return
   }
 
@@ -807,6 +867,9 @@ async function editarTarefa(
   }
 
   mostrarFormulario.value = true
+  if (route.path !== `/tasks/${tarefa.id}/edit`) {
+    await pageReturn.openPage(`/tasks/${tarefa.id}/edit`)
+  }
 
   await carregarMembrosProjeto(tarefa.projectId)
   if (focarResponsavel && podeAtribuirTarefa(tarefa.projectId)) {
@@ -974,6 +1037,7 @@ async function guardarTarefa() {
 
     mostrarFormulario.value = false
     limparFormulario()
+    if (route.path !== '/tasks') await pageReturn.closePage('/tasks')
 
   } catch (error: any) {
     console.error('Erro ao guardar tarefa:', error)
@@ -1277,7 +1341,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" :class="{ 'route-action-mode': rotaComAcao }">
 
     <!-- CABEÇALHO -->
     <header class="page-header">
@@ -1495,13 +1559,10 @@ onBeforeUnmount(() => {
                 <p v-else-if="!membrosAtivos.length" class="assignee-empty">
                   Este projeto ainda não tem membros ativos elegíveis.
                   <NuxtLink
-                    :to="{
-                      path: '/projects',
-                      query: {
-                        manageMembers: novaTarefa.projectId,
-                        returnTask: tarefaEmEdicao ?? undefined,
-                      },
-                    }"
+                    :to="pageReturn.pageLink(
+                      `/projects/${novaTarefa.projectId}/members`,
+                      { returnTask: tarefaEmEdicao ?? undefined },
+                    )"
                   >
                     Gerir membros do projeto
                   </NuxtLink>
@@ -2238,6 +2299,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.page.route-action-mode > :not(.form-card):not(.inline-details-panel) {
+  display: none;
+}
+
+.page.route-action-mode > .form-card,
+.page.route-action-mode > .inline-details-panel {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
 .page {
   width: 100%;
   max-width: 1500px;

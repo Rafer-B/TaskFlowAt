@@ -48,6 +48,12 @@ const props = withDefaults(defineProps<{
   error: '',
 })
 const riscoSelecionado = ref<Risco | null>(null)
+const pageReturn = usePageReturn()
+const router = useRouter()
+
+function destinoComRegresso(path: string, query: Record<string, string> = {}): string {
+  return router.resolve(pageReturn.pageLink(path, query)).fullPath
+}
 
 const todayISO = computed(() => toISODay(new Date()))
 const activeProjects = computed(() =>
@@ -111,7 +117,7 @@ const risks = computed<Risco[]>(() => {
         description: isOverdue
           ? `Bloqueada e atrasada há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}.${responsibleLabel}`
           : `Tarefa bloqueada.${responsibleLabel}`,
-        destination: `/tasks?taskId=${task.id}`,
+        destination: destinoComRegresso(`/tasks/${task.id}`),
       })
     } else if (isOverdue) {
       const responsibleLabel = task.responsible
@@ -125,7 +131,7 @@ const risks = computed<Risco[]>(() => {
         title: task.title,
         project: project.name,
         description: `Prazo ultrapassado há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'}.${responsibleLabel}`,
-        destination: `/tasks?taskId=${task.id}`,
+        destination: destinoComRegresso(`/tasks/${task.id}`),
       })
     }
   }
@@ -144,7 +150,7 @@ const risks = computed<Risco[]>(() => {
       title: project.name,
       project: project.name,
       description: `Sem atividade registada há ${inactiveDays} dias.`,
-      destination: `/tasks?projectId=${project.id}`,
+      destination: destinoComRegresso('/tasks', { projectId: project.id }),
     })
   }
 

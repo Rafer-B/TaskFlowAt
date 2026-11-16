@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Área pessoal: mostra tarefas atribuídas e acompanha os registos de trabalho por tarefa.
 definePageMeta({
   layout: 'admin',
+  key: 'my-work-page',
 })
 
 type EstadoTarefaAPI = 'to_do' | 'in_progress' | 'completed' | 'blocked'
@@ -92,6 +93,9 @@ interface Tarefa {
 
 const api = useNuxtApp().$api
 const auth = useAuth()
+const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/my-work')
 
 const projetos = ref<ProjetoAPI[]>([])
 const tarefas = ref<Tarefa[]>([])
@@ -302,9 +306,19 @@ async function carregarTarefas(silenciosa = false): Promise<void> {
       projetos.value.map((projeto) => [projeto.id, projeto]),
     )
 
-    tarefas.value = tarefasAPI.map((tarefa) =>
-      converterTarefa(tarefa, projetosPorId),
-    )
+    const tarefasAnteriores = new Map(tarefas.value.map(tarefa => [tarefa.id, tarefa]))
+    tarefas.value = tarefasAPI.map((tarefaAPI) => {
+      const tarefa = converterTarefa(tarefaAPI, projetosPorId)
+      const anterior = tarefasAnteriores.get(tarefa.id)
+      if (!anterior) return tarefa
+      return {
+        ...tarefa,
+        workPanelOpen: anterior.workPanelOpen,
+        updateNote: anterior.updateNote,
+        updateProgress: anterior.updateProgress,
+        selectedFiles: anterior.selectedFiles,
+      }
+    })
   } catch (error) {
     if (pedidoAtual !== pedidoTarefas) return
 
@@ -407,16 +421,48 @@ async function concluirTarefa(tarefa: Tarefa): Promise<void> {
 }
 
 async function abrirRegisto(tarefa: Tarefa): Promise<void> {
-  tarefa.workPanelOpen = !tarefa.workPanelOpen
-  if (!tarefa.workPanelOpen) return
+  if (tarefa.workPanelOpen) {
+    tarefa.workPanelOpen = false
+    if (route.path !== '/my-work') await pageReturn.closePage('/my-work')
+    return
+  }
 
+  tarefas.value.forEach(item => { item.workPanelOpen = false })
+  tarefa.workPanelOpen = true
   tarefa.updateProgress = tarefa.progress
   erro.value = ''
+
+  if (route.path !== `/my-work/tasks/${tarefa.id}/update`) {
+    await pageReturn.openPage(`/my-work/tasks/${tarefa.id}/update`)
+  }
 
   if (!tarefa.updatesLoaded || !tarefa.activityLoaded) {
     await carregarRegistos(tarefa)
   }
 }
+
+watch(
+  [() => route.path, tarefas],
+  ([path]) => {
+    if (path === '/my-work') {
+      tarefas.value.forEach(tarefa => { tarefa.workPanelOpen = false })
+      return
+    }
+
+    const correspondencia = path.match(/^\/my-work\/tasks\/([^/]+)\/update$/)
+    if (!correspondencia) return
+    const tarefa = tarefas.value.find(item => item.id === correspondencia[1])
+    if (!tarefa || tarefa.workPanelOpen) return
+
+    tarefas.value.forEach(item => { item.workPanelOpen = false })
+    tarefa.workPanelOpen = true
+    tarefa.updateProgress = tarefa.progress
+    if (!tarefa.updatesLoaded || !tarefa.activityLoaded) {
+      void carregarRegistos(tarefa)
+    }
+  },
+  { immediate: true },
+)
 
 async function carregarRegistos(tarefa: Tarefa, force = false): Promise<void> {
   tarefa.loadingUpdates = true
@@ -608,7 +654,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="member-area">
+  <section class="member-area" :class="{ 'route-action-mode': rotaComAcao }">
     <DashboardFrontOfficeOverview />
 
     <div v-if="erro" class="notice notice-error" role="alert">
@@ -659,6 +705,9 @@ onBeforeUnmount(() => {
     </section>
 
     <section id="my-tasks" class="tasks-panel">
+      <NuxtLink v-if="rotaComAcao" class="route-back-link" :to="pageReturn.returnPath('/my-work')">
+        ← Voltar
+      </NuxtLink>
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">O SEU DIA</span>
@@ -705,7 +754,12 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="task-list">
-        <div v-for="tarefa in tarefasVisiveis" :key="tarefa.id" class="task-entry">
+        <div
+          v-for="tarefa in tarefasVisiveis"
+          :key="tarefa.id"
+          class="task-entry"
+          :class="{ 'route-selected-task': rotaComAcao && tarefa.workPanelOpen }"
+        >
           <article class="task-row">
             <span
               class="task-status-mark"
@@ -971,6 +1025,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.member-area.route-action-mode > :not(.tasks-panel):not(.notice) { display: none; }
+.member-area.route-action-mode > .tasks-panel > :not(.task-list):not(.route-back-link) { display: none; }
+.member-area.route-action-mode .task-list > .task-entry:not(.route-selected-task) { display: none; }
+.route-back-link { display: inline-flex; margin-bottom: 14px; color: #5263cc; font-size: 12px; font-weight: 700; text-decoration: none; }
 .member-area {
   width: min(1320px, 100%);
   margin: 0 auto;

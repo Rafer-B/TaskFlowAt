@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 
-definePageMeta({ layout: 'admin' })
+definePageMeta({ layout: 'admin', key: 'teams-page' })
 
 // Página de equipas: associa pessoas e projetos respeitando capacidades devolvidas pela API.
 interface ProjetoAPI {
@@ -42,6 +42,9 @@ interface MembroEquipa {
 
 const api = useNuxtApp().$api
 const auth = useAuth()
+const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/teams')
 const equipas = ref<EquipaAPI[]>([])
 const projetos = ref<ProjetoAPI[]>([])
 const membros = ref<MembroEquipa[]>([])
@@ -123,6 +126,7 @@ async function abrirCriacao(): Promise<void> {
   formulario.value = { name: '', description: '' }
   erro.value = ''
   formularioVisivel.value = true
+  if (route.path !== '/teams/create') await pageReturn.openPage('/teams/create')
   await scrollToPanel(formularioRef)
 }
 
@@ -146,7 +150,7 @@ async function guardarEquipa(): Promise<void> {
     })
     equipas.value.push(criada)
     formularioVisivel.value = false
-    await abrirDetalhe(criada)
+    await abrirDetalhe(criada, pageReturn.returnPath('/teams'))
     sucesso.value = 'Equipa criada com sucesso.'
   } catch (error) {
     console.error('Erro ao criar equipa:', error)
@@ -156,7 +160,7 @@ async function guardarEquipa(): Promise<void> {
   }
 }
 
-async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
+async function abrirDetalhe(equipa: EquipaAPI, returnTo?: string): Promise<void> {
   equipaSelecionada.value = equipa
   membros.value = []
   utilizadoresDisponiveis.value = []
@@ -167,6 +171,9 @@ async function abrirDetalhe(equipa: EquipaAPI): Promise<void> {
   pesquisarUtilizadores.value = ''
   projetoSelecionado.value = ''
   detalheVisivel.value = true
+  if (route.path !== `/teams/${equipa.id}` && route.path !== `/teams/${equipa.id}/edit`) {
+    await pageReturn.openPage(`/teams/${equipa.id}`, {}, returnTo)
+  }
   confirmarEliminacaoEquipa.value = false
   membroPendenteRemocao.value = null
   await scrollToPanel(detalheRef)
@@ -218,6 +225,9 @@ async function guardarEdicao(): Promise<void> {
     atualizarEquipaLocal(atualizada)
     editarEquipa.value = false
     sucesso.value = 'Dados da equipa atualizados.'
+    if (route.path.endsWith('/edit')) {
+      await pageReturn.closePage(`/teams/${atualizada.id}`)
+    }
   } catch (error) {
     console.error('Erro ao atualizar equipa:', error)
     erroDetalhe.value = mensagemErro(error)
@@ -247,6 +257,7 @@ async function eliminarEquipa(): Promise<void> {
     equipaSelecionada.value = null
     confirmarEliminacaoEquipa.value = false
     sucesso.value = 'Equipa eliminada. Os projetos foram mantidos.'
+    if (route.path !== '/teams') await pageReturn.closePage('/teams')
   } catch (error) {
     console.error('Erro ao eliminar equipa:', error)
     erroDetalhe.value = mensagemErro(error)
@@ -370,6 +381,27 @@ function fecharDetalhe(): void {
   confirmarEliminacaoEquipa.value = false
   membroPendenteRemocao.value = null
   erroDetalhe.value = ''
+  if (route.path !== '/teams') void pageReturn.closePage('/teams')
+}
+
+function fecharFormulario(): void {
+  if (aGuardar.value) return
+  formularioVisivel.value = false
+  formulario.value = { name: '', description: '' }
+  if (route.path !== '/teams') void pageReturn.closePage('/teams')
+}
+
+async function abrirEdicaoEquipa(): Promise<void> {
+  if (!equipaSelecionada.value) return
+  editarEquipa.value = true
+  await pageReturn.openPage(`/teams/${equipaSelecionada.value.id}/edit`)
+}
+
+function cancelarEdicaoEquipa(): void {
+  editarEquipa.value = false
+  if (equipaSelecionada.value && route.path.endsWith('/edit')) {
+    void pageReturn.closePage(`/teams/${equipaSelecionada.value.id}`)
+  }
 }
 
 function mensagemErro(error: unknown): string {
@@ -382,18 +414,45 @@ function mensagemErro(error: unknown): string {
   return 'Não foi possível concluir a operação. Verifique a ligação à API e tente novamente.'
 }
 
+watch(
+  [() => route.path, equipas],
+  ([path]) => {
+    if (path === '/teams') {
+      formularioVisivel.value = false
+      detalheVisivel.value = false
+      equipaSelecionada.value = null
+      editarEquipa.value = false
+      return
+    }
+
+    if (path === '/teams/create') {
+      if (!formularioVisivel.value) void abrirCriacao()
+      return
+    }
+    const correspondencia = path.match(/^\/teams\/([^/]+)(?:\/edit)?$/)
+    if (!correspondencia) return
+    const equipa = equipas.value.find(item => item.id === correspondencia[1])
+    if (!equipa) return
+    if (equipaSelecionada.value?.id !== equipa.id || !detalheVisivel.value) {
+      void abrirDetalhe(equipa)
+    }
+    if (path.endsWith('/edit')) editarEquipa.value = true
+  },
+  { immediate: true },
+)
+
 onMounted(carregarDados)
 </script>
 
 <template>
-  <section class="teams-page">
+  <section class="teams-page" :class="{ 'route-action-mode': rotaComAcao }">
     <header class="page-heading">
       <div>
         <span class="eyebrow">ESPAÇO DE TRABALHO</span>
         <h1>Equipas</h1>
         <p>Organize pessoas e associe projetos a equipas de trabalho.</p>
       </div>
-      <button v-if="podeCriarEquipa" class="primary-button" type="button" aria-label="Criar equipa" @click="abrirCriacao">
+      <button v-if="podeCriarEquipa && !rotaComAcao" class="primary-button" type="button" aria-label="Criar equipa" @click="abrirCriacao">
         <ActionIcon name="add" />
         Criar equipa
       </button>
@@ -451,7 +510,7 @@ onMounted(carregarDados)
     <section v-if="formularioVisivel" ref="formularioRef" class="team-inline-panel create-panel" aria-labelledby="create-team-title">
         <header class="panel-heading">
           <div><span class="eyebrow">NOVA EQUIPA</span><h2 id="create-team-title">Criar equipa</h2></div>
-          <button type="button" class="action-tooltip" aria-label="Fechar" :disabled="aGuardar" @click="formularioVisivel = false">
+          <button type="button" class="action-tooltip" aria-label="Fechar" :disabled="aGuardar" @click="fecharFormulario">
             <ActionIcon name="close" /> Fechar
           </button>
         </header>
@@ -460,7 +519,7 @@ onMounted(carregarDados)
           <label>Descrição<textarea v-model="formulario.description" rows="3" maxlength="5000" placeholder="Objetivos e área de atuação"></textarea></label>
           <p v-if="erro" class="form-error" role="alert">{{ erro }}</p>
           <footer class="panel-actions">
-            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" :disabled="aGuardar" @click="formularioVisivel = false">
+            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" :disabled="aGuardar" @click="fecharFormulario">
               <ActionIcon name="close" /> Cancelar
             </button>
             <button class="primary-button" type="submit" :aria-label="aGuardar ? 'A criar equipa' : 'Criar equipa'" :disabled="aGuardar">
@@ -488,7 +547,7 @@ onMounted(carregarDados)
           <label>Nome da equipa<input v-model="equipaSelecionada.name" maxlength="255" required></label>
           <label>Descrição<textarea v-model="equipaSelecionada.description" rows="3" maxlength="5000"></textarea></label>
           <div class="inline-actions">
-            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" @click="editarEquipa = false">
+            <button class="secondary-button action-tooltip" type="button" aria-label="Cancelar" @click="cancelarEdicaoEquipa">
               <ActionIcon name="close" /> Cancelar
             </button>
             <button class="primary-button action-tooltip" type="submit" :aria-label="aGuardar ? 'A guardar' : 'Guardar alterações'" :disabled="aGuardar">
@@ -498,7 +557,7 @@ onMounted(carregarDados)
         </form>
         <div v-else class="team-summary">
           <p>{{ equipaSelecionada.description || 'Sem descrição.' }}</p>
-          <button v-if="equipaSelecionada.can_manage" class="text-button action-tooltip" type="button" aria-label="Editar dados da equipa" @click="editarEquipa = true">
+          <button v-if="equipaSelecionada.can_manage" class="text-button action-tooltip" type="button" aria-label="Editar dados da equipa" @click="abrirEdicaoEquipa">
             <ActionIcon name="edit" /> Editar dados da equipa
           </button>
         </div>
@@ -623,6 +682,8 @@ onMounted(carregarDados)
 </template>
 
 <style scoped>
+.teams-page.route-action-mode > :not(.team-inline-panel) { display: none; }
+.teams-page.route-action-mode > .team-inline-panel { width: 100%; max-width: 100%; margin: 0; }
 .teams-page { display: grid; gap: 20px; color: #172b4d; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .eyebrow { color: #8d99ad; font-size: 9px; font-weight: 800; letter-spacing: .12em; }

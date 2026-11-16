@@ -77,6 +77,18 @@ Na lista de **Utilizadores**, selecionar um nome abre a página `/users/:id`,
 com o perfil, as tarefas atribuídas e as equipas desse utilizador. O endereço
 direto do perfil também pode ser aberto ou partilhado por administradores.
 
+### Páginas de criação, detalhes e edição
+
+Os formulários e detalhes principais abrem agora em rotas próprias, em vez de
+painéis na listagem: tarefas usam `/tasks/create`, `/tasks/:id` e
+`/tasks/:id/edit`; projetos usam `/projects/create`, `/projects/:id`,
+`/projects/:id/edit` e `/projects/:id/members`; equipas usam `/teams/create`,
+`/teams/:id` e `/teams/:id/edit`. Também existem rotas dedicadas para criar
+utilizadores, editar perfis, criar/editar eventos, registar trabalho numa
+tarefa e editar o perfil ou a palavra-passe nas definições. Os botões de
+regresso e o histórico do navegador mantêm a navegação entre estas páginas e
+as respetivas listas.
+
 No código, `carregarArea` obtém membros e projetos, `carregarTarefas` pede as
 tarefas do utilizador autenticado e `alterarEstado` atualiza o estado via
 `PATCH`. As conversões e os cálculos de resumo estão na própria página para

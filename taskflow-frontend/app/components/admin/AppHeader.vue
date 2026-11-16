@@ -9,6 +9,7 @@ import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 // Junta pesquisa, alertas, navegação e fotografia do utilizador autenticado.
 const route = useRoute()
 const router = useRouter()
+const pageReturn = usePageReturn()
 const auth = useAuth()
 const dashboard = useDashboardData(new Date())
 const dashboardCarregando = dashboard.carregando
@@ -45,6 +46,10 @@ const idsNotificacoesLidas = ref<Set<string>>(new Set())
 const estadoLeituraCarregado = ref(false)
 const hojeISO = computed(() => toISODay(new Date()))
 
+function destinoComRegresso(path: string, query: Record<string, string> = {}): string {
+  return router.resolve(pageReturn.pageLink(path, query)).fullPath
+}
+
 interface ResultadoPesquisa {
   id: string
   title: string
@@ -80,7 +85,7 @@ const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
         title: task.title,
         subtitle: `${task.project} · ${task.responsible}`,
         kind: 'Tarefa',
-        to: `/tasks?taskId=${task.id}`,
+        to: destinoComRegresso(`/tasks/${task.id}`),
       })
     }
   }
@@ -91,7 +96,7 @@ const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
         title: project.name,
         subtitle: `Projeto · ${project.status}`,
         kind: 'Projeto',
-        to: `/projects?search=${encodeURIComponent(searchQuery.value.trim())}`,
+        to: destinoComRegresso(`/projects/${project.id}`),
       })
     }
   }
@@ -105,7 +110,7 @@ const resultadosPesquisa = computed<ResultadoPesquisa[]>(() => {
         title: user.name,
         subtitle: user.email,
         kind: 'Utilizador',
-        to: `/users?userId=${user.id}`,
+        to: destinoComRegresso(`/users/${user.id}`),
       })
     }
   }
@@ -134,7 +139,7 @@ const notificacoesLocais = computed<Notificacao[]>(() => {
         title: task.title,
         description: `Tarefa bloqueada · ${task.project}`,
         kind: 'Bloqueio',
-        to: `/tasks?taskId=${task.id}`,
+        to: destinoComRegresso(`/tasks/${task.id}`),
       })
     } else if (overdueDays > 0) {
       items.push({
@@ -142,7 +147,7 @@ const notificacoesLocais = computed<Notificacao[]>(() => {
         title: task.title,
         description: `Prazo ultrapassado há ${overdueDays} ${overdueDays === 1 ? 'dia' : 'dias'} · ${task.project}`,
         kind: 'Atraso',
-        to: `/tasks?taskId=${task.id}`,
+        to: destinoComRegresso(`/tasks/${task.id}`),
       })
     }
   }
@@ -173,7 +178,7 @@ const notificacoesLocais = computed<Notificacao[]>(() => {
       title: project.name,
       description: `Sem atividade há ${inactiveDays} dias`,
       kind: 'Inatividade',
-      to: `/projects?search=${encodeURIComponent(project.name)}`,
+      to: destinoComRegresso('/projects', { search: project.name }),
     })
   }
 

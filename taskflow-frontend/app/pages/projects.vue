@@ -5,7 +5,7 @@ import { scrollToPanel } from '~/composables/usePanelScroll'
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Centraliza catálogo, estado e associações; as capacidades do papel controlam ações disponíveis.
-definePageMeta({ layout: 'admin' })
+definePageMeta({ layout: 'admin', key: 'projects-page' })
 
 interface ProjetoAPI {
   id: string
@@ -86,6 +86,8 @@ const apiBase = String(config.public.apiBase).replace(/\/$/, '')
 const api = useNuxtApp().$api
 const auth = useAuth()
 const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/projects')
 
 // Dados dos projetos
 const projetos = ref<Projeto[]>([])
@@ -216,6 +218,49 @@ watch(
 
     const projeto = projetos.value.find(item => item.id === projectId)
     if (projeto) void abrirMembros(projeto)
+  },
+  { immediate: true },
+)
+
+const projetoNaRota = computed(() => {
+  const correspondencia = route.path.match(/^\/projects\/([^/]+)(?:\/(edit|members))?$/)
+  return correspondencia
+    ? projetos.value.find(projeto => projeto.id === correspondencia[1]) ?? null
+    : null
+})
+
+watch(
+  [() => route.path, projetos],
+  ([path]) => {
+    if (path === '/projects') {
+      if (mostrarFormulario.value) limparFormulario()
+      if (mostrarPainelMembros.value) {
+        mostrarPainelMembros.value = false
+        projetoMembros.value = null
+      }
+      return
+    }
+
+    if (path === '/projects/create') {
+      if (!mostrarFormulario.value) void abrirCriacao()
+      return
+    }
+
+    const correspondencia = path.match(/^\/projects\/([^/]+)(?:\/(edit|members))?$/)
+    if (!correspondencia) return
+
+    const projeto = projetos.value.find(item => item.id === correspondencia[1])
+    if (!projeto) return
+
+    if (correspondencia[2] === 'edit') {
+      if (projetoEmEdicao.value !== projeto.id || !mostrarFormulario.value) {
+        void abrirEdicao(projeto)
+      }
+    } else if (correspondencia[2] === 'members') {
+      if (projetoMembros.value?.id !== projeto.id || !mostrarPainelMembros.value) {
+        void abrirMembros(projeto)
+      }
+    }
   },
   { immediate: true },
 )
@@ -463,6 +508,7 @@ async function abrirCriacao() {
   }
 
   mostrarFormulario.value = true
+  if (route.path !== '/projects/create') await pageReturn.openPage('/projects/create')
   await scrollToPanel(formularioRef)
   await carregarOpcoesCriacao()
 }
@@ -515,6 +561,9 @@ async function abrirEdicao(projeto: Projeto) {
   }
 
   mostrarFormulario.value = true
+  if (route.path !== `/projects/${projeto.id}/edit`) {
+    await pageReturn.openPage(`/projects/${projeto.id}/edit`)
+  }
   await scrollToPanel(formularioRef)
 }
 
@@ -537,6 +586,7 @@ function fecharFormulario() {
   if (aGuardar.value || aCarregarOpcoesCriacao.value) return
 
   limparFormulario()
+  if (route.path !== '/projects') void pageReturn.closePage('/projects')
 }
 
 async function guardarProjeto() {
@@ -638,6 +688,7 @@ async function guardarProjeto() {
     }
 
     limparFormulario()
+    if (route.path !== '/projects') await pageReturn.closePage('/projects')
   } catch (error) {
     console.error('Erro ao guardar projeto:', error)
     erro.value = mensagemErroMembro(error)
@@ -782,6 +833,12 @@ async function eliminarProjeto(projeto: Projeto) {
 async function abrirMembros(projeto: Projeto) {
   projetoMembros.value = projeto
   mostrarPainelMembros.value = true
+  if (route.path !== `/projects/${projeto.id}/members`) {
+    await pageReturn.openPage(
+      `/projects/${projeto.id}/members`,
+      tarefaParaRegressar.value ? { returnTask: tarefaParaRegressar.value } : {},
+    )
+  }
   await scrollToPanel(painelMembrosRef)
   membroPendenteRemocao.value = null
 
@@ -824,6 +881,13 @@ function fecharMembros() {
   utilizadoresDisponiveisEquipa.value = []
   erroMembros.value = ''
   sucessoMembros.value = ''
+  if (route.path !== '/projects') {
+    void pageReturn.closePage(
+      tarefaParaRegressar.value
+        ? `/tasks/${tarefaParaRegressar.value}/edit`
+        : '/projects',
+    )
+  }
 }
 
 // --------------------------------------------------
@@ -1093,7 +1157,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="projects-page">
+  <main class="projects-page" :class="{ 'route-action-mode': rotaComAcao }">
 
     <header class="page-heading">
       <div>
@@ -1107,11 +1171,45 @@ onBeforeUnmount(() => {
         <p>Cria projetos, organiza equipas e acompanha o trabalho colaborativo.</p>
       </div>
 
-      <button class="primary-button" aria-label="Novo projeto" @click="abrirCriacao">
+      <button v-if="!rotaComAcao" class="primary-button" aria-label="Novo projeto" @click="abrirCriacao">
         <ActionIcon name="add" />
         Novo projeto
       </button>
     </header>
+
+    <section
+      v-if="rotaComAcao && projetoNaRota && route.path === `/projects/${projetoNaRota.id}`"
+      class="project-route-detail"
+    >
+      <NuxtLink class="back-link" :to="pageReturn.returnPath('/projects')">
+        ← Voltar
+      </NuxtLink>
+      <span class="eyebrow">DETALHES DO PROJETO</span>
+      <h1>{{ projetoNaRota.name }}</h1>
+      <p>{{ projetoNaRota.description || 'Sem descrição disponível.' }}</p>
+      <span class="status-badge" :class="classeEstado(projetoNaRota.status)">
+        {{ projetoNaRota.status }}
+      </span>
+      <div class="project-detail-actions">
+        <NuxtLink
+          class="primary-button"
+          :to="pageReturn.pageLink('/tasks', { project: projetoNaRota.id })"
+        >
+          Ver tarefas
+        </NuxtLink>
+        <button class="secondary-button" type="button" @click="abrirMembros(projetoNaRota)">
+          Membros
+        </button>
+        <button
+          v-if="podeGerirProjeto(projetoNaRota)"
+          class="secondary-button"
+          type="button"
+          @click="abrirEdicao(projetoNaRota)"
+        >
+          Editar projeto
+        </button>
+      </div>
+    </section>
 
     <!-- MENSAGENS GERAIS -->
     <Transition name="fade">
@@ -1560,7 +1658,9 @@ onBeforeUnmount(() => {
           <tbody>
             <tr v-for="projeto in projetosDaPagina" :key="projeto.id">
               <td class="project-name-cell">
-                <strong>{{ projeto.name }}</strong>
+                <NuxtLink :to="pageReturn.pageLink(`/projects/${projeto.id}`)">
+                  {{ projeto.name }}
+                </NuxtLink>
                 <small>{{ projeto.description || 'Sem descrição' }}</small>
               </td>
               <td>
@@ -1593,7 +1693,7 @@ onBeforeUnmount(() => {
                     </button>
 
                     <NuxtLink
-                      :to="`/tasks?project=${projeto.id}`"
+                      :to="pageReturn.pageLink('/tasks', { project: projeto.id })"
                       class="action-button"
                     >
                       <ActionIcon name="tasks" />
@@ -1665,8 +1765,8 @@ onBeforeUnmount(() => {
           <article v-for="projeto in projetosDaPagina" :key="projeto.id" class="project-view-card">
             <NuxtLink
               class="project-view-card-link"
-              :to="{ path: '/tasks', query: { project: projeto.id } }"
-              :aria-label="`Abrir tarefas do projeto ${projeto.name}`"
+              :to="pageReturn.pageLink(`/projects/${projeto.id}`)"
+              :aria-label="`Ver detalhes do projeto ${projeto.name}`"
             />
             <header class="project-view-card-header">
               <div class="project-view-card-heading">
@@ -1697,7 +1797,7 @@ onBeforeUnmount(() => {
             <div class="project-view-card-actions">
               <NuxtLink
                 class="action-button"
-                :to="`/tasks?project=${projeto.id}`"
+                :to="pageReturn.pageLink('/tasks', { project: projeto.id })"
               >
                 <ActionIcon name="tasks" />
                 {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
@@ -2215,6 +2315,40 @@ onBeforeUnmount(() => {
   padding: 12px 0 32px;
   box-sizing: border-box;
   color: #17233c;
+}
+
+.projects-page.route-action-mode > :not(.form-card):not(.inline-members-panel):not(.project-route-detail) {
+  display: none;
+}
+
+.projects-page.route-action-mode > .form-card,
+.projects-page.route-action-mode > .inline-members-panel,
+.projects-page.route-action-mode > .project-route-detail {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+.project-route-detail {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: clamp(20px, 4vw, 36px);
+  background: #fff;
+  border: 1px solid #e7ebf3;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgb(34 54 94 / 7%);
+}
+
+.project-route-detail h1,
+.project-route-detail p {
+  margin: 0;
+}
+
+.project-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .page-heading {

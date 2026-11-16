@@ -7,6 +7,7 @@ import { fetchAllPages } from '~/composables/usePaginatedApi'
 // Administração de contas: pesquisa, criação e edição do perfil selecionado.
 definePageMeta({
   layout: 'admin',
+  key: 'users-index-page',
 })
 
 interface Utilizador {
@@ -31,6 +32,8 @@ const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
 const api = useNuxtApp().$api
 const auth = useAuth()
 const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path === '/users/create')
 
 const utilizadores = ref<Utilizador[]>([])
 const carregando = ref(true)
@@ -243,6 +246,7 @@ async function carregarFotografia(
 async function abrirFormulario(): Promise<void> {
   limparMensagens()
   mostrarFormulario.value = true
+  if (route.path !== '/users/create') await pageReturn.openPage('/users/create')
   await scrollToPanel(formularioRef)
 }
 
@@ -252,6 +256,7 @@ function fecharFormulario() {
   formulario.email = ''
   formulario.password = ''
   formulario.role = 'member'
+  if (route.path !== '/users') void pageReturn.closePage('/users')
 }
 
 async function criarUtilizador() {
@@ -431,11 +436,25 @@ async function copiarTokenRecuperacao(): Promise<void> {
   }
 }
 
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/users') {
+      mostrarFormulario.value = false
+      return
+    }
+    if (path === '/users/create' && !mostrarFormulario.value) {
+      void abrirFormulario()
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(carregarUtilizadores)
 </script>
 
 <template>
-  <div class="users-page">
+  <div class="users-page" :class="{ 'route-action-mode': rotaComAcao }">
     <header class="page-heading">
       <div>
         <span class="eyebrow">GESTÃO DA PLATAFORMA</span>
@@ -445,7 +464,7 @@ onMounted(carregarUtilizadores)
         </p>
       </div>
 
-      <button class="primary-button" aria-label="Novo utilizador" @click="abrirFormulario">
+      <button v-if="!rotaComAcao" class="primary-button" aria-label="Novo utilizador" @click="abrirFormulario">
         <ActionIcon name="add" />
         Novo utilizador
       </button>
@@ -609,7 +628,7 @@ onMounted(carregarUtilizadores)
                   <div class="user-name">
                     <NuxtLink
                       class="profile-open-button"
-                      :to="`/users/${utilizador.id}`"
+                      :to="pageReturn.pageLink(`/users/${utilizador.id}`)"
                       :aria-label="`Abrir perfil de ${utilizador.name}`"
                     >
                       {{ utilizador.name }}
@@ -848,6 +867,16 @@ onMounted(carregarUtilizadores)
   max-width: 1500px;
   margin: 0 auto;
   color: #172b4d;
+}
+
+.users-page.route-action-mode > :not(.user-form-panel) {
+  display: none;
+}
+
+.users-page.route-action-mode > .user-form-panel {
+  width: min(680px, 100%);
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .page-heading {

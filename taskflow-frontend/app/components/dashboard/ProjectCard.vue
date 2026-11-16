@@ -1,6 +1,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { usePageReturn } from '~/composables/usePageReturn'
 import type { DashboardProject } from '~/composables/useDashboardData'
 import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 
@@ -13,6 +14,7 @@ const props = withDefaults(defineProps<{
   progress: 0,
   members: () => []
 })
+const pageReturn = usePageReturn()
 
 const today = computed(() => parseISODay(toISODay(new Date())))
 
@@ -119,7 +121,7 @@ function colorFor(value: string): string {
 
 <template>
   <NuxtLink
-    :to="`/tasks?projectId=${project.id}`"
+    :to="pageReturn.pageLink('/tasks', { projectId: project.id })"
     class="project-card-link"
     :aria-label="`Ver tarefas do projeto ${project.name}`"
   >

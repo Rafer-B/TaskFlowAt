@@ -8,6 +8,7 @@ import { diffInDays, parseISODay, toISODay } from '~/utils/dates'
 const props = defineProps<{
   task: DashboardTask
 }>()
+const pageReturn = usePageReturn()
 
 const today = computed(() => parseISODay(toISODay(new Date())))
 
@@ -116,7 +117,7 @@ const avatarColor = computed(() => {
   <!-- A linha inteira é um link acessível para abrir os detalhes da tarefa. -->
   <li class="task-row">
     <NuxtLink
-      :to="`/tasks?taskId=${task.id}`"
+      :to="pageReturn.pageLink(`/tasks/${task.id}`)"
       class="task-card-link"
       :aria-label="`Ver detalhes da tarefa ${task.title}`"
     >

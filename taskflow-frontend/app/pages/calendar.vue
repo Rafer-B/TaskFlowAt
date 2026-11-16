@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { scrollToPanel } from '~/composables/usePanelScroll'
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 
 // Agrega prazos de tarefas e eventos numa grelha que suporta mês, semana e dia.
 definePageMeta({
   layout: 'admin',
+  key: 'calendar-page',
 })
 
 type EstadoTarefa = 'to_do' | 'in_progress' | 'completed' | 'blocked'
@@ -85,6 +86,9 @@ interface FormularioEvento {
 
 const api = useNuxtApp().$api
 const auth = useAuth()
+const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/calendar')
 const projetos = ref<ProjetoAPI[]>([])
 const tarefas = ref<TarefaAPI[]>([])
 const eventos = ref<EventoAPI[]>([])
@@ -390,6 +394,9 @@ async function abrirNovoEvento(): Promise<void> {
   erro.value = ''
   formularioEventoVisivel.value = true
   confirmarEliminacaoEvento.value = false
+  if (route.path !== '/calendar/events/new') {
+    await pageReturn.openPage('/calendar/events/new')
+  }
   await scrollToPanel(formularioEventoRef)
 }
 
@@ -409,6 +416,9 @@ async function editarEvento(item: ItemCalendario): Promise<void> {
   erro.value = ''
   formularioEventoVisivel.value = true
   confirmarEliminacaoEvento.value = false
+  if (route.path !== `/calendar/events/${evento.id}/edit`) {
+    await pageReturn.openPage(`/calendar/events/${evento.id}/edit`)
+  }
   await scrollToPanel(formularioEventoRef)
 }
 
@@ -463,6 +473,7 @@ async function guardarEvento(): Promise<void> {
     formularioEventoVisivel.value = false
     confirmarEliminacaoEvento.value = false
     sucesso.value = dados.id ? 'Evento atualizado com sucesso.' : 'Evento criado com sucesso.'
+    if (route.path !== '/calendar') await pageReturn.closePage('/calendar')
   } catch (error) {
     console.error('Erro ao guardar evento:', error)
     erro.value = mensagemErro(error)
@@ -487,6 +498,7 @@ async function eliminarEvento(): Promise<void> {
     formularioEventoVisivel.value = false
     confirmarEliminacaoEvento.value = false
     sucesso.value = 'Evento eliminado.'
+    if (route.path !== '/calendar') await pageReturn.closePage('/calendar')
   } catch (error) {
     console.error('Erro ao eliminar evento:', error)
     erro.value = mensagemErro(error)
@@ -527,11 +539,47 @@ async function carregarCalendario(): Promise<void> {
   }
 }
 
+function fecharFormularioEvento(): void {
+  formularioEventoVisivel.value = false
+  confirmarEliminacaoEvento.value = false
+  if (route.path !== '/calendar') void pageReturn.closePage('/calendar')
+}
+
+watch(
+  [() => route.path, eventos],
+  ([path]) => {
+    if (path === '/calendar') {
+      formularioEventoVisivel.value = false
+      confirmarEliminacaoEvento.value = false
+      return
+    }
+
+    if (path === '/calendar/events/new') {
+      if (!formularioEventoVisivel.value) void abrirNovoEvento()
+      return
+    }
+
+    const correspondencia = path.match(/^\/calendar\/events\/([^/]+)(?:\/edit)?$/)
+    if (!correspondencia) return
+
+    const item = todosItens.value.find(
+      candidato => candidato.eventoId === correspondencia[1],
+    )
+    if (!item) return
+    if (!podeGerirEvento(item)) {
+      if (path !== '/calendar') void pageReturn.closePage('/calendar')
+      return
+    }
+    if (!formularioEventoVisivel.value) void editarEvento(item)
+  },
+  { immediate: true },
+)
+
 onMounted(carregarCalendario)
 </script>
 
 <template>
-  <section class="calendar-page">
+  <section class="calendar-page" :class="{ 'route-action-mode': rotaComAcao }">
     <header class="calendar-heading">
       <div class="calendar-icon" aria-hidden="true">
         <svg viewBox="0 0 64 64" fill="none">
@@ -741,7 +789,7 @@ onMounted(carregarCalendario)
             <span class="form-panel-eyebrow">CALENDÁRIO</span>
             <h2 id="event-form-title">{{ formulario.id ? 'Editar evento' : 'Criar evento' }}</h2>
           </div>
-          <button type="button" aria-label="Fechar" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">×</button>
+          <button type="button" aria-label="Fechar" :disabled="guardandoEvento" @click="fecharFormularioEvento">×</button>
         </header>
         <form class="event-form" @submit.prevent="guardarEvento">
           <label>
@@ -801,7 +849,7 @@ onMounted(carregarCalendario)
               <ActionIcon name="delete" />
               Eliminar
             </button>
-            <button class="cancel-button action-tooltip" type="button" aria-label="Cancelar" :disabled="guardandoEvento" @click="formularioEventoVisivel = false; confirmarEliminacaoEvento = false">
+            <button class="cancel-button action-tooltip" type="button" aria-label="Cancelar" :disabled="guardandoEvento" @click="fecharFormularioEvento">
               <ActionIcon name="close" /> Cancelar
             </button>
             <button class="save-button" type="submit" :aria-label="guardandoEvento ? 'A guardar evento' : formulario.id ? 'Guardar alterações' : 'Criar evento'" :disabled="guardandoEvento">
@@ -816,6 +864,8 @@ onMounted(carregarCalendario)
 
 <style scoped>
 .calendar-page { display: grid; gap: 14px; color: #17264a; }
+.calendar-page.route-action-mode > :not(.event-inline-panel) { display: none; }
+.calendar-page.route-action-mode > .event-inline-panel { width: min(760px, 100%); margin: 0 auto; }
 .calendar-heading { display: flex; min-height: 72px; align-items: center; gap: 14px; }
 .calendar-icon { display: grid; width: 76px; height: 74px; flex: 0 0 76px; place-items: center; background: radial-gradient(circle at 30% 35%, #cbdcff 0 24%, transparent 25%), radial-gradient(circle at 82% 10%, #d8e3ff 0 20%, transparent 21%); }
 .calendar-icon svg { width: 64px; height: 64px; filter: drop-shadow(0 5px 5px rgb(42 89 198 / 16%)); }

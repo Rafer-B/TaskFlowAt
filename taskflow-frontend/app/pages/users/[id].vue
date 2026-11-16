@@ -2,6 +2,7 @@
 import { fetchAllPages } from '~/composables/usePaginatedApi'
 definePageMeta({
   layout: 'admin',
+  key: 'user-detail-page',
 })
 
 interface Utilizador {
@@ -43,6 +44,8 @@ const api = useNuxtApp().$api
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
 const auth = useAuth()
+const pageReturn = usePageReturn()
+const rotaEdicao = computed(() => route.path.endsWith('/edit'))
 
 const utilizador = ref<Utilizador | null>(null)
 const tarefas = ref<TarefaAssociada[]>([])
@@ -127,7 +130,7 @@ async function carregarPerfil(userId: string): Promise<void> {
   erro.value = ''
   erroAssociacoes.value = ''
   sucesso.value = ''
-  editar.value = false
+  editar.value = rotaEdicao.value
   utilizador.value = null
   tarefas.value = []
   projetos.value = []
@@ -223,6 +226,9 @@ async function guardarPerfil(): Promise<void> {
     }
     editar.value = false
     sucesso.value = 'Perfil atualizado com sucesso.'
+    if (route.path.endsWith('/edit')) {
+      await pageReturn.closePage(`/users/${atualizado.id}`)
+    }
   } catch (error) {
     console.error('Erro ao atualizar perfil do utilizador:', error)
     erro.value = obterMensagemErro(error)
@@ -237,12 +243,34 @@ function cancelarEdicao(): void {
   email.value = utilizador.value.email
   editar.value = false
   erro.value = ''
+  if (route.path.endsWith('/edit')) {
+    void pageReturn.closePage(`/users/${utilizador.value.id}`)
+  }
+}
+
+async function abrirEdicao(): Promise<void> {
+  if (!utilizador.value) return
+  erro.value = ''
+  sucesso.value = ''
+  editar.value = true
+  await pageReturn.openPage(`/users/${utilizador.value.id}/edit`)
 }
 
 watch(
-  () => route.params.id,
-  (id) => {
+  [() => route.params.id, () => route.path],
+  ([id, path]) => {
     const valor = Array.isArray(id) ? id[0] : id
+    const utilizadorAtual = utilizador.value
+    if (path.endsWith('/edit') && utilizadorAtual && utilizadorAtual.id === valor) {
+      editar.value = true
+      nome.value = utilizadorAtual.name
+      email.value = utilizadorAtual.email
+      return
+    }
+    if (!path.endsWith('/edit') && utilizadorAtual && utilizadorAtual.id === valor) {
+      editar.value = false
+      return
+    }
     void carregarPerfil(valor ?? '')
   },
 )
@@ -254,8 +282,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="user-detail-page">
-    <NuxtLink class="back-link" to="/users">← Voltar aos utilizadores</NuxtLink>
+  <div class="user-detail-page" :class="{ 'route-edit-mode': rotaEdicao }">
+    <NuxtLink
+      class="back-link"
+      :to="rotaEdicao
+        ? pageReturn.returnPath(`/users/${utilizador?.id ?? ''}`)
+        : pageReturn.returnPath('/users')"
+    >
+      {{ rotaEdicao ? '← Voltar' : '← Voltar' }}
+    </NuxtLink>
 
     <div v-if="carregando" class="page-state">
       <span class="loader"></span>
@@ -276,7 +311,7 @@ onMounted(() => {
           v-if="!editar"
           class="primary-button"
           type="button"
-          @click="editar = true; erro = ''; sucesso = ''"
+          @click="abrirEdicao"
         >
           Editar perfil
         </button>
@@ -389,6 +424,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.user-detail-page.route-edit-mode > :not(.back-link):not(.page-heading):not(.page-message):not(.profile-card) {
+  display: none;
+}
+
 .user-detail-page { display: grid; max-width: 1200px; gap: 20px; margin: 0 auto; color: #172b4d; }
 .back-link { width: fit-content; color: #536da5; font-size: 12px; font-weight: 700; text-decoration: none; }
 .back-link:hover { color: #344f8a; text-decoration: underline; }

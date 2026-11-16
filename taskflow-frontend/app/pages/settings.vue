@@ -15,10 +15,13 @@ import {
 // Preferências locais e operações da conta usam fluxos separados e mensagens comuns.
 definePageMeta({
   layout: 'admin',
+  key: 'settings-page',
 })
 
 const auth = useAuth()
 const route = useRoute()
+const pageReturn = usePageReturn()
+const rotaComAcao = computed(() => route.path !== '/settings')
 const api = useNuxtApp().$api
 const config = useRuntimeConfig()
 const apiBase = String(config.public.apiBase).replace(/\/+$/, '')
@@ -51,9 +54,13 @@ const erroDoisFatores = ref('')
 const sucessoDoisFatores = ref('')
 
 async function alternarFormularioPalavraPasse(): Promise<void> {
-  mostrarFormularioPalavraPasse.value = !mostrarFormularioPalavraPasse.value
-  if (mostrarFormularioPalavraPasse.value) {
+  const abrir = !mostrarFormularioPalavraPasse.value
+  mostrarFormularioPalavraPasse.value = abrir
+  if (abrir) {
+    await pageReturn.openPage('/settings/password/edit')
     await scrollToPanel(formularioPalavraPasseRef)
+  } else if (route.path !== '/settings') {
+    await pageReturn.closePage('/settings')
   }
 }
 const erro = ref('')
@@ -84,6 +91,15 @@ watch(
   () => route.query.editProfile,
   (value) => {
     if (value === '1') editarPerfil()
+  },
+)
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/settings') {
+      mostrarEdicaoPerfil.value = false
+      mostrarFormularioPalavraPasse.value = false
+    }
   },
 )
 const iniciais = computed(() =>
@@ -168,6 +184,18 @@ function editarPerfil(): void {
   erro.value = ''
   sucesso.value = ''
   mostrarEdicaoPerfil.value = true
+  if (route.path !== '/settings/profile/edit') {
+    void pageReturn.openPage(
+      '/settings/profile/edit',
+      {},
+      route.query.editProfile === '1' ? '/settings' : route.fullPath,
+    )
+  }
+}
+
+function cancelarEdicaoPerfil(): void {
+  mostrarEdicaoPerfil.value = false
+  if (route.path !== '/settings') void pageReturn.closePage('/settings')
 }
 
 async function guardarPerfil(): Promise<void> {
@@ -192,6 +220,7 @@ async function guardarPerfil(): Promise<void> {
     }
     mostrarEdicaoPerfil.value = false
     sucesso.value = 'Perfil atualizado com sucesso.'
+    if (route.path !== '/settings') await pageReturn.closePage('/settings')
   } catch (error) {
     console.error('Erro ao atualizar o próprio perfil:', error)
     erro.value = obterMensagemErro(error)
@@ -294,6 +323,7 @@ async function atualizarPalavraPasse(): Promise<void> {
     palavrasPasse.value = { atual: '', nova: '', confirmar: '' }
     sucesso.value = 'Palavra-passe atualizada com sucesso.'
     mostrarFormularioPalavraPasse.value = false
+    if (route.path !== '/settings') await pageReturn.closePage('/settings')
   } catch (error) {
     console.error('Erro ao atualizar palavra-passe:', error)
     erro.value = obterMensagemErro(error)
@@ -460,13 +490,23 @@ function formatarData(data: string | undefined): string {
 
 onMounted(() => {
   carregarPreferencias()
-  if (route.query.editProfile === '1') editarPerfil()
+  if (route.query.editProfile === '1' || route.path === '/settings/profile/edit') editarPerfil()
+  if (route.path === '/settings/password/edit') {
+    mostrarFormularioPalavraPasse.value = true
+  }
   void carregarEstadoDoisFatores()
 })
 </script>
 
 <template>
-  <main class="settings-page">
+  <main
+    class="settings-page"
+    :class="{
+      'route-action-mode': rotaComAcao,
+      'route-profile-edit': route.path === '/settings/profile/edit',
+      'route-password-edit': route.path === '/settings/password/edit',
+    }"
+  >
     <header class="page-hero settings-hero">
       <div class="hero-kicker">
         <span class="dot" aria-hidden="true"></span>
@@ -483,7 +523,7 @@ onMounted(() => {
       {{ sucesso }}
     </p>
 
-    <section class="settings-section" aria-labelledby="account-heading">
+    <section class="settings-section profile-section" aria-labelledby="account-heading">
       <div class="settings-section-heading">
         <h2 id="account-heading">A minha conta</h2>
         <p>Consulte os seus dados e faça a gestão da fotografia de perfil.</p>
@@ -537,7 +577,7 @@ onMounted(() => {
             type="button"
             class="btn btn-outline"
             :disabled="perfilAAtualizar"
-            @click="mostrarEdicaoPerfil = false"
+            @click="cancelarEdicaoPerfil"
           >
             Cancelar edição
           </button>
@@ -617,7 +657,7 @@ onMounted(() => {
       </article>
     </section>
 
-    <section class="settings-section" aria-labelledby="password-heading">
+    <section class="settings-section password-section" aria-labelledby="password-heading">
       <div class="settings-section-heading password-section-heading">
         <div>
           <h2 id="password-heading">Alterar palavra-passe</h2>
@@ -993,6 +1033,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.settings-page.route-action-mode > :not(.settings-hero):not(.settings-message) {
+  display: none;
+}
+.settings-page.route-profile-edit > .settings-section:not(.profile-section),
+.settings-page.route-password-edit > .settings-section:not(.password-section) {
+  display: none;
+}
 .settings-page {
   width: min(1120px, 100%);
   margin: 0 auto;
