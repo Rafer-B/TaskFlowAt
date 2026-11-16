@@ -1819,22 +1819,22 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="view-switch-button"
-                :class="{ 'is-active': visualizacaoTarefas === 'kanban' }"
-                :aria-pressed="visualizacaoTarefas === 'kanban'"
-                @click="visualizacaoTarefas = 'kanban'"
-              >
-                <span aria-hidden="true">▦</span>
-                Kanban
-              </button>
-              <button
-                type="button"
-                class="view-switch-button"
                 :class="{ 'is-active': visualizacaoTarefas === 'lista' }"
                 :aria-pressed="visualizacaoTarefas === 'lista'"
                 @click="visualizacaoTarefas = 'lista'"
               >
                 <span aria-hidden="true">☷</span>
                 Lista
+              </button>
+              <button
+                type="button"
+                class="view-switch-button"
+                :class="{ 'is-active': visualizacaoTarefas === 'kanban' }"
+                :aria-pressed="visualizacaoTarefas === 'kanban'"
+                @click="visualizacaoTarefas = 'kanban'"
+              >
+                <span aria-hidden="true">▦</span>
+                Kanban
               </button>
             </div>
             <label v-if="visualizacaoTarefas === 'lista'" class="table-search">

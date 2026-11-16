@@ -1565,17 +1565,6 @@ onBeforeUnmount(() => {
         <div class="project-view-switch" role="group" aria-label="Modo de visualização dos projetos">
           <button
             type="button"
-            :class="{ active: modoVisualizacaoProjetos === 'list' }"
-            :aria-pressed="modoVisualizacaoProjetos === 'list'"
-            aria-label="Mostrar projetos em lista"
-            title="Vista de lista"
-            @click="definirModoVisualizacaoProjetos('list')"
-          >
-            <ActionIcon name="list" />
-            <span>Lista</span>
-          </button>
-          <button
-            type="button"
             :class="{ active: modoVisualizacaoProjetos === 'cards' }"
             :aria-pressed="modoVisualizacaoProjetos === 'cards'"
             aria-label="Mostrar projetos em cards"
@@ -1584,6 +1573,17 @@ onBeforeUnmount(() => {
           >
             <ActionIcon name="grid" />
             <span>Cards</span>
+          </button>
+          <button
+            type="button"
+            :class="{ active: modoVisualizacaoProjetos === 'list' }"
+            :aria-pressed="modoVisualizacaoProjetos === 'list'"
+            aria-label="Mostrar projetos em lista"
+            title="Vista de lista"
+            @click="definirModoVisualizacaoProjetos('list')"
+          >
+            <ActionIcon name="list" />
+            <span>Lista</span>
           </button>
         </div>
       </div>
