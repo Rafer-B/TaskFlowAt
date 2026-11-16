@@ -60,6 +60,7 @@ type EstadoProjeto = 'Ativo' | 'Concluído' | 'Arquivado'
 type FiltroEstado = 'Todos' | EstadoProjeto
 type AcaoProjeto = 'archive' | 'delete'
 type ChaveOrdenacaoProjetos = 'name' | 'status' | 'createdAt'
+type ModoVisualizacaoProjetos = 'list' | 'cards'
 
 const colunasTabelaProjetos: Array<{
   chave: ChaveOrdenacaoProjetos
@@ -105,6 +106,36 @@ const ordenacaoProjetos = ref<{
   chave: 'name',
   ascendente: true,
 })
+const modoVisualizacaoProjetos = ref<ModoVisualizacaoProjetos>('list')
+
+function chaveModoVisualizacaoProjetos(): string {
+  return `taskflow-projects-view-${auth.user.value?.id ?? 'anonymous'}`
+}
+
+function carregarModoVisualizacaoProjetos(): void {
+  if (!import.meta.client) return
+
+  try {
+    const modoGuardado = localStorage.getItem(chaveModoVisualizacaoProjetos())
+    if (modoGuardado === 'list' || modoGuardado === 'cards') {
+      modoVisualizacaoProjetos.value = modoGuardado
+    }
+  } catch (error) {
+    console.warn('Não foi possível carregar a preferência de visualização dos projetos.', error)
+  }
+}
+
+function definirModoVisualizacaoProjetos(modo: ModoVisualizacaoProjetos): void {
+  modoVisualizacaoProjetos.value = modo
+
+  if (!import.meta.client) return
+
+  try {
+    localStorage.setItem(chaveModoVisualizacaoProjetos(), modo)
+  } catch (error) {
+    console.warn('Não foi possível guardar a preferência de visualização dos projetos.', error)
+  }
+}
 
 watch(
   () => route.query.search,
@@ -1005,6 +1036,7 @@ async function removerMembro(membro: MembroAPI) {
 
 onMounted(() => {
   document.addEventListener('click', fecharDropdownsAcoes)
+  carregarModoVisualizacaoProjetos()
   carregarProjetos()
 })
 
@@ -1356,6 +1388,31 @@ onBeforeUnmount(() => {
             <option value="Arquivado">Arquivados</option>
           </select>
         </div>
+
+        <div class="project-view-switch" role="group" aria-label="Modo de visualização dos projetos">
+          <button
+            type="button"
+            :class="{ active: modoVisualizacaoProjetos === 'list' }"
+            :aria-pressed="modoVisualizacaoProjetos === 'list'"
+            aria-label="Mostrar projetos em lista"
+            title="Vista de lista"
+            @click="definirModoVisualizacaoProjetos('list')"
+          >
+            <ActionIcon name="list" />
+            <span>Lista</span>
+          </button>
+          <button
+            type="button"
+            :class="{ active: modoVisualizacaoProjetos === 'cards' }"
+            :aria-pressed="modoVisualizacaoProjetos === 'cards'"
+            aria-label="Mostrar projetos em cards"
+            title="Vista de cards"
+            @click="definirModoVisualizacaoProjetos('cards')"
+          >
+            <ActionIcon name="grid" />
+            <span>Cards</span>
+          </button>
+        </div>
       </div>
 
       <div v-if="carregando" class="empty-state">
@@ -1395,7 +1452,8 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-else class="projects-table-scroll">
+      <div v-else>
+        <div v-if="modoVisualizacaoProjetos === 'list'" class="projects-table-scroll">
         <table class="projects-table" aria-labelledby="projects-table-title">
           <thead>
             <tr>
@@ -1525,6 +1583,108 @@ onBeforeUnmount(() => {
             </tr>
           </tbody>
         </table>
+
+        </div>
+
+        <div v-else class="projects-cards-grid" aria-label="Projetos em cards">
+          <article v-for="projeto in projetosDaPagina" :key="projeto.id" class="project-view-card">
+            <header class="project-view-card-header">
+              <div class="project-view-card-heading">
+                <span class="project-view-card-initial" aria-hidden="true">
+                  {{ projeto.name.slice(0, 2).toUpperCase() }}
+                </span>
+                <div>
+                  <h3>{{ projeto.name }}</h3>
+                </div>
+              </div>
+              <span class="status-badge" :class="classeEstado(projeto.status)">
+                <span class="status-dot" />
+                {{ projeto.status }}
+              </span>
+            </header>
+
+            <p class="project-view-card-description">
+              {{ projeto.description || 'Sem descrição' }}
+            </p>
+
+            <dl class="project-view-card-meta">
+              <div>
+                <dt>Criado em</dt>
+                <dd>{{ formatarData(projeto.createdAt) }}</dd>
+              </div>
+            </dl>
+
+            <div class="project-view-card-actions">
+              <NuxtLink
+                class="action-button"
+                :to="`/tasks?project=${projeto.id}`"
+              >
+                <ActionIcon name="tasks" />
+                {{ podeCriarTarefas(projeto) ? 'Tarefas' : 'Ver tarefas' }}
+              </NuxtLink>
+              <button class="action-button members-action" type="button" @click="abrirMembros(projeto)">
+                <ActionIcon name="team" />
+                Membros
+              </button>
+              <details class="project-actions-dropdown">
+                <summary class="project-actions-trigger" :aria-label="`Mais ações para ${projeto.name}`">
+                  <span class="project-actions-dots" aria-hidden="true" />
+                </summary>
+                <div class="project-actions-menu" @click="fecharMenuAcoes">
+                  <button
+                    v-if="podeGerirProjeto(projeto)"
+                    class="action-button"
+                    type="button"
+                    @click="abrirEdicao(projeto)"
+                  >
+                    <ActionIcon name="edit" />
+                    Editar
+                  </button>
+                  <button
+                    v-if="podeGerirProjeto(projeto) && projeto.status === 'Ativo'"
+                    type="button"
+                    class="state-button complete-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="atualizarEstado(projeto, 'Concluído')"
+                  >
+                    <ActionIcon name="check" />
+                    Concluir
+                  </button>
+                  <button
+                    v-if="podeGerirProjeto(projeto) && (projeto.status === 'Ativo' || projeto.status === 'Concluído')"
+                    type="button"
+                    class="state-button archive-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="pedirConfirmacao(projeto, 'archive')"
+                  >
+                    <ActionIcon name="archive" />
+                    Arquivar
+                  </button>
+                  <button
+                    v-if="podeGerirProjeto(projeto) && projeto.status !== 'Ativo'"
+                    type="button"
+                    class="state-button reactivate-action"
+                    :disabled="aAtualizarEstado === projeto.id"
+                    @click="atualizarEstado(projeto, 'Ativo')"
+                  >
+                    <ActionIcon name="undo" />
+                    Reativar
+                  </button>
+                  <button
+                    v-if="auth.user.value?.role === 'admin'"
+                    type="button"
+                    class="delete-action"
+                    :disabled="aEliminar"
+                    @click="pedirConfirmacao(projeto, 'delete')"
+                  >
+                    <ActionIcon name="delete" />
+                    Eliminar
+                  </button>
+                </div>
+              </details>
+            </div>
+          </article>
+        </div>
 
         <footer class="projects-pagination">
           <div class="projects-page-size">
@@ -2518,6 +2678,175 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.project-view-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid #e1e6ef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.project-view-switch button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #718096;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-view-switch button:hover {
+  color: #4e57d1;
+  background: #f4f5ff;
+}
+
+.project-view-switch button.active {
+  color: #fff;
+  background: #5363bd;
+  box-shadow: 0 2px 5px rgb(54 69 150 / 22%);
+}
+
+.projects-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 15px;
+}
+
+.project-view-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 17px;
+  border: 1px solid #e5eaf2;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgb(15 23 42 / 4%);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.project-view-card:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 22px rgb(15 23 42 / 8%);
+}
+
+.project-view-card-header,
+.project-view-card-heading,
+.project-view-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-view-card-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.project-view-card-heading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-view-card-initial {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 11px;
+  color: #4c55bd;
+  background: #edf0ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.project-view-card h3 {
+  display: -webkit-box;
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: #26344c;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.project-view-card-header .status-badge {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.project-view-card-description {
+  display: -webkit-box;
+  min-height: 35px;
+  margin: 0;
+  overflow: hidden;
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.project-view-card-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid #edf0f5;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.project-view-card-meta div {
+  min-width: 0;
+}
+
+.project-view-card-meta dt {
+  margin-bottom: 3px;
+  color: #929caf;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.project-view-card-meta dd {
+  margin: 0;
+  overflow: hidden;
+  color: #4b5a71;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-view-card-actions {
+  margin-top: auto;
+}
+
+.project-view-card-actions .action-button {
+  flex: 1 1 0;
+}
+
+.project-view-card-actions .project-actions-dropdown {
+  flex: 0 0 auto;
+}
+
 .projects-table-scroll {
   width: 100%;
   max-height: 600px;
@@ -3405,6 +3734,14 @@ onBeforeUnmount(() => {
     flex: 1;
   }
 
+  .project-view-switch {
+    align-self: flex-end;
+  }
+
+  .projects-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
   .projects-pagination {
     align-items: stretch;
     flex-direction: column;
@@ -3483,7 +3820,9 @@ onBeforeUnmount(() => {
   .secondary-button,
   .action-button,
   .state-button,
-  .delete-action {
+  .delete-action,
+  .project-view-card,
+  .project-view-switch button {
     transition: none;
   }
 }

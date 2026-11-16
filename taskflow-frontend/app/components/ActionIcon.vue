@@ -10,6 +10,8 @@ type ActionIconName =
   | 'delete'
   | 'edit'
   | 'forward'
+  | 'grid'
+  | 'list'
   | 'refresh'
   | 'save'
   | 'team'
@@ -34,6 +36,8 @@ const paths: Record<ActionIconName, string> = {
   delete: 'M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z',
   forward: 'M5 12h14m-7-7 7 7-7 7',
+  grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  list: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',
   refresh: 'M20 7v5h-5M4 17v-5h5M5.5 9a7 7 0 0 1 11.7-2L20 12M4 12l2.8 5a7 7 0 0 0 11.7-2',
   save: 'M5 3h12l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8',
   team: 'M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM17 11a3 3 0 1 0 0-6M21 20v-1.5a4 4 0 0 0-3-3.87',
